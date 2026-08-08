@@ -14,9 +14,11 @@ must ask it:
   (18, 45) must consult before attaching one.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Protocol
 
 from sqlalchemy import Engine
 
@@ -26,20 +28,37 @@ STANCES = ("unacknowledged", "kept", "ignored", "dangerous")
 """The vocabulary; `unacknowledged` is the default and is never stored."""
 
 
-def stance_of(engine: Engine, instrument_id: int, account_id: int) -> str:
-    """The effective stance of one Instrument at one Account.
+class StanceDecision(Protocol):
+    """One stored decision — a repository row or anything shaped like one."""
+
+    @property
+    def account_id(self) -> int | None: ...
+
+    @property
+    def stance(self) -> str: ...
+
+
+def effective_stance(decisions: Iterable[StanceDecision], account_id: int) -> str:
+    """The effective stance at one Account, judged from one Instrument's
+    stored decisions.
 
     A global `dangerous` verdict outranks any per-Account decision — a token
     whose approval drains a wallet is dangerous everywhere — and no decision
-    at all is `unacknowledged`.
+    at all is `unacknowledged`. Pure, so the lot engine (ticket 19) can judge
+    a whole ledger from decisions it prefetched in its own snapshot.
     """
     per_account = None
-    for row in stances.list_stances(engine, instrument_id):
-        if row.account_id is None:
-            return row.stance
-        if row.account_id == account_id:
-            per_account = row.stance
+    for decision in decisions:
+        if decision.account_id is None:
+            return decision.stance
+        if decision.account_id == account_id:
+            per_account = decision.stance
     return per_account or "unacknowledged"
+
+
+def stance_of(engine: Engine, instrument_id: int, account_id: int) -> str:
+    """The effective stance of one Instrument at one Account."""
+    return effective_stance(stances.list_stances(engine, instrument_id), account_id)
 
 
 def inflow_mints_lot(stance: str) -> bool:

@@ -53,7 +53,10 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
     command.upgrade(alembic_config, "head")
     with engine.begin() as connection:
         # Transactions first: an Account or Instrument with ledger entries
-        # behind it refuses to go. Legs follow their Transaction by cascade.
+        # behind it refuses to go. Legs follow their Transaction by cascade,
+        # and Tax Lots follow their legs; the fingerprint alone would outlive
+        # its materialisation, so it goes explicitly.
+        connection.execute(text("DELETE FROM input_fingerprint"))
         connection.execute(text("DELETE FROM transaction"))
         connection.execute(text("DELETE FROM instrument"))
         # Accounts first: a Platform still holding one refuses to go.

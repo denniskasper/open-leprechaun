@@ -490,11 +490,11 @@ def test_an_unmatched_outflow_is_never_quietly_a_disposal():
 
 
 def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
-    """Until a tax engine exists nothing imports the document; the engines
+    """The lot engine (ticket 19) is the first; the remaining engines
     (tickets 21, 22, 26) will amend this list with only themselves."""
     package = Path(tax_treatment.__file__).resolve().parents[1]
     readers = [
-        path.relative_to(package)
+        str(path.relative_to(package))
         for path in package.rglob("*.py")
         if path.name != "tax_treatment.py"
         and any(
@@ -502,7 +502,7 @@ def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
             for line in path.read_text().splitlines()
         )
     ]
-    assert readers == []
+    assert readers == ["services/lots.py"]
 
 
 def test_the_api_speaks_the_same_vocabulary_as_the_service():
