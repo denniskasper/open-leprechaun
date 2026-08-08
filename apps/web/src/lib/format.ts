@@ -35,6 +35,25 @@ export function formatNumber(value: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 8 }).format(value);
 }
 
+/**
+ * A fixed-point decimal string — the shape quantities cross the API in —
+ * formatted for reading without ever passing through a float: the integer
+ * digits are grouped per locale, the fraction digits kept verbatim, so a
+ * satoshi and an eighteen-decimal token unit survive to the pixel.
+ */
+export function formatQuantity(value: string, locale?: string): string {
+  const [integer = "0", fraction] = value.split(".");
+  const grouped = new Intl.NumberFormat(locale).format(BigInt(integer));
+  if (!fraction) {
+    return grouped;
+  }
+  const separator =
+    new Intl.NumberFormat(locale)
+      .formatToParts(1.1)
+      .find((part) => part.type === "decimal")?.value ?? ".";
+  return grouped + separator + fraction;
+}
+
 export function formatTimestamp(epochMs: number, locale?: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",

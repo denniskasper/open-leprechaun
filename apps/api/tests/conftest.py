@@ -52,10 +52,22 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
     """A migrated database with no instruments or platforms yet."""
     command.upgrade(alembic_config, "head")
     with engine.begin() as connection:
+        # Transactions first: an Account or Instrument with ledger entries
+        # behind it refuses to go. Legs follow their Transaction by cascade.
+        connection.execute(text("DELETE FROM transaction"))
         connection.execute(text("DELETE FROM instrument"))
         # Accounts first: a Platform still holding one refuses to go.
         connection.execute(text("DELETE FROM account"))
         connection.execute(text("DELETE FROM platform"))
+    return engine
+
+
+@pytest.fixture
+def fresh_db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
+    """A database created from nothing by the whole chain — what a first
+    deployment gets, before any seed or import has run."""
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "head")
     return engine
 
 

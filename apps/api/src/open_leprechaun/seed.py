@@ -184,7 +184,87 @@ def _platforms(connection: Connection) -> None:
         )
 
 
-STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms)
+def _transactions(connection: Connection) -> None:
+    """A ledger with every shape ticket 13 names: a trade carrying both sides
+    and a fee in a third asset, income, and a transfer that is not assumed to
+    be a purchase. Deliberately built on the seed's own instruments — USD,
+    not the EUR the migration chain mints — so the step stands on the steps
+    before it alone. A Transaction has no natural identity, so each is keyed
+    for idempotency on its type and instant: inserted only when that pair is
+    absent, legs riding along in the same pass."""
+    events = [
+        (
+            "trade",
+            "2026-01-05T10:30:00+00:00",
+            "USD for BTC, fee taken in SOL",
+            [
+                ("Kraken", "Main", "USD", "out", "250.00", None),
+                ("Kraken", "Main", "BTC", "in", "0.004", None),
+                ("Kraken", "Main", "SOL", "fee", "0.02", 1),
+            ],
+        ),
+        (
+            "staking_reward",
+            "2026-01-20T00:00:00+00:00",
+            None,
+            [("Phantom", "Hot wallet", "SOL", "in", "0.35", None)],
+        ),
+        (
+            "transfer_in",
+            "2026-02-02T18:45:00+00:00",
+            "Moved from the exchange",
+            [("BitBox02", "Savings", "BTC", "in", "0.004", None)],
+        ),
+    ]
+    for type_, occurred_at, note, legs in events:
+        transaction_id = connection.execute(
+            text(
+                "INSERT INTO transaction (type, occurred_at, note)"
+                " SELECT :type, CAST(:occurred_at AS timestamptz), :note"
+                " WHERE NOT EXISTS (SELECT 1 FROM transaction WHERE type = :type"
+                " AND occurred_at = CAST(:occurred_at AS timestamptz))"
+                " RETURNING id"
+            ),
+            {"type": type_, "occurred_at": occurred_at, "note": note},
+        ).scalar_one_or_none()
+        if transaction_id is None:
+            continue
+        leg_ids = [
+            connection.execute(
+                text(
+                    "INSERT INTO transaction_leg"
+                    " (transaction_id, account_id, instrument_id, role, quantity)"
+                    " SELECT :transaction_id, account.id, instrument.id, :role,"
+                    " CAST(:quantity AS numeric)"
+                    " FROM account JOIN platform ON platform.id = account.platform_id,"
+                    " instrument"
+                    " WHERE platform.name = :platform AND account.name = :account"
+                    " AND instrument.symbol = :symbol"
+                    " RETURNING id"
+                ),
+                {
+                    "transaction_id": transaction_id,
+                    "platform": platform,
+                    "account": account,
+                    "symbol": symbol,
+                    "role": role,
+                    "quantity": quantity,
+                },
+            ).scalar_one()
+            for platform, account, symbol, role, quantity, _ in legs
+        ]
+        for (*_, charged_against), leg_id in zip(legs, leg_ids, strict=True):
+            if charged_against is not None:
+                connection.execute(
+                    text(
+                        "UPDATE transaction_leg SET charged_against_leg_id = :target"
+                        " WHERE id = :leg_id"
+                    ),
+                    {"target": leg_ids[charged_against], "leg_id": leg_id},
+                )
+
+
+STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

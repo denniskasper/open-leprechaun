@@ -23,6 +23,14 @@ export function postJson(url: string, body: unknown): Promise<Response> {
   });
 }
 
+export function putJson(url: string, body: unknown): Promise<Response> {
+  return fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function refusal(response: Response, fallback: string): Promise<ApiRefusal> {
   let message = fallback;
   try {

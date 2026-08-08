@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, formatNumber, formatTimestamp } from "./format";
+import { formatMoney, formatNumber, formatQuantity, formatTimestamp } from "./format";
 
 // The ticket's rule: numbers are formatted per locale and money always carries
 // its currency adjacent — a bare number must be impossible to produce.
@@ -42,6 +42,25 @@ describe("formatNumber", () => {
 
   it("keeps up to eight fraction digits for asset quantities", () => {
     expect(formatNumber(0.00012345, "en-US")).toBe("0.00012345");
+  });
+});
+
+describe("formatQuantity", () => {
+  it("groups the integer digits per locale and keeps the fraction verbatim", () => {
+    expect(formatQuantity("1234567.891", "de-DE")).toBe("1.234.567,891");
+    expect(formatQuantity("1234567.891", "en-US")).toBe("1,234,567.891");
+  });
+
+  it("keeps every fraction digit — a fixed-point string never meets a float", () => {
+    expect(formatQuantity("0.000000000000000001", "en-US")).toBe("0.000000000000000001");
+  });
+
+  it("keeps the recorded scale, trailing zeros included", () => {
+    expect(formatQuantity("100.00", "en-US")).toBe("100.00");
+  });
+
+  it("survives integer digits beyond float precision", () => {
+    expect(formatQuantity("123456789012345678901", "en-US")).toBe("123,456,789,012,345,678,901");
   });
 });
 

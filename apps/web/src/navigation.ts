@@ -1,4 +1,4 @@
-import { Activity, type LucideIcon, Shapes, Vault } from "lucide-react";
+import { Activity, type LucideIcon, Scale, Shapes, Vault } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -18,7 +18,10 @@ export interface NavSection {
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Ledger",
-    items: [{ to: "/instruments", label: "Instruments", icon: Shapes }],
+    items: [
+      { to: "/transactions", label: "Transactions", icon: Scale },
+      { to: "/instruments", label: "Instruments", icon: Shapes },
+    ],
   },
   {
     label: "Settings",

@@ -8,6 +8,7 @@ import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
 import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
+import { TransactionsPage } from "@/pages/transactions";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <HealthPage /> },
+          { path: "transactions", element: <TransactionsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
         ],

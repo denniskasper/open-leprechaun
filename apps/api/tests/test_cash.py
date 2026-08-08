@@ -9,22 +9,12 @@ runs, so EUR exists wherever the schema does.
 """
 
 import pytest
-from alembic import command
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from open_leprechaun.repositories import instruments
 from open_leprechaun.seed import seed
 from open_leprechaun.services.instruments import movement_is_disposal
-
-
-@pytest.fixture
-def fresh_db(alembic_config, engine):
-    """A database created from nothing by the whole chain — what a first
-    deployment gets, before any seed or import has run."""
-    command.downgrade(alembic_config, "base")
-    command.upgrade(alembic_config, "head")
-    return engine
 
 
 def test_a_cash_instrument_opens_its_identifier_history_at_birth(db):
