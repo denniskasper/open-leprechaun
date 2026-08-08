@@ -20,6 +20,10 @@ Any work on design or UI — new components, layout, styling, visual polish —
 starts by invoking the `/frontend-design` skill. This holds for every session,
 without being asked.
 
+The design foundation — tokens, themes, shell, number formatting, empty/error
+patterns — is documented in `docs/agents/design.md`. Read it before touching
+any screen.
+
 ## Agent skills
 
 ### Issue tracker

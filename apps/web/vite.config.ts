@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
@@ -6,6 +7,9 @@ import { apiHost, apiPort, repoRoot, webPort } from "./env";
 export default defineConfig({
   envDir: repoRoot,
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   server: {
     port: webPort,
     strictPort: true,
@@ -21,7 +25,8 @@ export default defineConfig({
   test: {
     environment: "node",
     // Modules only. Individual React components are deliberately not tested in
-    // isolation — the seam above them is Playwright.
-    include: ["src/**/*.test.ts"],
+    // isolation — the seam above them is Playwright. design/ holds Node-side
+    // checks over the design tokens.
+    include: ["src/**/*.test.ts", "design/**/*.test.ts"],
   },
 });

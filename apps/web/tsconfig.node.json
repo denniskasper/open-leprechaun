@@ -1,6 +1,6 @@
 {
-  // Everything that runs in Node rather than the browser: build configuration
-  // and the Playwright journeys.
+  // Everything that runs in Node rather than the browser: build configuration,
+  // the Playwright journeys, and the design-token checks.
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],
@@ -18,5 +18,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["env.ts", "vite.config.ts", "playwright.config.ts", "e2e"]
+  "include": ["env.ts", "vite.config.ts", "playwright.config.ts", "e2e", "design"]
 }

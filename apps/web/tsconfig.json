@@ -9,6 +9,9 @@
     // stray `process.env` in a component fails to compile.
     "types": ["vite/client"],
 
+    // The alias the shadcn CLI generates imports against.
+    "paths": { "@/*": ["./src/*"] },
+
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
