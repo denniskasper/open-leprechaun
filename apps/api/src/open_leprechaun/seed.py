@@ -213,6 +213,17 @@ def _transactions(connection: Connection) -> None:
             None,
             [("Phantom", "Hot wallet", "SOL", "in", "0.35", None)],
         ),
+        # A self-transfer's two sides (ticket 16), each recorded where it
+        # happened and left unlinked — so the development matching screen has
+        # a proposal waiting on the Admin's decision.
+        (
+            "transfer_out",
+            "2026-02-02T18:30:00+00:00",
+            "Withdrawn to cold storage",
+            None,
+            None,
+            [("Kraken", "Main", "BTC", "out", "0.004", None)],
+        ),
         (
             "transfer_in",
             "2026-02-02T18:45:00+00:00",

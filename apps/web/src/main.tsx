@@ -11,6 +11,7 @@ import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
 import { StatutoryPage } from "@/pages/statutory";
 import { TransactionsPage } from "@/pages/transactions";
+import { TransfersPage } from "@/pages/transfers";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -38,6 +39,7 @@ const router = createBrowserRouter([
           { index: true, element: <HealthPage /> },
           { path: "inbox", element: <InboxPage /> },
           { path: "transactions", element: <TransactionsPage /> },
+          { path: "transfers", element: <TransfersPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },

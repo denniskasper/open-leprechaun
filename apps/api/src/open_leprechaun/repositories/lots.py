@@ -19,7 +19,9 @@ from sqlalchemy import Connection, Row, text
 
 @dataclass(frozen=True)
 class Lot:
-    """One acquisition still on the books, keyed by the in-leg that minted it.
+    """One acquisition still on the books, keyed by the in-leg that minted it
+    plus an ordinal — a confirmed self-transfer (ticket 16) may carry several
+    source lots across on one in-leg, each keeping its own acquisition date.
 
     `basis_eur` is None while the basis awaits a valuation the ledger alone
     cannot state (tickets 17, 18); `basis_source` says how the basis was, or
@@ -27,6 +29,7 @@ class Lot:
     """
 
     leg_id: int
+    ordinal: int
     account_id: int
     instrument_id: int
     acquired_at: datetime
@@ -74,6 +77,17 @@ def stance_rows(connection: Connection) -> list[Row]:
     )
 
 
+def match_rows(connection: Connection) -> list[Row]:
+    """Every confirmed self-transfer link (ticket 16) — read here rather than
+    through repositories/transfer_matches so the rebuild's snapshot covers
+    it. Rejections change proposals, never lots, so they are not read."""
+    return list(
+        connection.execute(
+            text("SELECT out_leg_id, in_leg_id FROM transfer_match WHERE verdict = 'confirmed'")
+        ).all()
+    )
+
+
 def replace_all(connection: Connection, lots: list[Lot]) -> None:
     """The whole table swapped for the given derivation — never patched."""
     connection.execute(text("DELETE FROM tax_lot"))
@@ -81,10 +95,10 @@ def replace_all(connection: Connection, lots: list[Lot]) -> None:
         connection.execute(
             text(
                 "INSERT INTO tax_lot"
-                " (leg_id, account_id, instrument_id, acquired_at, quantity,"
+                " (leg_id, ordinal, account_id, instrument_id, acquired_at, quantity,"
                 " basis_eur, basis_source)"
-                " VALUES (:leg_id, :account_id, :instrument_id, :acquired_at, :quantity,"
-                " :basis_eur, :basis_source)"
+                " VALUES (:leg_id, :ordinal, :account_id, :instrument_id, :acquired_at,"
+                " :quantity, :basis_eur, :basis_source)"
             ),
             [asdict(lot) for lot in lots],
         )
@@ -100,8 +114,8 @@ def list_lots(connection: Connection) -> list[Row]:
     return list(
         connection.execute(
             text(
-                "SELECT leg_id, account_id, instrument_id, acquired_at, quantity,"
-                " basis_eur, basis_source FROM tax_lot ORDER BY acquired_at, leg_id"
+                "SELECT leg_id, ordinal, account_id, instrument_id, acquired_at, quantity,"
+                " basis_eur, basis_source FROM tax_lot ORDER BY acquired_at, leg_id, ordinal"
             )
         ).all()
     )

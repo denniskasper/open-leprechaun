@@ -76,11 +76,16 @@ def classify(
                 row.id
                 for row in connection.execute(
                     text(
+                        # A confirmed self-transfer (ticket 16) is already
+                        # classified — the Admin's own parcel arriving — so a
+                        # keep settles only the still-unclassified inflows.
                         "UPDATE transaction SET type = :settled_type"
                         " WHERE type = 'transfer_in' AND id IN ("
-                        "  SELECT transaction_id FROM transaction_leg"
+                        "  SELECT transaction_id FROM transaction_leg l"
                         "  WHERE instrument_id = :instrument_id AND account_id = :account_id"
-                        "  AND role = 'in')"
+                        "  AND role = 'in'"
+                        "  AND NOT EXISTS (SELECT 1 FROM transfer_match m"
+                        "   WHERE m.in_leg_id = l.id AND m.verdict = 'confirmed'))"
                         " RETURNING id"
                     ),
                     {
@@ -152,6 +157,10 @@ def list_inbox(engine: Engine) -> list[Row]:
                     " AND NOT EXISTS (SELECT 1 FROM instrument_stance s"
                     "  WHERE s.instrument_id = i.id"
                     "  AND (s.account_id = a.id OR s.account_id IS NULL))"
+                    # A confirmed self-transfer (ticket 16) waits on nothing:
+                    # the confirmation is the classification.
+                    " AND NOT EXISTS (SELECT 1 FROM transfer_match m"
+                    "  WHERE m.in_leg_id = l.id AND m.verdict = 'confirmed')"
                     " GROUP BY i.id, a.id, a.name, p.name"
                     " ORDER BY max(t.occurred_at) DESC, i.symbol, a.id"
                 )

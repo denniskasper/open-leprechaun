@@ -71,6 +71,13 @@ INPUT_CLASSES: Mapping[str, str | None] = {
     "stances": (
         f"SELECT {_line('instrument_id', 'account_id', 'stance')} AS line FROM instrument_stance"
     ),
+    # The Admin's confirmed self-transfer links (ticket 16): which out-leg
+    # carries its lots to which in-leg. Only confirmed links reach the
+    # derivation — a rejection changes proposals, never lots.
+    "transfer_matches": (
+        f"SELECT {_line('out_leg_id', 'in_leg_id')} AS line"
+        " FROM transfer_match WHERE verdict = 'confirmed'"
+    ),
     # Statutory values per year (ticket 09) — correcting a rate changes every
     # figure resting on it while no transaction has moved (ADR-0014). The
     # cited source is prose, like a note.

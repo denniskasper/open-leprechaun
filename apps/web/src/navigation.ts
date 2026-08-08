@@ -1,4 +1,13 @@
-import { Activity, Gavel, Inbox, type LucideIcon, Scale, Shapes, Vault } from "lucide-react";
+import {
+  Activity,
+  ArrowLeftRight,
+  Gavel,
+  Inbox,
+  type LucideIcon,
+  Scale,
+  Shapes,
+  Vault,
+} from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -21,6 +30,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: "/inbox", label: "Inbox", icon: Inbox },
       { to: "/transactions", label: "Transactions", icon: Scale },
+      { to: "/transfers", label: "Transfers", icon: ArrowLeftRight },
       { to: "/instruments", label: "Instruments", icon: Shapes },
     ],
   },
