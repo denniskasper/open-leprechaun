@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy.engine import URL, make_url
 
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
-from open_leprechaun.settings import get_settings
+from open_leprechaun.settings import Environment, Settings, get_settings
 
 # Somewhere nothing listens, so connecting fails fast rather than hanging.
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
@@ -57,6 +58,32 @@ def client_without_database() -> Iterator[TestClient]:
     engine = create_engine(UNREACHABLE_DATABASE_URL, connect_args={"connect_timeout": 1})
     yield from _client_using(engine)
     engine.dispose()
+
+
+@pytest.fixture
+def make_client() -> Iterator[Callable[..., TestClient]]:
+    """A factory for clients under settings the test chooses.
+
+    For behaviour that pivots on the environment. These clients never reach a
+    database — their settings point somewhere nothing listens.
+    """
+    stack = ExitStack()
+
+    def make(environment: Environment, **overrides) -> TestClient:
+        settings = Settings(
+            environment=environment,
+            database_url=UNREACHABLE_DATABASE_URL,
+            **overrides,
+        )
+        engine = create_engine(UNREACHABLE_DATABASE_URL, connect_args={"connect_timeout": 1})
+        stack.callback(engine.dispose)
+        app = create_app()
+        app.dependency_overrides[get_settings] = lambda: settings
+        app.dependency_overrides[get_engine] = lambda: engine
+        return stack.enter_context(TestClient(app))
+
+    yield make
+    stack.close()
 
 
 def _client_using(engine: Engine) -> Iterator[TestClient]:

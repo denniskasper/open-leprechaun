@@ -23,6 +23,17 @@ test("the navigation names itself and marks the current page", async ({ page }) 
   await expect(nav.getByRole("link", { name: "Health" })).toHaveAttribute("aria-current", "page");
 });
 
+test("a development instance wears its badge and shows the checked-out commit", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  // The e2e servers run in development, so the badge must be present and the
+  // version line must carry a short git hash rather than a release version.
+  await expect(page.locator("header").getByText("dev", { exact: true })).toBeVisible();
+  await expect(page.locator("aside").getByText(/^[0-9a-f]{7,}$/)).toBeVisible();
+});
+
 test("the theme toggle switches the theme and the choice survives a reload", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/");

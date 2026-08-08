@@ -1,6 +1,7 @@
 import { Clover, Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
+import { EnvironmentBadge, VersionLine } from "@/components/shell/instance";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -29,12 +30,14 @@ export function AppShell() {
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border md:flex">
           <Wordmark className="flex h-16 items-center px-6" />
           <NavSections className="flex-1 space-y-8 overflow-y-auto px-3 py-6" />
+          <VersionLine className="border-t border-border px-6 py-4" />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur-sm sm:px-8">
             <MobileNav />
             <Wordmark className="md:hidden" />
+            <EnvironmentBadge />
             <div className="flex-1" />
             <ThemeToggle />
           </header>
@@ -110,6 +113,7 @@ function MobileNav() {
         <SheetDescription className="sr-only">Pages of this application</SheetDescription>
         <Wordmark className="flex h-16 items-center px-6" />
         <NavSections className="flex-1 space-y-8 overflow-y-auto px-3 py-6" />
+        <VersionLine className="border-t border-border px-6 py-4" />
       </SheetContent>
     </Sheet>
   );
