@@ -37,3 +37,6 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ANN", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Fixtures and test functions read better without return annotations.
 "tests/**" = ["ANN"]
+# The revision template imports `op` and `sa` for every generated migration;
+# an empty or pure-SQL revision legitimately leaves them unused.
+"migrations/versions/**" = ["F401"]

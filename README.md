@@ -61,6 +61,9 @@ leak they exist to prevent. After a fresh clone, recreate them by hand. See
 | `pnpm lint`         | ruff check and format check                                       |
 | `pnpm format`       | ruff autofix and format                                           |
 | `pnpm db:up`        | Start Postgres and wait for it to be healthy                      |
+| `pnpm db:migrate`   | Upgrade the database to the newest migration — the only upgrade path |
+| `pnpm db:seed`      | Migrate, then populate development fixture data (development only) |
+| `pnpm db:revision`  | Generate a new migration: `pnpm db:revision -- -m "message"`      |
 | `pnpm db:down`      | Stop Postgres, keeping its data                                   |
 | `pnpm db:reset`     | Destroy the Postgres volume and start fresh                       |
 | `pnpm db:logs`      | Follow the Postgres log                                           |
@@ -79,7 +82,11 @@ docs/adr/    Architectural decision records
 
 Configuration lives in one `.env` at the root, read by Docker Compose, by the API through
 pydantic-settings, and by Vite through `envDir`. Real environment variables override it, so a
-deployment sets them directly and never ships a `.env`.
+deployment sets them directly and never ships a `.env`. `ENVIRONMENT` selects `development`,
+`integration` or `production` and has deliberately no default — an instance must say what it is.
+
+Schema changes ship only as migrations; see [`apps/api/migrations/`](apps/api/migrations/README.md)
+for the rules (linear chain, tested up and down, irreversible migrations must say so).
 
 The web dev server proxies `/api` to the API, so the browser talks to a single origin and there is
 no CORS configuration to keep in step.

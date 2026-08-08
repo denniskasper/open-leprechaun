@@ -1,6 +1,8 @@
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
+from alembic.config import Config as AlembicConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
@@ -11,6 +13,8 @@ from open_leprechaun.settings import get_settings
 
 # Somewhere nothing listens, so connecting fails fast rather than hanging.
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
+
+API_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")
@@ -24,6 +28,14 @@ def database_url() -> str:
     test_url = development_url.set(database=f"{development_url.database}_test")
     _create_database_if_missing(test_url)
     return test_url.render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def alembic_config(database_url: str) -> AlembicConfig:
+    """The migration chain, bound to the test database."""
+    config = AlembicConfig(str(API_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", database_url)
+    return config
 
 
 @pytest.fixture
