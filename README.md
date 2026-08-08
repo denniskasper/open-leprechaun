@@ -92,6 +92,16 @@ for the rules (linear chain, tested up and down, irreversible migrations must sa
 The web dev server proxies `/api` to the API, so the browser talks to a single origin and there is
 no CORS configuration to keep in step.
 
+## Authentication
+
+Development skips login entirely. In production a fresh instance serves only the first-run screen
+until the admin password is set — setup runs exactly once — and one login endpoint
+(`POST /api/auth/login`) then serves the browser and any future client alike: the session token
+arrives both as an httpOnly cookie and in the response body, and the API accepts the cookie first,
+then an `Authorization: Bearer` header. A session expires `SESSION_TTL_HOURS` (default 720 — thirty
+days) after its last authenticated request; every authenticated request renews it, so renewal is
+automatic while the app is in use and an idle instance logs the admin out.
+
 ## Testing
 
 Four seams, in descending order of how much lives at each — the reasoning is in the spec.

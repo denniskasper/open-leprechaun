@@ -64,23 +64,27 @@ def client_without_database() -> Iterator[TestClient]:
 def make_client() -> Iterator[Callable[..., TestClient]]:
     """A factory for clients under settings the test chooses.
 
-    For behaviour that pivots on the environment. These clients never reach a
-    database — their settings point somewhere nothing listens.
+    For behaviour that pivots on the environment. Unless a test passes the real
+    test `engine`, these clients never reach a database — their settings point
+    somewhere nothing listens. The base URL is https because production marks
+    its session cookie Secure, and a cookie the client would refuse to return
+    proves nothing.
     """
     stack = ExitStack()
 
-    def make(environment: Environment, **overrides) -> TestClient:
+    def make(environment: Environment, engine: Engine | None = None, **overrides) -> TestClient:
         settings = Settings(
             environment=environment,
             database_url=UNREACHABLE_DATABASE_URL,
             **overrides,
         )
-        engine = create_engine(UNREACHABLE_DATABASE_URL, connect_args={"connect_timeout": 1})
-        stack.callback(engine.dispose)
+        if engine is None:
+            engine = create_engine(UNREACHABLE_DATABASE_URL, connect_args={"connect_timeout": 1})
+            stack.callback(engine.dispose)
         app = create_app()
         app.dependency_overrides[get_settings] = lambda: settings
         app.dependency_overrides[get_engine] = lambda: engine
-        return stack.enter_context(TestClient(app))
+        return stack.enter_context(TestClient(app, base_url="https://testserver"))
 
     yield make
     stack.close()

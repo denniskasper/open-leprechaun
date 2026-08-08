@@ -7,9 +7,12 @@ test("keyboard users get a skip link first, and it lands on the content region",
   page,
 }) => {
   await page.goto("/");
+  // The auth gate mounts the shell only after the instance answers who it is;
+  // a Tab pressed into the not-yet-mounted shell would focus nothing.
+  const skipLink = page.getByRole("link", { name: "Skip to content" });
+  await expect(skipLink).toBeAttached();
 
   await page.keyboard.press("Tab");
-  const skipLink = page.getByRole("link", { name: "Skip to content" });
   await expect(skipLink).toBeFocused();
 
   await page.keyboard.press("Enter");

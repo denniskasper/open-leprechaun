@@ -1,3 +1,4 @@
+from datetime import timedelta
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +46,18 @@ class Settings(BaseSettings):
         default=__version__,
         description="Version shown outside development, where a deployment sets it",
     )
+    session_ttl_hours: int = Field(
+        default=720,
+        gt=0,
+        description=(
+            "Hours a login session survives after its last authenticated request. "
+            "Every request renews it (sliding expiry); default thirty days."
+        ),
+    )
+
+    @property
+    def session_ttl(self) -> timedelta:
+        return timedelta(hours=self.session_ttl_hours)
 
 
 @lru_cache

@@ -3,6 +3,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { AppShell } from "@/components/shell/app-shell";
+import { AuthGate } from "@/components/shell/auth-gate";
+import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
 import "./index.css";
 
@@ -18,9 +20,18 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
+  // Setup and login stand outside the shell: no navigation is offered to
+  // someone who has not authenticated.
+  { path: "/setup", element: <SetupPage /> },
+  { path: "/login", element: <LoginPage /> },
   {
-    element: <AppShell />,
-    children: [{ index: true, element: <HealthPage /> }],
+    element: <AuthGate />,
+    children: [
+      {
+        element: <AppShell />,
+        children: [{ index: true, element: <HealthPage /> }],
+      },
+    ],
   },
 ]);
 
