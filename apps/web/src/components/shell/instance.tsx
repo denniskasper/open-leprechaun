@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Heart } from "lucide-react";
 import { fetchMeta, type Meta } from "@/api/meta";
 import { cn } from "@/lib/utils";
 
@@ -46,9 +47,16 @@ export function VersionLine({ className }: { className?: string }) {
     return null;
   }
   return (
-    <div className={cn("space-y-1", className)}>
-      <p className="microlabel text-muted-foreground">Version</p>
-      <p className="font-mono text-xs tabular-nums text-muted-foreground">{instance.version}</p>
+    <div className={cn("flex items-end justify-between gap-3", className)}>
+      <div className="space-y-1">
+        <p className="microlabel text-muted-foreground">Version</p>
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">{instance.version}</p>
+      </div>
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        made with
+        <Heart aria-hidden className="size-3 fill-alarm text-alarm" />
+        <span className="sr-only">love</span>
+      </p>
     </div>
   );
 }
