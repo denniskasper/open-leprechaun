@@ -12,6 +12,8 @@ const uniswap = {
   isin: null,
   is_numeraire: false,
   listings: [],
+  dangerous: false,
+  stances: [],
 };
 
 const fund = {
@@ -25,6 +27,8 @@ const fund = {
   isin: "IE00B4L5Y983",
   is_numeraire: false,
   listings: [{ venue: "XETRA", quote_currency: "EUR" }],
+  dangerous: false,
+  stances: [{ account_id: 5, stance: "kept" }],
 };
 
 function respondWith(status: number, body: unknown): void {

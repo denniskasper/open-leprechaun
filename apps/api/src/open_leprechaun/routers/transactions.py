@@ -35,6 +35,7 @@ TransactionType = Literal[
     "lending_interest",
     "mining_reward",
     "airdrop",
+    "windfall",
     "dividend",
     "distribution",
     "interest",

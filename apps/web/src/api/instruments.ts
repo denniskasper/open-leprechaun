@@ -8,6 +8,12 @@ export const listingSchema = z.object({
   quote_currency: z.string(),
 });
 
+/** A per-Account decision — kept or ignored; dangerous is global (ADR-0012). */
+export const accountStanceSchema = z.object({
+  account_id: z.number(),
+  stance: z.enum(["kept", "ignored"]),
+});
+
 export const instrumentSchema = z.object({
   id: z.number(),
   family: z.enum(["crypto", "security", "cash"]),
@@ -19,9 +25,12 @@ export const instrumentSchema = z.object({
   isin: z.string().nullable(),
   is_numeraire: z.boolean(),
   listings: z.array(listingSchema),
+  dangerous: z.boolean(),
+  stances: z.array(accountStanceSchema),
 });
 
 export type Listing = z.infer<typeof listingSchema>;
+export type AccountStance = z.infer<typeof accountStanceSchema>;
 export type Instrument = z.infer<typeof instrumentSchema>;
 
 export async function fetchInstruments(): Promise<Instrument[]> {

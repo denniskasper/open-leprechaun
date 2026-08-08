@@ -39,11 +39,15 @@ TRANSACTION_TYPES: Mapping[str, LegRules] = {
     "transfer_out": LegRules(requires=frozenset({"out"}), forbids=frozenset({"in"})),
     # Assets given for goods or services outside the ledger.
     "spend": LegRules(requires=frozenset({"out"}), forbids=frozenset({"in"})),
-    # Crypto income, named for what actually happened.
+    # Crypto income, named for what actually happened. An airdrop is one
+    # received for a counter-performance; without one it is a windfall.
     "staking_reward": _INFLOW_ONLY,
     "lending_interest": _INFLOW_ONLY,
     "mining_reward": _INFLOW_ONLY,
     "airdrop": _INFLOW_ONLY,
+    # What keeping an unsolicited inflow settles it as when it was received
+    # for nothing (ticket 14); services/stances.py makes that decision.
+    "windfall": _INFLOW_ONLY,
     # Securities and cash income.
     "dividend": _INFLOW_ONLY,
     "distribution": _INFLOW_ONLY,

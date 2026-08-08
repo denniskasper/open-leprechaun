@@ -138,7 +138,8 @@ unrecognised token is an item awaiting a decision, not a holding silently valued
 dangerous everywhere. `ignored` and `kept` apply per **Account**, which is what lets a genuine
 holding bought at one venue coexist with dust of the same Instrument sprayed at another. Both stay
 visible, because the holding genuinely exists on-chain, and neither can ever acquire a price
-source.
+source — for `ignored` that means ignored wherever it appears, since the same coexistence that
+motivates the per-Account scope requires a holding kept anywhere to stay priceable.
 
 Materiality requires a **known price**. An inflow valued at zero because nothing prices the
 Instrument is *unknown*, never immaterial, and must never be discarded on that basis.
@@ -164,6 +165,19 @@ leg's regime rather than from the transaction's type — which is what makes a c
 fee a cost of acquiring that currency rather than a transaction cost of the trade it enabled.
 
 _Avoid_: "both legs" as though two were the maximum.
+
+### Windfall
+
+What keeping an unsolicited inflow settles it as when it was received for **no
+counter-performance** — the default answer. Not income: with no Leistung there is nothing under
+§22, and per the BMF letter of 10.05.2022 no Anschaffungsvorgang either, so the holding stays
+visible at zero basis while its later disposal falls outside §23. Received *for* a
+counter-performance, the same inflow settles as an **airdrop** instead — §22 income at market
+value on receipt.
+
+_Avoid_: filing a Windfall under income "to be safe". The safety would invent §22 income the law
+does not see.
+_Avoid_: "airdrop" for both cases — in this vocabulary an airdrop is the one given for a Leistung.
 
 ### Tax Lot
 

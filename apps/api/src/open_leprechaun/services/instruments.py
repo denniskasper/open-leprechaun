@@ -7,7 +7,7 @@ from typing import Protocol
 
 from sqlalchemy import Engine
 
-from open_leprechaun.repositories import instruments
+from open_leprechaun.repositories import instruments, stances
 
 
 class CarriesNumeraireFlag(Protocol):
@@ -36,6 +36,14 @@ class Listing:
 
 
 @dataclass(frozen=True)
+class AccountStance:
+    """One per-Account decision — `kept` or `ignored` (ADR-0012)."""
+
+    account_id: int
+    stance: str
+
+
+@dataclass(frozen=True)
 class InstrumentOverview:
     id: int
     family: str
@@ -47,6 +55,10 @@ class InstrumentOverview:
     isin: str | None
     is_numeraire: bool
     listings: tuple[Listing, ...]
+    # An ignored or dangerous position stays visible with a clear warning
+    # rather than being hidden, so the stance travels with the overview.
+    dangerous: bool
+    stances: tuple[AccountStance, ...]
 
 
 def overview(engine: Engine) -> list[InstrumentOverview]:
@@ -55,6 +67,15 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
         listings_of.setdefault(row.instrument_id, []).append(
             Listing(venue=row.venue, quote_currency=row.quote_currency)
         )
+    dangerous: set[int] = set()
+    stances_of: dict[int, list[AccountStance]] = {}
+    for row in stances.list_stances(engine):
+        if row.account_id is None:
+            dangerous.add(row.instrument_id)
+        else:
+            stances_of.setdefault(row.instrument_id, []).append(
+                AccountStance(account_id=row.account_id, stance=row.stance)
+            )
     return [
         InstrumentOverview(
             id=row.id,
@@ -67,6 +88,8 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
             isin=row.isin,
             is_numeraire=row.is_numeraire,
             listings=tuple(listings_of.get(row.id, [])),
+            dangerous=row.id in dangerous,
+            stances=tuple(stances_of.get(row.id, [])),
         )
         for row in instruments.list_instruments(engine)
     ]

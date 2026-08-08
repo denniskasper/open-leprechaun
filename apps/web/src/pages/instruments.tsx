@@ -5,12 +5,21 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 
+/** The attributes identity is read from — an Instrument row and an inbox item alike. */
+export interface InstrumentIdentity {
+  family: Instrument["family"];
+  symbol: string;
+  chain: string | null;
+  contract_address: string | null;
+  isin: string | null;
+}
+
 /**
  * The one line that tells two same-symbol rows apart: the family's identifying
  * attributes, never the symbol. A token is its chain and contract, a native
  * coin its chain, a security its ISIN, cash its currency code.
  */
-export function identityOf(instrument: Instrument): string {
+export function identityOf(instrument: InstrumentIdentity): string {
   if (instrument.contract_address) {
     return `${instrument.chain} · ${abbreviate(instrument.contract_address)}`;
   }
@@ -33,6 +42,28 @@ export function sharedSymbols(instruments: Instrument[]): Set<string> {
 function abbreviate(contractAddress: string): string {
   return `${contractAddress.slice(0, 6)}…${contractAddress.slice(-4)}`;
 }
+
+/**
+ * The warning an ignored or dangerous position wears — visible, never hidden
+ * (ADR-0012). Dangerous is global and outranks everything; ignored warns as
+ * long as any Account ignores the Instrument. A kept holding needs no flag.
+ */
+export function stanceWarning(instrument: Instrument): "dangerous" | "ignored" | null {
+  if (instrument.dangerous) {
+    return "dangerous";
+  }
+  if (instrument.stances.some(({ stance }) => stance === "ignored")) {
+    return "ignored";
+  }
+  return null;
+}
+
+const STANCE_WARNING_TITLE: Record<"dangerous" | "ignored", string> = {
+  dangerous:
+    "Marked dangerous everywhere — the position stays visible, but it mints no lot and can never acquire a price source.",
+  ignored:
+    "Ignored where it arrived — the position stays visible, but it mints no lot there, and while ignored wherever it appears the Instrument can never acquire a price source.",
+};
 
 const FAMILY_LABEL: Record<Instrument["family"], string> = {
   crypto: "Crypto",
@@ -88,7 +119,9 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
         </tr>
       </thead>
       <tbody>
-        {instruments.map((instrument, index) => (
+        {instruments.map((instrument, index) => {
+          const warning = stanceWarning(instrument);
+          return (
           <tr
             key={instrument.id}
             className="rise border-b border-border"
@@ -109,6 +142,16 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
                 // column is what tells them apart.
                 <span className="microlabel ml-2 text-caution">shared</span>
               )}
+              {warning && (
+                <span
+                  className={`microlabel ml-2 ${
+                    warning === "dangerous" ? "text-alarm" : "text-caution"
+                  }`}
+                  title={STANCE_WARNING_TITLE[warning]}
+                >
+                  {warning}
+                </span>
+              )}
             </td>
             <td className="py-3 pr-4">{instrument.name}</td>
             <td className="py-3 pr-4 text-muted-foreground">
@@ -128,7 +171,8 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
                     .join(", ")}
             </td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );

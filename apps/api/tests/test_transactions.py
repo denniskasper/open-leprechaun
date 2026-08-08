@@ -459,6 +459,7 @@ def test_the_vocabulary_names_what_happened_for_crypto_and_securities():
         "lending_interest",
         "mining_reward",
         "airdrop",
+        "windfall",
         "dividend",
         "distribution",
         "interest",

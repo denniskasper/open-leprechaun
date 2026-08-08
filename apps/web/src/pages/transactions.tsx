@@ -41,6 +41,9 @@ export const TYPE_VOCABULARY: Record<TransactionType, TypeWords> = {
   lending_interest: { label: "Lending interest", group: "Income" },
   mining_reward: { label: "Mining reward", group: "Income" },
   airdrop: { label: "Airdrop", group: "Income" },
+  // Not income: kept but received for nothing, so no Leistung and no
+  // Anschaffung — what a keep decision settles an unsolicited inflow as.
+  windfall: { label: "Windfall", group: "Received for nothing" },
   dividend: { label: "Dividend", group: "Income" },
   distribution: { label: "Distribution", group: "Income" },
   interest: { label: "Interest", group: "Income" },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Instrument } from "@/api/instruments";
-import { identityOf, sharedSymbols } from "./instruments";
+import { identityOf, sharedSymbols, stanceWarning } from "./instruments";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
   return {
@@ -14,6 +14,8 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     isin: null,
     is_numeraire: false,
     listings: [],
+    dangerous: false,
+    stances: [],
     ...overrides,
   };
 }
@@ -73,5 +75,33 @@ describe("sharedSymbols", () => {
 
   it("is empty when every symbol is unique", () => {
     expect(sharedSymbols([instrument({})])).toEqual(new Set());
+  });
+});
+
+describe("stanceWarning", () => {
+  it("wears no warning by default, and none when kept", () => {
+    expect(stanceWarning(instrument({}))).toBeNull();
+    expect(stanceWarning(instrument({ stances: [{ account_id: 1, stance: "kept" }] }))).toBeNull();
+  });
+
+  it("warns while any Account ignores the Instrument", () => {
+    expect(
+      stanceWarning(
+        instrument({
+          stances: [
+            { account_id: 1, stance: "kept" },
+            { account_id: 2, stance: "ignored" },
+          ],
+        }),
+      ),
+    ).toBe("ignored");
+  });
+
+  it("lets a global dangerous verdict outrank everything", () => {
+    expect(
+      stanceWarning(
+        instrument({ dangerous: true, stances: [{ account_id: 1, stance: "kept" }] }),
+      ),
+    ).toBe("dangerous");
   });
 });

@@ -264,7 +264,83 @@ def _transactions(connection: Connection) -> None:
                 )
 
 
-STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions)
+def _stances(connection: Connection) -> None:
+    """The stance landscape ticket 14 describes: the genuine holdings kept at
+    the Accounts that hold them, and one same-ticker spam token — sprayed
+    unasked into the hot wallet — left unacknowledged, so the development
+    inbox has an arrival waiting on a decision.
+
+    Idempotent like the rest: identity constraints arbitrate the instrument
+    and the stances, the (type, occurred_at) key arbitrates the inflow."""
+    connection.execute(
+        text(
+            "INSERT INTO instrument (family, type, symbol, name, chain, contract_address)"
+            " VALUES ('crypto', 'token', 'USDC', 'USDC Rewards Claim', 'solana',"
+            " 'c1aimusdcrewardsexamp1eon1ynotrea1m1nt111111')"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+    connection.execute(
+        text(
+            "INSERT INTO instrument_identifier (instrument_id, kind, value)"
+            " SELECT id, 'contract_address', contract_address FROM instrument"
+            " WHERE contract_address IS NOT NULL"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+    # Acknowledging settles a transfer_in as an airdrop or a windfall, so the
+    # existence check names all three — a seed re-run after a keep decision
+    # must not resurrect the unclassified inflow.
+    spam_inflow = connection.execute(
+        text(
+            "INSERT INTO transaction (type, occurred_at, note)"
+            " SELECT 'transfer_in', CAST(:instant AS timestamptz), 'Appeared unasked'"
+            " WHERE NOT EXISTS (SELECT 1 FROM transaction"
+            " WHERE type IN ('transfer_in', 'airdrop', 'windfall')"
+            " AND occurred_at = CAST(:instant AS timestamptz))"
+            " RETURNING id"
+        ),
+        {"instant": "2026-03-01T09:00:00+00:00"},
+    ).scalar_one_or_none()
+    if spam_inflow is not None:
+        connection.execute(
+            text(
+                "INSERT INTO transaction_leg"
+                " (transaction_id, account_id, instrument_id, role, quantity)"
+                " SELECT :transaction_id, account.id, instrument.id, 'in',"
+                " CAST('1999.75' AS numeric)"
+                " FROM account JOIN platform ON platform.id = account.platform_id, instrument"
+                " WHERE platform.name = 'Phantom' AND account.name = 'Hot wallet'"
+                " AND instrument.name = 'USDC Rewards Claim'"
+            ),
+            {"transaction_id": spam_inflow},
+        )
+    kept = [
+        ("Kraken", "Main", "Bitcoin"),
+        ("Kraken", "Main", "US Dollar"),
+        ("Phantom", "Hot wallet", "Solana"),
+        ("BitBox02", "Savings", "Bitcoin"),
+    ]
+    for platform_name, account_name, instrument_name in kept:
+        connection.execute(
+            text(
+                "INSERT INTO instrument_stance (instrument_id, account_id, stance)"
+                " SELECT instrument.id, account.id, 'kept'"
+                " FROM account JOIN platform ON platform.id = account.platform_id, instrument"
+                " WHERE platform.name = :platform_name AND account.name = :account_name"
+                " AND instrument.name = :instrument_name"
+                " ON CONFLICT (instrument_id, account_id) WHERE account_id IS NOT NULL"
+                " DO NOTHING"
+            ),
+            {
+                "platform_name": platform_name,
+                "account_name": account_name,
+                "instrument_name": instrument_name,
+            },
+        )
+
+
+STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions, _stances)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

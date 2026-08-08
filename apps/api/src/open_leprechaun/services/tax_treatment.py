@@ -31,6 +31,12 @@ class Inflow(Enum):
     # (15) or a Stance decision (14) settles what the inflow was — an
     # unclassified inflow is never assumed to be a purchase.
     no_lot_until_classified = "no_lot_until_classified"
+    # Kept, but received for nothing: no income — no Leistung, so nothing
+    # under §22 — and no Anschaffungsvorgang either (BMF letter of
+    # 10.05.2022 on virtual currencies). The lot is minted at zero basis,
+    # marked as acquired without consideration, so the holding stays visible
+    # while ticket 21 keeps its disposal out of §23.
+    no_acquisition = "no_acquisition"
     # The type records no in-leg.
     none_expected = "none_expected"
 
@@ -77,6 +83,9 @@ TAX_CONSEQUENCES: Mapping[str, TaxConsequence] = {
     "airdrop": TaxConsequence(
         Inflow.income_at_market_value, Outflow.none_expected, income="§22 EStG"
     ),
+    # An unsolicited inflow kept without a counter-performance — what a
+    # Stance decision (ticket 14) settles it as when the answer is no.
+    "windfall": TaxConsequence(Inflow.no_acquisition, Outflow.none_expected),
     # §20 EStG capital income: each becomes a Section 20 Event carrying its
     # category (ticket 26); withholding at source is ticket 43's.
     "dividend": TaxConsequence(
