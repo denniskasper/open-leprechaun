@@ -40,19 +40,36 @@ export function EnvironmentBadge() {
   );
 }
 
+/**
+ * What the version line says. Development runs the working copy, so it shows
+ * the bare commit hash; everywhere else runs a release, and a release is named
+ * `v` and its semantic version.
+ */
+export function versionLabel(instance: Meta | undefined): string | null {
+  if (!instance) {
+    return null;
+  }
+  if (instance.environment === "development") {
+    return instance.version;
+  }
+  return instance.version.startsWith("v") ? instance.version : `v${instance.version}`;
+}
+
 /** The version line: a commit hash in development, a release version elsewhere. */
 export function VersionLine({ className }: { className?: string }) {
   const instance = useInstance();
-  if (!instance) {
+  const version = versionLabel(instance);
+  if (!version) {
     return null;
   }
   return (
     <div className={cn("flex items-end justify-between gap-3", className)}>
       <div className="space-y-1">
         <p className="microlabel text-muted-foreground">Version</p>
-        <p className="font-mono text-xs tabular-nums text-muted-foreground">{instance.version}</p>
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">{version}</p>
       </div>
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {/* Mono, like the version it sits beside — the footer reads as one row. */}
+      <p className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
         made with
         <Heart aria-hidden className="size-3 fill-alarm text-alarm" />
         <span className="sr-only">love</span>
