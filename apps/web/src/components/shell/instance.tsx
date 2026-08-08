@@ -63,17 +63,20 @@ export function VersionLine({ className }: { className?: string }) {
     return null;
   }
   return (
-    <div className={cn("flex items-end justify-between gap-3", className)}>
-      <div className="space-y-1">
-        <p className="microlabel text-muted-foreground">Version</p>
-        <p className="font-mono text-xs tabular-nums text-muted-foreground">{version}</p>
-      </div>
-      {/* Mono, like the version it sits beside — the footer reads as one row. */}
-      <p className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+    // One mono row: which build this is, and who it came from. The version
+    // needs no caption — a hash or a v-number says what it is on sight.
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 font-mono text-2xs text-muted-foreground",
+        className,
+      )}
+    >
+      <span className="tabular-nums">{version}</span>
+      <span className="flex items-center gap-1.5">
         made with
         <Heart aria-hidden className="size-3 fill-alarm text-alarm" />
         <span className="sr-only">love</span>
-      </p>
+      </span>
     </div>
   );
 }
