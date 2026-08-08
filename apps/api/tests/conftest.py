@@ -49,10 +49,13 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 @pytest.fixture
 def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
-    """A migrated database with no instruments yet."""
+    """A migrated database with no instruments or platforms yet."""
     command.upgrade(alembic_config, "head")
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM instrument"))
+        # Accounts first: a Platform still holding one refuses to go.
+        connection.execute(text("DELETE FROM account"))
+        connection.execute(text("DELETE FROM platform"))
     return engine
 
 

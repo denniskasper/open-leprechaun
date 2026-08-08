@@ -134,7 +134,57 @@ def _cash(connection: Connection) -> None:
     )
 
 
-STEPS: Sequence[SeedStep] = (_instruments, _cash)
+def _platforms(connection: Connection) -> None:
+    """One Platform of every kind with representative Accounts (ticket 10),
+    including two Accounts on one device and chain — the evidence-scoped FIFO
+    boundary the model must permit. Names are unique per Platform and
+    Platforms per name, so ON CONFLICT DO NOTHING keeps this idempotent."""
+    platform_rows = [
+        ("Kraken", "exchange"),
+        ("BitBox02", "cold_storage"),
+        ("Phantom", "software_wallet"),
+        ("Scalable Capital", "broker"),
+        ("Sparkasse", "bank"),
+    ]
+    for name, kind in platform_rows:
+        connection.execute(
+            text("INSERT INTO platform (name, kind) VALUES (:name, :kind) ON CONFLICT DO NOTHING"),
+            {"name": name, "kind": kind},
+        )
+    account_rows = [
+        ("Kraken", "Main", None, None, None),
+        ("BitBox02", "Savings", "bitcoin", None, "BitBoxApp"),
+        ("BitBox02", "Spending", "bitcoin", None, "BitBoxApp"),
+        (
+            "Phantom",
+            "Hot wallet",
+            "solana",
+            "F1xt5reSo1anaAddressExamp1eOn1yNotRea1111111",
+            None,
+        ),
+        ("Scalable Capital", "Depot", None, "1234567890", None),
+        ("Sparkasse", "Giro", None, "DE02120300000000202051", "chipTAN app"),
+    ]
+    for platform_name, name, chain, external_reference, access_software in account_rows:
+        connection.execute(
+            text(
+                "INSERT INTO account"
+                " (platform_id, name, chain, external_reference, access_software)"
+                " SELECT id, :name, :chain, :external_reference, :access_software"
+                " FROM platform WHERE name = :platform_name"
+                " ON CONFLICT DO NOTHING"
+            ),
+            {
+                "platform_name": platform_name,
+                "name": name,
+                "chain": chain,
+                "external_reference": external_reference,
+                "access_software": access_software,
+            },
+        )
+
+
+STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

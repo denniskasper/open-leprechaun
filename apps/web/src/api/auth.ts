@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiRefusal, postJson, refusal } from "@/api/http";
 
 export const SETUP_URL = "/api/auth/setup";
 export const LOGIN_URL = "/api/auth/login";
@@ -10,16 +11,9 @@ export type SetupStatus = z.infer<typeof setupStatusSchema>;
 export const sessionSchema = z.object({ subject: z.string() });
 export type Session = z.infer<typeof sessionSchema>;
 
-/** An answer the API gave on purpose, carrying its own words for what went wrong. */
-export class ApiRefusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiRefusal";
-  }
-}
+// Re-exported so the auth screens keep one import; it is defined in http.ts
+// because every resource's client refuses the same way.
+export { ApiRefusal };
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const response = await fetch(SETUP_URL);
@@ -60,23 +54,3 @@ export async function fetchSession(): Promise<Session | null> {
   return sessionSchema.parse(await response.json());
 }
 
-function postJson(url: string, body: unknown): Promise<Response> {
-  return fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-async function refusal(response: Response, fallback: string): Promise<ApiRefusal> {
-  let message = fallback;
-  try {
-    const { detail } = (await response.json()) as { detail?: unknown };
-    if (typeof detail === "string") {
-      message = detail;
-    }
-  } catch {
-    // The body was not JSON; the fallback already says what failed.
-  }
-  return new ApiRefusal(response.status, message);
-}

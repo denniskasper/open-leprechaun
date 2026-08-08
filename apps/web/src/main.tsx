@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
 import { InstrumentsPage } from "@/pages/instruments";
+import { PlatformsPage } from "@/pages/platforms";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <HealthPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
+          { path: "settings/platforms", element: <PlatformsPage /> },
         ],
       },
     ],
