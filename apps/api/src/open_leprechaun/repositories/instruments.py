@@ -19,19 +19,28 @@ _COLUMN_NAMES = (
     "contract_address",
     "isin",
     "is_numeraire",
+    "pegged_currency",
 )
 _COLUMNS = ", ".join(_COLUMN_NAMES)
 _PREFIXED_COLUMNS = ", ".join(f"i.{name}" for name in _COLUMN_NAMES)
 
 
 def create_crypto_token(
-    engine: Engine, *, symbol: str, name: str, chain: str, contract_address: str
+    engine: Engine,
+    *,
+    symbol: str,
+    name: str,
+    chain: str,
+    contract_address: str,
+    pegged_currency: str | None = None,
 ) -> int | None:
     """A crypto Instrument keyed on chain and contract address.
 
     Stored lowercased for display consistency; the unique index compares
     lowercased regardless, so checksum casing cannot mint a second identity.
     The contract opens the identifier history, as the ISIN does for a security.
+    A stablecoin carries the currency it pegs, which routes its EUR value to
+    the daily reference rate (ticket 17).
     """
     try:
         with engine.begin() as connection:
@@ -43,6 +52,7 @@ def create_crypto_token(
                 name=name,
                 chain=chain,
                 contract_address=contract_address.lower(),
+                pegged_currency=pegged_currency,
             )
             _insert_identifier(
                 connection, instrument_id, kind="contract_address", value=contract_address.lower()
@@ -98,6 +108,14 @@ def create_cash(engine: Engine, *, symbol: str, name: str) -> int | None:
             return instrument_id
     except IntegrityError:
         return None
+
+
+def get(engine: Engine, instrument_id: int) -> Row | None:
+    with engine.connect() as connection:
+        return connection.execute(
+            text(f"SELECT {_COLUMNS} FROM instrument WHERE id = :instrument_id"),
+            {"instrument_id": instrument_id},
+        ).one_or_none()
 
 
 def numeraire(engine: Engine) -> Row | None:
@@ -235,14 +253,16 @@ def find_by_identifier(engine: Engine, value: str) -> list[Row]:
         )
 
 
-def _insert_instrument(connection: Connection, **columns: str) -> int:
+def _insert_instrument(connection: Connection, **columns: str | None) -> int:
     return connection.execute(
         text(
-            "INSERT INTO instrument (family, type, symbol, name, chain, contract_address, isin)"
-            " VALUES (:family, :type, :symbol, :name, :chain, :contract_address, :isin)"
+            "INSERT INTO instrument"
+            " (family, type, symbol, name, chain, contract_address, isin, pegged_currency)"
+            " VALUES (:family, :type, :symbol, :name, :chain, :contract_address, :isin,"
+            " :pegged_currency)"
             " RETURNING id"
         ),
-        {"chain": None, "contract_address": None, "isin": None, **columns},
+        {"chain": None, "contract_address": None, "isin": None, "pegged_currency": None, **columns},
     ).scalar_one()
 
 

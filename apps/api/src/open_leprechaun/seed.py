@@ -21,15 +21,16 @@ SeedStep = Callable[[Connection], None]
 
 def _instruments(connection: Connection) -> None:
     """Instruments that exercise the identity model (ticket 11): native coins,
-    two tokens sharing a ticker — the v1 collision case — and a security with
-    a Listing and lookup aliases.
+    two tokens sharing a ticker — the v1 collision case — a stablecoin whose
+    peg routes its EUR value to the daily reference rate (ticket 17), and a
+    security with a Listing and lookup aliases.
 
     Idempotent through the schema's own identity constraints: a bare
     ON CONFLICT DO NOTHING lets the unique indexes decide what already exists.
     """
     instrument_rows = [
-        ("crypto", "native", "BTC", "Bitcoin", "bitcoin", None, None),
-        ("crypto", "native", "SOL", "Solana", "solana", None, None),
+        ("crypto", "native", "BTC", "Bitcoin", "bitcoin", None, None, None),
+        ("crypto", "native", "SOL", "Solana", "solana", None, None, None),
         (
             "crypto",
             "token",
@@ -37,6 +38,7 @@ def _instruments(connection: Connection) -> None:
             "Uniswap",
             "ethereum",
             "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+            None,
             None,
         ),
         (
@@ -47,6 +49,17 @@ def _instruments(connection: Connection) -> None:
             "bsc",
             "0xb5c578947de0fd71303f71f2c3d41767438bd0de",
             None,
+            None,
+        ),
+        (
+            "crypto",
+            "token",
+            "USDT",
+            "Tether USD",
+            "ethereum",
+            "0xdac17f958d2ee523a2206206994597c13d831ec7",
+            None,
+            "USD",
         ),
         (
             "security",
@@ -56,14 +69,16 @@ def _instruments(connection: Connection) -> None:
             None,
             None,
             "IE00B4L5Y983",
+            None,
         ),
     ]
-    for family, type_, symbol, name, chain, contract_address, isin in instrument_rows:
+    for family, type_, symbol, name, chain, contract_address, isin, pegged in instrument_rows:
         connection.execute(
             text(
                 "INSERT INTO instrument (family, type, symbol, name, chain,"
-                " contract_address, isin)"
-                " VALUES (:family, :type, :symbol, :name, :chain, :contract_address, :isin)"
+                " contract_address, isin, pegged_currency)"
+                " VALUES (:family, :type, :symbol, :name, :chain, :contract_address, :isin,"
+                " :pegged_currency)"
                 " ON CONFLICT DO NOTHING"
             ),
             {
@@ -74,6 +89,7 @@ def _instruments(connection: Connection) -> None:
                 "chain": chain,
                 "contract_address": contract_address,
                 "isin": isin,
+                "pegged_currency": pegged,
             },
         )
     # The identifier history every Instrument keeps from birth: a token's

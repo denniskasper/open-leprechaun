@@ -313,6 +313,21 @@ no year. A trade in the first hour after New Year in German time therefore belon
 even though it is still 31 December in UTC. Timestamps are absolute instants; only their
 interpretation into a year uses the local boundary.
 
+### Reference Rate
+
+The euro foreign exchange reference rate the ECB publishes each TARGET business day — the one
+canonical source every foreign-currency amount converts to EUR by (ADR-0017). Conversion uses the
+rate of the **event date** — the Europe/Berlin local date of the event's instant, the same clock
+that bounds the **Tax Year** — never a rate of report time. A weekend or holiday resolves to the
+most recent publication on or before the date, at most seven days back; beyond that the conversion
+is an error naming the gap, never a silently stale figure. Rates are stored as published and never
+overwritten, and the rate and its date travel with every converted amount, so a re-run reproduces
+the same figure exactly. A **Stablecoin**'s EUR value comes from its pegged currency's reference
+rate, not a crypto price provider.
+
+_Avoid_: "exchange rate" from a market-data provider for anything a tax figure rests on — venue
+rates vary by moment, are revised silently, and carry no citation.
+
 ### Haltefrist
 
 The one-year holding period for spot crypto and other private assets. Assets held more than a year
