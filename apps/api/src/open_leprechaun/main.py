@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from open_leprechaun import API_PREFIX, __version__
-from open_leprechaun.routers import auth, health, meta
+from open_leprechaun.routers import auth, health, instruments, meta
 
 
 def create_app() -> FastAPI:
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(meta.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
+    app.include_router(instruments.router, prefix=API_PREFIX)
     return app
 
 

@@ -1,4 +1,4 @@
-import { Activity, type LucideIcon } from "lucide-react";
+import { Activity, type LucideIcon, Shapes } from "lucide-react";
 
 export interface NavItem {
   to: string;
@@ -16,6 +16,10 @@ export interface NavSection {
  * its entry here and the sidebar, mobile sheet and active states follow.
  */
 export const NAV_SECTIONS: NavSection[] = [
+  {
+    label: "Ledger",
+    items: [{ to: "/instruments", label: "Instruments", icon: Shapes }],
+  },
   {
     label: "System",
     items: [{ to: "/", label: "Health", icon: Activity }],

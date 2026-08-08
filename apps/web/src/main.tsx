@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
+import { InstrumentsPage } from "@/pages/instruments";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -29,7 +30,10 @@ const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
-        children: [{ index: true, element: <HealthPage /> }],
+        children: [
+          { index: true, element: <HealthPage /> },
+          { path: "instruments", element: <InstrumentsPage /> },
+        ],
       },
     ],
   },
