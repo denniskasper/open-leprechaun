@@ -264,7 +264,7 @@ def _disposal(
             at,
             proceeds_share,
             costs_share,
-            _basis(engine, source, piece, instrument),
+            _basis(engine, source, piece, instrument, at),
         )
         for piece, proceeds_share, costs_share in zip(
             consumed, proceeds_shares, costs_shares, strict=True
@@ -285,14 +285,24 @@ def _disposal(
 
 
 def _basis(
-    engine: Engine, source: ReferenceRateSource, piece: lots.Slice, instrument: Row
+    engine: Engine,
+    source: ReferenceRateSource,
+    piece: lots.Slice,
+    instrument: Row,
+    disposed_at: datetime,
 ) -> Decimal | None:
     """The consumed slice's basis. A lot minted by §22 income (ticket 22)
     stores no basis until the rate tickets extend the derivation; its basis
     is the market value on receipt, stated here by the same rule — and at the
     same instant — that valued the income, so income and cost basis can never
-    disagree."""
-    if piece.basis_eur is None and piece.basis_source == lots.MARKET_VALUE:
+    disagree. Only a slice that counts is valued: a Haltefrist-exempt one is
+    excluded from the total, so it must not cost a rate lookup at its old
+    acquisition date — nor crash the year over one it cannot move."""
+    if (
+        piece.basis_eur is None
+        and piece.basis_source == lots.MARKET_VALUE
+        and disposed_at <= _one_year_after(piece.acquired_at)
+    ):
         return fx.value_eur(
             engine, source, instrument=instrument, quantity=piece.quantity, at=piece.acquired_at
         )

@@ -741,6 +741,45 @@ def test_a_crypto_crypto_trade_awaits_valuation(db):
     assert report.freigrenze is None
 
 
+def test_an_exempt_market_value_consumption_costs_no_rate_lookup(db):
+    """A Haltefrist-exempt consumption is excluded from the total, so its
+    market-value basis (ticket 22) is never valued for it: a rate gap at the
+    old acquisition date cannot crash — or block — a year the slice is
+    excluded from. The basis stays unstated in the detail, like any figure
+    nothing can vouch for."""
+    account, eur = _account(db), _eur(db)
+    usdt = instruments.create_crypto_token(
+        db,
+        symbol="USDT",
+        name="Tether",
+        chain="ethereum",
+        contract_address="0xdac17f958d2ee523a2206206994597c13d831ec7",
+        pegged_currency="USD",
+    )
+    _keep(db, usdt, account)
+    created = transactions.create_transaction(
+        db,
+        type="staking_reward",
+        occurred_at=datetime(2024, 3, 14, 12, 0, tzinfo=UTC),
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=usdt, role="in", quantity=Decimal("1000"))],
+    )
+    assert isinstance(created, int)
+    _sell(db, account, usdt, eur, quantity="1000", proceeds="810", occurred_at=SOLD)
+
+    report = section23.year_report(db, FakeReferenceRateSource(), year=2025)
+
+    (disposal,) = report.disposals
+    (consumption,) = disposal.consumptions
+    assert consumption.long_term is True
+    assert consumption.basis_source == "market_value"
+    assert consumption.basis_eur is None
+    assert consumption.gain_eur is None
+    assert report.awaiting_valuation == ()
+    assert report.total_gain_eur == Decimal("0")
+    assert report.freigrenze is not None
+
+
 def test_an_exempt_disposal_awaiting_valuation_blocks_nothing(db):
     """A long-term crypto-crypto trade cannot move the total it is excluded
     from, so the year still states its total and verdict."""

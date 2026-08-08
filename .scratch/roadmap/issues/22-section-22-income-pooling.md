@@ -33,7 +33,10 @@ How each criterion is held:
   cost basis therefore agree to the cent, pinned by a test that stakes, sells, and compares the
   §22 income with the §23 consumption's basis. A value needing a crypto price (ticket 18) makes
   the event **awaiting valuation**: named in the report, and while any pooled event awaits one
-  the year states no total and no verdict. Only the requested year is valued.
+  the year states no total and no verdict. Only the requested year is valued. Post-review fix:
+  only a *counting* slice's basis is valued — a Haltefrist-exempt consumption is excluded from
+  the total, so it costs no rate lookup at its old acquisition date and a rate gap there cannot
+  crash the year (pinned by test; ticket 21's "an exempt disposal blocks nothing" holds).
 - **One annual limit from configuration**: `other_income_exemption_limit`, read per year through
   the extracted `statutory.required_value` (also now used by ticket 21's engine); an unset year
   refuses by name (`statutory.StatutoryValueUnsetError`, re-exported where the engines raise
