@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 interface Vocabulary {
   /** The heading a group of these places wears. */
@@ -201,23 +202,18 @@ function KindSelect({
   value: PlatformKind;
   onChange: (kind: PlatformKind) => void;
 }) {
-  // A native select rather than a shadcn one: five fixed options, and the
-  // platform control already carries keyboard and touch behaviour no styled
-  // listbox would improve here. Its shell mirrors Input so the row reads as
-  // one field, and the tokens are the same semantic ones.
   return (
-    <select
+    <NativeSelect
       id={id}
       value={value}
       onChange={(event) => onChange(event.target.value as PlatformKind)}
-      className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors"
     >
       {KIND_ORDER.map((kind) => (
         <option key={kind} value={kind} className="bg-background text-foreground">
           {KIND_VOCABULARY[kind].singular}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 

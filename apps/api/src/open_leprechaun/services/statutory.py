@@ -72,6 +72,10 @@ def missing_for_year(engine: Engine, year: int) -> list[str]:
     order — the question ticket 25 asks before letting a report finalise,
     empty when the year is complete."""
     present = {row.key for row in statutory.list_values(engine) if row.year == year}
+    return _missing(present)
+
+
+def _missing(present: set[str]) -> list[str]:
     return [key for key, definition in KEYS.items() if definition.required and key not in present]
 
 
@@ -145,11 +149,7 @@ def overview(engine: Engine) -> StatutoryOverview:
             YearOverview(
                 year=year,
                 values=tuple(sorted(values, key=lambda value: order[value.key])),
-                missing=tuple(
-                    key
-                    for key, definition in KEYS.items()
-                    if definition.required and key not in {value.key for value in values}
-                ),
+                missing=tuple(_missing({value.key for value in values})),
             )
             for year, values in sorted(values_of.items(), reverse=True)
         ),
