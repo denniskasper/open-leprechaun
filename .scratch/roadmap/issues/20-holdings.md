@@ -12,5 +12,6 @@
 - [ ] Cash appears as its own line
 - [ ] Unpriced, ignored and dangerous positions carry an explicit marker and are excluded from totals
 - [ ] Values render in a selected display currency; the choice never affects a tax figure
+- [ ] The DisplayCurrency selector itself is built here — no earlier ticket owns it
 - [ ] Extra software required to reach an Account is shown on its holdings
 - [ ] The view responds within a second at the target scale

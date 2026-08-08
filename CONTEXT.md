@@ -9,9 +9,9 @@ futures positions, and shares, ETFs and funds at brokers — that knows German t
 to produce the figures for a tax return and shows its working for every one of them.
 
 This is the ubiquitous language. Code identifiers, API fields, UI copy and issue titles use these
-terms unchanged, and honour every _Avoid_ line. Terms carried from the v1 glossary are kept in
-their long form where the nuance is load-bearing; a two-sentence definition of **Untrusted Asset**
-would have lost the reason it existed.
+terms unchanged, and honour every _Avoid_ line. Terms are kept in their long form where the
+nuance is load-bearing; a two-sentence definition of **Stance** would have lost the reason it
+exists.
 
 ## Places and holdings
 
@@ -25,8 +25,8 @@ already taxed at source. It lives here, on the Platform, because it is a fact ab
 institution rather than about any one holding — with a per-**Account** override for the case where
 one brand operates through several entities with different tax status.
 
-_Avoid_: "Exchange" used generically. It now means only `kind = exchange`. The v1 entity of that
-name asserted "trading venue" for rows that were hardware wallets.
+_Avoid_: "Exchange" used generically. It means only `kind = exchange`; used as the name for
+anything that holds value it asserts "trading venue" for things that are not one.
 
 ### Account
 
@@ -78,8 +78,8 @@ display label and a resolution hint, never authoritative.
 Securities key on **ISIN**, with an identifier history so that a lot acquired under a superseded
 identifier survives a merger or redomiciliation. WKN and ticker are lookup aliases only.
 
-_Avoid_: keying anything on a symbol alone. Two unrelated tokens can share a ticker, and in v1
-they collapsed into one row where the loser inherited the winner's price, name and logo.
+_Avoid_: keying anything on a symbol alone. Two unrelated tokens can share a ticker, and keyed
+that way they collapse into one row where the loser inherits the winner's price, name and logo.
 
 ### Listing
 
@@ -143,8 +143,8 @@ source.
 Materiality requires a **known price**. An inflow valued at zero because nothing prices the
 Instrument is *unknown*, never immaterial, and must never be discarded on that basis.
 
-Replaces v1's **Untrusted Asset** and **De-minimis Inflow**, which existed largely because
-Instruments were keyed on symbol.
+Subsumes what would otherwise be two concepts — an untrusted asset and a de-minimis inflow —
+both of which are needed only when Instruments are keyed on symbol.
 
 _Avoid_: "scam token" — it asserts a claim that usually cannot be substantiated, and reads wrong
 for a legitimate asset whose ticker was merely collided with.
@@ -429,6 +429,23 @@ Tax a German broker withholds and remits on the Admin's behalf. It distinguishes
 declared. The report shows amounts settled at source separately from amounts still to declare.
 
 ## Presentation and access
+
+### Admin
+
+The single person who owns this instance and everything in it. There is exactly one, enforced at
+the database, and there are no roles — every authenticated request is the Admin's.
+
+_Avoid_: "User", which implies a directory of them.
+_Avoid_: "account" for the Admin's identity or its settings — that word belongs to a holding under
+a **Platform**. The Admin's credentials live under **Security**.
+
+### Session
+
+One live authentication of the **Admin**, held as a token digest with a sliding expiry. Several may
+exist at once — one per browser or client that logged in — and each can be revoked independently.
+
+_Avoid_: "login" for the thing that persists; a login is the act, a Session is what it leaves
+behind.
 
 ### DisplayCurrency
 
