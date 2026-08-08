@@ -1,1 +1,16 @@
 .tmp
+.env
+
+# Node
+node_modules/
+apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

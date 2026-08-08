@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/* Fonts ship with the app rather than loading from a CDN. This is self-hosted
+   software holding one person's financial history; it should not phone home to
+   render its own text. */
+@import "@fontsource-variable/archivo";
+@import "@fontsource-variable/martian-mono";
+
+/* The look is a calibrated bench instrument: a phosphor signal lamp on dark ink,
+   read against a hairline grid. Everything here is a token, so ticket 02's design
+   foundation extends this rather than replacing it. */
+@theme {
+  --font-display: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Martian Mono Variable", ui-monospace, monospace;
+
+  --color-ink: oklch(0.15 0.012 155);
+  --color-ink-raised: oklch(0.185 0.013 155);
+  --color-bone: oklch(0.93 0.008 100);
+  --color-bone-dim: oklch(0.7 0.011 125);
+  --color-bone-faint: oklch(0.52 0.013 135);
+  --color-hairline: oklch(0.93 0.008 100 / 12%);
+  --color-etch: oklch(0.93 0.008 100 / 4%);
+
+  --color-signal: oklch(0.84 0.19 148);
+  --color-caution: oklch(0.82 0.16 76);
+  --color-alarm: oklch(0.68 0.19 25);
+
+  --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-bone);
+    font-family: var(--font-display);
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* The bench surface: a faint measuring grid, a glow from the lamp above, and a
+     grain pass so the flat colour reads as a material rather than a fill. */
+  .instrument-field {
+    position: relative;
+    background-image:
+      linear-gradient(to right, var(--color-etch) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--color-etch) 1px, transparent 1px);
+    background-size: 84px 84px;
+    background-position: center top;
+  }
+
+  .instrument-field::before,
+  .instrument-field::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .instrument-field::before {
+    background: radial-gradient(
+      58% 42% at 50% -4%,
+      oklch(0.84 0.19 148 / 9%),
+      transparent 70%
+    );
+  }
+
+  .instrument-field::after {
+    opacity: 0.04;
+    mix-blend-mode: screen;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@layer utilities {
+  /* One orchestrated page load: rows rise in sequence, staggered by inline delay. */
+  .rise {
+    animation: rise 0.65s var(--ease-instrument) backwards;
+  }
+
+  .lamp-halo {
+    animation: lamp 2.6s var(--ease-instrument) infinite;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lamp {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.12;
+    transform: scale(2.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

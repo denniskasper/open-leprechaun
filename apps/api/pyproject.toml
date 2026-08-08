@@ -1,0 +1,39 @@
+[project]
+name = "open-leprechaun-api"
+description = "The Open Leprechaun API service"
+requires-python = ">=3.14"
+dynamic = ["version"]
+# Dependencies are pinned in requirements.txt / requirements-dev.txt so that a
+# checkout resolves to one known-good set. This file declares only the package
+# itself, so that `pip install --no-deps -e .` makes it importable.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/open_leprechaun/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_leprechaun"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    # Starlette's TestClient now prefers httpx2. The spec pins httpx for the
+    # service's own outbound calls, and carrying two HTTP clients to silence a
+    # test-only warning is the worse trade.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "ANN", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures and test functions read better without return annotations.
+"tests/**" = ["ANN"]

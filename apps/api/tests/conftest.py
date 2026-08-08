@@ -1,0 +1,70 @@
+from collections.abc import Iterator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.engine import URL, make_url
+
+from open_leprechaun.db import get_engine
+from open_leprechaun.main import create_app
+from open_leprechaun.settings import get_settings
+
+# Somewhere nothing listens, so connecting fails fast rather than hanging.
+UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
+
+
+@pytest.fixture(scope="session")
+def database_url() -> str:
+    """A dedicated test database, created beside the development one on first use.
+
+    Tests run against real Postgres — the queries and the migrations are part of
+    what is under test, so an in-memory substitute would not prove anything.
+    """
+    development_url = make_url(get_settings().database_url)
+    test_url = development_url.set(database=f"{development_url.database}_test")
+    _create_database_if_missing(test_url)
+    return test_url.render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def engine(database_url: str) -> Iterator[Engine]:
+    engine = create_engine(database_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def client(engine: Engine) -> Iterator[TestClient]:
+    """The API bound to the test database."""
+    yield from _client_using(engine)
+
+
+@pytest.fixture
+def client_without_database() -> Iterator[TestClient]:
+    """The API bound to a database that cannot be reached."""
+    engine = create_engine(UNREACHABLE_DATABASE_URL, connect_args={"connect_timeout": 1})
+    yield from _client_using(engine)
+    engine.dispose()
+
+
+def _client_using(engine: Engine) -> Iterator[TestClient]:
+    app = create_app()
+    app.dependency_overrides[get_engine] = lambda: engine
+    with TestClient(app) as client:
+        yield client
+
+
+def _create_database_if_missing(url: URL) -> None:
+    maintenance_engine = create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        with maintenance_engine.connect() as connection:
+            exists = connection.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": url.database},
+            ).scalar_one_or_none()
+            if exists is None:
+                # The database name comes from configuration, not from a request,
+                # and CREATE DATABASE takes no bind parameters.
+                connection.execute(text(f'CREATE DATABASE "{url.database}"'))
+    finally:
+        maintenance_engine.dispose()

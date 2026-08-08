@@ -1,0 +1,22 @@
+{
+  // Everything that runs in Node rather than the browser: build configuration
+  // and the Playwright journeys.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["env.ts", "vite.config.ts", "playwright.config.ts", "e2e"]
+}

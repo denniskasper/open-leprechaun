@@ -1,0 +1,45 @@
+# Postgres only. The API and web dev servers run on the host so a debugger can
+# attach to the code being changed.
+
+# Pins the project name so volume and container names do not follow the checkout
+# directory, which would strand the data volume after a rename or a second clone.
+# Must stay distinct from the v1 checkout's `open-leprechaun` project — a shared
+# name would make `docker compose down` here stop the other repo's containers.
+name: open-leprechaun-2
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      # `:?` fails the command with this message instead of silently starting a
+      # Postgres with an empty user when .env is missing.
+      POSTGRES_USER: ${POSTGRES_USER:?copy .env.example to .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:?copy .env.example to .env}
+    ports:
+      # Loopback only: a dev database with a dev password should not be reachable
+      # from the rest of the network.
+      - host_ip: 127.0.0.1
+        published: "${POSTGRES_PORT:?copy .env.example to .env}"
+        target: 5432
+    volumes:
+      # postgres:18 sets PGDATA=/var/lib/postgresql/18/docker and declares
+      # /var/lib/postgresql as its VOLUME. Mounting the pre-18 path
+      # (/var/lib/postgresql/data) leaves the real data in a throwaway anonymous
+      # volume, so the database resets every time the container is recreated.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      # $$ escapes Compose interpolation so the shell inside the container reads
+      # the variables Postgres was actually started with.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Probe fast during startup so `db:up --wait` returns as soon as Postgres
+      # is ready, then fall back to the slow steady-state interval above.
+      start_period: 30s
+      start_interval: 1s
+
+volumes:
+  postgres-data:

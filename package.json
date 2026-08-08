@@ -1,0 +1,33 @@
+{
+  "name": "open-leprechaun",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A self-hosted ledger that produces German tax figures",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "setup": "pnpm install && pnpm setup:api",
+    "setup:api": "python3.14 -m venv apps/api/.venv && apps/api/.venv/bin/python -m pip install --quiet --upgrade pip && apps/api/.venv/bin/python -m pip install --quiet -r apps/api/requirements.txt -r apps/api/requirements-dev.txt && apps/api/.venv/bin/python -m pip install --quiet --no-deps -e apps/api",
+    "dev": "pnpm db:up && concurrently --kill-others-on-fail --names api,web --prefix-colors blue,magenta \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "apps/api/.venv/bin/python -m open_leprechaun",
+    "dev:web": "pnpm --filter @open-leprechaun/web dev",
+    "build": "pnpm --filter @open-leprechaun/web build",
+    "db:up": "docker compose up --detach --wait postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down --volumes && pnpm db:up",
+    "db:logs": "docker compose logs --follow postgres",
+    "test": "pnpm test:api && pnpm test:web",
+    "test:api": "pnpm db:up && apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml",
+    "test:web": "pnpm --filter @open-leprechaun/web test",
+    "test:e2e": "pnpm db:up && pnpm --filter @open-leprechaun/web test:e2e",
+    "typecheck": "pnpm --filter @open-leprechaun/web typecheck",
+    "lint": "apps/api/.venv/bin/python -m ruff check apps/api && apps/api/.venv/bin/python -m ruff format --check apps/api",
+    "format": "apps/api/.venv/bin/python -m ruff check --fix apps/api && apps/api/.venv/bin/python -m ruff format apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.4"
+  }
+}
