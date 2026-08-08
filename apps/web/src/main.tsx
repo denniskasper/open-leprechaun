@@ -9,6 +9,7 @@ import { HealthPage } from "@/pages/health";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
+import { StatutoryPage } from "@/pages/statutory";
 import { TransactionsPage } from "@/pages/transactions";
 import "./index.css";
 
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
           { path: "transactions", element: <TransactionsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
+          { path: "settings/statutory", element: <StatutoryPage /> },
         ],
       },
     ],
