@@ -38,7 +38,7 @@ How each criterion is held:
 Deviations and decisions worth recording:
 
 - **`ENVIRONMENT` arrives here, not with ticket 04.** The seed's development-only guard needs to
-  know what the instance is, so settings now carry `development | integration | production` —
+  know what the instance is, so settings now carry `development | production` —
   deliberately with no default, so a deployment that forgot to say what it is fails to start
   rather than quietly becoming something. Existing `.env` files need the new line (documented in
   `.env.example`); ticket 04 builds the auth posture and the badge on this same variable.

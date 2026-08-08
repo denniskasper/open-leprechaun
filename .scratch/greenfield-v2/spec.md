@@ -67,9 +67,10 @@ spot, crypto income, futures and securities together.
    host, so that I can attach a debugger to the code I am changing.
 4. As the Admin, I want the API to serve its OpenAPI documentation, so that I can inspect the
    contract without reading the source.
-5. As the Admin, I want `development`, `integration` and `production` to differ by a single
-   environment variable, so that I can develop without login friction while deployments stay
-   protected.
+5. As the Admin, I want `development` and `production` to differ by a single environment
+   variable, so that I can develop without login friction while the deployment stays protected.
+   There are only these two — development happens on the laptop and exactly one deployed
+   instance exists, so no integration environment is carried.
 6. As the Admin, I want the UI to show an environment badge outside production and a version
    line identifying the running build, so that I always know which instance I am looking at.
 7. As the Admin, I want every schema change to ship as a reviewed migration tested in both

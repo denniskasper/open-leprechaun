@@ -82,8 +82,9 @@ docs/adr/    Architectural decision records
 
 Configuration lives in one `.env` at the root, read by Docker Compose, by the API through
 pydantic-settings, and by Vite through `envDir`. Real environment variables override it, so a
-deployment sets them directly and never ships a `.env`. `ENVIRONMENT` selects `development`,
-`integration` or `production` and has deliberately no default — an instance must say what it is.
+deployment sets them directly and never ships a `.env`. `ENVIRONMENT` selects `development` or
+`production` and has deliberately no default — an instance must say what it is. There are only
+these two: development happens locally, and exactly one deployed instance exists.
 
 Schema changes ship only as migrations; see [`apps/api/migrations/`](apps/api/migrations/README.md)
 for the rules (linear chain, tested up and down, irreversible migrations must say so).

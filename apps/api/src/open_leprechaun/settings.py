@@ -10,14 +10,13 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 class Environment(StrEnum):
-    """Which of the three instances this process is.
+    """Which of the two instances this process is: the laptop or the server.
 
     Deliberately without a default: a deployment that forgot to say what it is
     should fail to start, not quietly become one of these.
     """
 
     development = "development"
-    integration = "integration"
     production = "production"
 
 
@@ -34,7 +33,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    environment: Environment = Field(description="development, integration or production")
+    environment: Environment = Field(description="development or production")
     database_url: str = Field(description="SQLAlchemy URL of the application database")
     api_host: str = Field(default="127.0.0.1", description="Address the dev server binds to")
     api_port: int = Field(default=8000, description="Port the dev server binds to")

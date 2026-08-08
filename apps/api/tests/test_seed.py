@@ -15,12 +15,11 @@ from sqlalchemy import inspect, text
 from open_leprechaun.seed import seed
 
 
-@pytest.mark.parametrize("environment", ["integration", "production"])
-def test_the_seed_refuses_to_run_outside_development(database_url, environment):
-    result = _run_seed(database_url, environment=environment)
+def test_the_seed_refuses_to_run_outside_development(database_url):
+    result = _run_seed(database_url, environment="production")
 
     assert result.returncode != 0
-    assert environment in result.stderr
+    assert "production" in result.stderr
     assert "development" in result.stderr
 
 
