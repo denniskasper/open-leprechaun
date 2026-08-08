@@ -19,6 +19,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
+SECTION_22 = "§22 EStG"
+"""Sonstige Einkünfte: pooled by the income engine (ticket 22)."""
+
+SECTION_20 = "§20 EStG"
+"""Capital income: reduced to Section 20 Events (ticket 26)."""
+
 
 class Inflow(Enum):
     """What an in-leg means for cost basis."""
@@ -90,16 +96,16 @@ TAX_CONSEQUENCES: Mapping[str, TaxConsequence] = {
     # §22 EStG sonstige Einkünfte: valued on receipt, pooled under the annual
     # Freigrenze (ticket 22).
     "staking_reward": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§22 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_22
     ),
     "lending_interest": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§22 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_22
     ),
     "mining_reward": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§22 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_22
     ),
     "airdrop": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§22 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_22
     ),
     # An unsolicited inflow kept without a counter-performance — what a
     # Stance decision (ticket 14) settles it as when the answer is no.
@@ -112,13 +118,13 @@ TAX_CONSEQUENCES: Mapping[str, TaxConsequence] = {
     # §20 EStG capital income: each becomes a Section 20 Event carrying its
     # category (ticket 26); withholding at source is ticket 43's.
     "dividend": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§20 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_20
     ),
     "distribution": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§20 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_20
     ),
     "interest": TaxConsequence(
-        Inflow.income_at_market_value, Outflow.none_expected, income="§20 EStG"
+        Inflow.income_at_market_value, Outflow.none_expected, income=SECTION_20
     ),
     # A bare cost; its deductibility follows the regime of what it was
     # charged against, and a standalone fee has nothing to enable.

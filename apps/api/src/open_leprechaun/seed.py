@@ -392,7 +392,24 @@ def _stances(connection: Connection) -> None:
         )
 
 
-STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions, _stances)
+def _delegations(connection: Connection) -> None:
+    """The Staking Delegation marker (ticket 22): the hot wallet's SOL —
+    already earning the seeded staking reward — marked as delegated, so the
+    development instance shows a marker. Informational only; ON CONFLICT
+    keeps the Admin's own note over a re-run."""
+    connection.execute(
+        text(
+            "INSERT INTO staking_delegation (instrument_id, account_id, note)"
+            " SELECT instrument.id, account.id, 'Everstake'"
+            " FROM account JOIN platform ON platform.id = account.platform_id, instrument"
+            " WHERE platform.name = 'Phantom' AND account.name = 'Hot wallet'"
+            " AND instrument.name = 'Solana'"
+            " ON CONFLICT (instrument_id, account_id) DO NOTHING"
+        )
+    )
+
+
+STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions, _stances, _delegations)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

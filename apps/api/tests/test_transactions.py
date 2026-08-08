@@ -503,7 +503,11 @@ def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
             for line in path.read_text().splitlines()
         )
     ]
-    assert sorted(readers) == ["services/lots.py", "services/section23.py"]
+    assert sorted(readers) == [
+        "services/lots.py",
+        "services/section22.py",
+        "services/section23.py",
+    ]
 
 
 def test_the_api_speaks_the_same_vocabulary_as_the_service():

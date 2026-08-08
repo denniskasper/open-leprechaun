@@ -69,9 +69,16 @@ WITHOUT_CONSIDERATION = "without_consideration"
 """The basis_source of a kept windfall's lot — no Anschaffungsvorgang, so the
 disposal engine (21) keeps its disposal out of §23."""
 
+MARKET_VALUE = "market_value"
+"""The basis_source of a lot minted by income (§22, ticket 22): the market
+value on receipt — the same figure the income engine states, so income and
+cost basis can never disagree. The derivation itself stores None until the
+rate tickets (17, 18) extend it; the disposal engine (21) states the value by
+the same rule at report time."""
+
 _BASIS_SOURCES = {
     Inflow.mints_lot_at_cost: "cost",
-    Inflow.income_at_market_value: "market_value",
+    Inflow.income_at_market_value: MARKET_VALUE,
     Inflow.mints_estimated_lot: ESTIMATE,
     Inflow.no_acquisition: WITHOUT_CONSIDERATION,
 }

@@ -65,6 +65,20 @@ class CarriesPeg(Protocol):
     def pegged_currency(self) -> str | None: ...
 
 
+class ValuableInstrument(CarriesPeg, Protocol):
+    """What valuing an Instrument quantity needs to know about it — a
+    repository row or anything shaped like one."""
+
+    @property
+    def family(self) -> str: ...
+
+    @property
+    def symbol(self) -> str: ...
+
+    @property
+    def is_numeraire(self) -> bool: ...
+
+
 def reference_rate_currency(instrument: CarriesPeg) -> str | None:
     """The currency whose daily reference rate values this Instrument — None
     when it is not a stablecoin. The routing rule the price chain (ticket 18)
@@ -79,6 +93,30 @@ def event_date(at: datetime) -> date:
     if at.tzinfo is None:
         raise ValueError("An event's instant must be timezone-aware.")
     return at.astimezone(BERLIN).date()
+
+
+def value_eur(
+    engine: Engine,
+    source: ReferenceRateSource,
+    *,
+    instrument: ValuableInstrument,
+    quantity: Decimal,
+    at: datetime,
+) -> Decimal | None:
+    """What the reference-rate universe can state a quantity's EUR value to
+    be (ADR-0017): the numéraire by identity, foreign cash by its own daily
+    rate, a stablecoin by its peg's. A value needing a crypto price is
+    ticket 18's — None until then, never a guess. The one valuation rule of
+    the tax engines (21, 22), so an income and the basis of the lot it minted
+    can never disagree."""
+    if instrument.is_numeraire:
+        return quantity
+    currency = (
+        instrument.symbol if instrument.family == "cash" else reference_rate_currency(instrument)
+    )
+    if currency is None:
+        return None
+    return convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur
 
 
 def convert(

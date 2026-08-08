@@ -5,9 +5,8 @@ which required values a year is missing (ticket 25 refuses to finalise over
 a gap), and which per-year values the Admin's elections select (so no tax
 engine ever doubles an allowance or picks a church-tax rate in logic).
 
-No engine reads a value yet. This module makes the values exist, be
-maintainable, and be judged complete — so that later tickets never hardcode
-one.
+`required_value` is how a tax engine (21, 22) reads its per-year limit — and
+how a year whose value is unset refuses by name instead of defaulting.
 """
 
 from collections.abc import Mapping
@@ -92,6 +91,25 @@ def church_tax_rate_key(church_tax: str) -> str | None:
         "bavaria_bw": "church_tax_rate_bavaria_bw",
         "other_laender": "church_tax_rate_other_laender",
     }[church_tax]
+
+
+class StatutoryValueUnsetError(Exception):
+    """The year has no value for a statutory key an engine needs — the engine
+    refuses to compute rather than assuming one."""
+
+
+def required_value(engine: Engine, *, year: int, key: str, statute: str) -> Decimal:
+    """The year's value for one key, read from the store — the tax engines'
+    (21, 22) one way to a limit, so no constant can hide in logic. A year
+    whose value is unset refuses by name: an unset statute is Admin-fixable
+    configuration, unlike a valuation nothing can state yet."""
+    for row in statutory.list_values(engine):
+        if row.year == year and row.key == key:
+            return row.value
+    raise StatutoryValueUnsetError(
+        f"The {year} value for {key} ({statute}) is unset —"
+        " enter it in the statutory settings before computing this year."
+    )
 
 
 def entry_defect(*, year: int, key: str, value: Decimal) -> str | None:

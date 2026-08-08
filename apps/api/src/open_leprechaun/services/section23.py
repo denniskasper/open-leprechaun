@@ -47,10 +47,12 @@ from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import lots as lots_repository
-from open_leprechaun.repositories import statutory
 from open_leprechaun.services import fx, lots
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
+from open_leprechaun.services.statutory import StatutoryValueUnsetError, required_value
 from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Outflow
+
+__all__ = ["LotShortfallError", "StatutoryValueUnsetError", "year_report"]
 
 EXEMPTION_LIMIT_KEY = "private_sale_exemption_limit"
 """The §23 Abs. 3 Satz 5 EStG Freigrenze in the statutory vocabulary."""
@@ -68,11 +70,6 @@ class LotShortfallError(Exception):
     """A disposal exceeded the lots its Account holds — the ledger is missing
     an acquisition, and filling the gap with a zero basis would silently
     overstate the gain."""
-
-
-class StatutoryValueUnsetError(Exception):
-    """The year's Freigrenze has no value in the statutory store — the engine
-    refuses to compute rather than assuming one."""
 
 
 @dataclass(frozen=True)
@@ -146,7 +143,9 @@ class Section23Year:
 def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Section23Year:
     """The §23 answer for one Tax Year, derived from the beginning of time —
     FIFO has no shorter memory."""
-    limit = _exemption_limit(engine, year)
+    limit = required_value(
+        engine, year=year, key=EXEMPTION_LIMIT_KEY, statute="§23 Abs. 3 Satz 5 EStG"
+    )
     with lots.snapshot(engine) as connection:
         transaction_rows, leg_rows = lots_repository.ledger(connection)
         numeraire = lots_repository.numeraire_instruments(connection)
@@ -258,8 +257,15 @@ def _disposal(
     costs = _costs(engine, source, leg, siblings, instruments, at)
     proceeds_shares = _shares(proceeds, consumed, leg.quantity)
     costs_shares = _shares(costs, consumed, leg.quantity)
+    instrument = instruments[leg.instrument_id]
     consumptions = tuple(
-        _consumption(piece, at, proceeds_share, costs_share)
+        _consumption(
+            piece,
+            at,
+            proceeds_share,
+            costs_share,
+            _basis(engine, source, piece, instrument),
+        )
         for piece, proceeds_share, costs_share in zip(
             consumed, proceeds_shares, costs_shares, strict=True
         )
@@ -278,26 +284,42 @@ def _disposal(
     )
 
 
+def _basis(
+    engine: Engine, source: ReferenceRateSource, piece: lots.Slice, instrument: Row
+) -> Decimal | None:
+    """The consumed slice's basis. A lot minted by §22 income (ticket 22)
+    stores no basis until the rate tickets extend the derivation; its basis
+    is the market value on receipt, stated here by the same rule — and at the
+    same instant — that valued the income, so income and cost basis can never
+    disagree."""
+    if piece.basis_eur is None and piece.basis_source == lots.MARKET_VALUE:
+        return fx.value_eur(
+            engine, source, instrument=instrument, quantity=piece.quantity, at=piece.acquired_at
+        )
+    return piece.basis_eur
+
+
 def _consumption(
     piece: lots.Slice,
     disposed_at: datetime,
     proceeds_share: Decimal | None,
     costs_share: Decimal | None,
+    basis_eur: Decimal | None,
 ) -> Consumption:
     if piece.basis_source == lots.WITHOUT_CONSIDERATION:
         # No Anschaffungsvorgang (BMF letter of 10.05.2022): the disposal
         # falls outside §23 — no gain exists to state.
         gain = None
-    elif proceeds_share is None or costs_share is None or piece.basis_eur is None:
+    elif proceeds_share is None or costs_share is None or basis_eur is None:
         gain = None
     else:
-        gain = proceeds_share - piece.basis_eur - costs_share
+        gain = proceeds_share - basis_eur - costs_share
     return Consumption(
         quantity=piece.quantity,
         acquired_at=piece.acquired_at,
         holding_days=(disposed_at - piece.acquired_at).days,
         long_term=disposed_at > _one_year_after(piece.acquired_at),
-        basis_eur=piece.basis_eur,
+        basis_eur=basis_eur,
         basis_source=piece.basis_source,
         proceeds_eur=proceeds_share,
         gain_eur=gain,
@@ -337,14 +359,22 @@ def _proceeds(
     out-legs needs their relative market values — None, never a guess."""
     at = transaction.occurred_at
     if transaction.type == "spend":
-        return _value_eur(engine, source, instruments[leg.instrument_id], leg.quantity, at)
+        return fx.value_eur(
+            engine, source, instrument=instruments[leg.instrument_id], quantity=leg.quantity, at=at
+        )
     if sum(sibling.role == "out" for sibling in siblings) > 1:
         return None
     total = Decimal(0)
     for sibling in siblings:
         if sibling.role != "in":
             continue
-        value = _value_eur(engine, source, instruments[sibling.instrument_id], sibling.quantity, at)
+        value = fx.value_eur(
+            engine,
+            source,
+            instrument=instruments[sibling.instrument_id],
+            quantity=sibling.quantity,
+            at=at,
+        )
         if value is None:
             return None
         total += value
@@ -366,32 +396,17 @@ def _costs(
     for sibling in siblings:
         if sibling.role != "fee" or sibling.charged_against_leg_id != leg.id:
             continue
-        value = _value_eur(engine, source, instruments[sibling.instrument_id], sibling.quantity, at)
+        value = fx.value_eur(
+            engine,
+            source,
+            instrument=instruments[sibling.instrument_id],
+            quantity=sibling.quantity,
+            at=at,
+        )
         if value is None:
             return None
         total += value
     return total
-
-
-def _value_eur(
-    engine: Engine,
-    source: ReferenceRateSource,
-    instrument: Row,
-    quantity: Decimal,
-    at: datetime,
-) -> Decimal | None:
-    """What the reference-rate universe can state a quantity's EUR value to be
-    (ADR-0017): the numéraire by identity, foreign cash by its own rate, a
-    stablecoin by its peg's. A crypto price is ticket 18's — None until then,
-    never a guess."""
-    if instrument.is_numeraire:
-        return quantity
-    currency = (
-        instrument.symbol if instrument.family == "cash" else fx.reference_rate_currency(instrument)
-    )
-    if currency is None:
-        return None
-    return fx.convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur
 
 
 def _shares(
@@ -410,16 +425,6 @@ def _shares(
         allocated += share
     shares.append(total - allocated)
     return shares
-
-
-def _exemption_limit(engine: Engine, year: int) -> Decimal:
-    for row in statutory.list_values(engine):
-        if row.year == year and row.key == EXEMPTION_LIMIT_KEY:
-            return row.value
-    raise StatutoryValueUnsetError(
-        f"The {year} value for {EXEMPTION_LIMIT_KEY} (§23 Abs. 3 Satz 5 EStG) is unset —"
-        " enter it in the statutory settings before computing this year."
-    )
 
 
 def _verdict(limit: Decimal, total: Decimal) -> FreigrenzeVerdict:
