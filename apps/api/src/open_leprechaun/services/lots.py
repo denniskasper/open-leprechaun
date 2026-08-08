@@ -51,17 +51,29 @@ from sqlalchemy import Connection, Engine, Row
 
 from open_leprechaun.repositories import fingerprints, lots
 from open_leprechaun.repositories.lots import Lot
-from open_leprechaun.services.stances import effective_stance, inflow_mints_lot
+from open_leprechaun.services.stances import (
+    effective_stance,
+    inflow_mints_lot,
+    never_enters_cost_basis,
+)
 from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Inflow
 
 SUBJECT = "tax_lots"
 """The materialisation's name in the input_fingerprint table."""
 
+ESTIMATE = "estimate"
+"""The basis_source of an Opening Balance lot — the disposal engine (21)
+flags every disposal consuming one as resting on an estimate."""
+
+WITHOUT_CONSIDERATION = "without_consideration"
+"""The basis_source of a kept windfall's lot — no Anschaffungsvorgang, so the
+disposal engine (21) keeps its disposal out of §23."""
+
 _BASIS_SOURCES = {
     Inflow.mints_lot_at_cost: "cost",
     Inflow.income_at_market_value: "market_value",
-    Inflow.mints_estimated_lot: "estimate",
-    Inflow.no_acquisition: "without_consideration",
+    Inflow.mints_estimated_lot: ESTIMATE,
+    Inflow.no_acquisition: WITHOUT_CONSIDERATION,
 }
 """How each minting consequence determines its basis; an inflow absent here
 mints nothing of its own — a matched transfer_in mints what it carries."""
@@ -74,15 +86,36 @@ _ROLE_ORDER = {"out": 0, "fee": 1, "in": 2}
 """Within one Transaction, what leaves is consumed before what arrives."""
 
 
+def grouped(rows: list[Row], attribute: str) -> dict[int, list[Row]]:
+    """Rows bucketed by one column, insertion-ordered — the index shape both
+    the derivation and the disposal engine (21) walk the ledger through."""
+    of: dict[int, list[Row]] = {}
+    for row in rows:
+        of.setdefault(getattr(row, attribute), []).append(row)
+    return of
+
+
 @dataclass(frozen=True)
-class _Slice:
+class Slice:
     """A run of quantity in one Account's FIFO queue, wearing the acquisition
-    it descends from — the unit a transfer carries across whole."""
+    it descends from — the unit a transfer carries across whole, and the unit
+    a consuming leg is recorded as having consumed."""
 
     acquired_at: datetime
     quantity: Decimal
     basis_eur: Decimal | None
     basis_source: str
+
+
+@dataclass(frozen=True)
+class Derivation:
+    """One replay of the whole ledger: the lots it mints, and what each
+    consuming leg took from its queue — the pairing the disposal engine
+    (ticket 21) reads, derived in the same pass so the two can never
+    disagree."""
+
+    lots: list[Lot]
+    consumed: dict[int, list[Slice]]
 
 
 def derive(
@@ -92,24 +125,22 @@ def derive(
     numeraire_instruments: set[int],
     stance_rows: list[Row],
     match_rows: list[Row],
-) -> list[Lot]:
-    """Every lot the ledger supports, derived pure — the rows in, the lots
-    out, nothing consulted beyond the arguments. One chronological pass over
-    the ledger, keeping a FIFO queue of slices per (Account, Instrument):
-    minting in-legs push, out and fee legs consume, and a confirmed match
-    routes what its out-leg consumed to its in-leg's Account."""
-    decisions_of: dict[int, list[Row]] = {}
-    for row in stance_rows:
-        decisions_of.setdefault(row.instrument_id, []).append(row)
-    legs_of: dict[int, list[Row]] = {}
-    for leg in leg_rows:
-        legs_of.setdefault(leg.transaction_id, []).append(leg)
+) -> Derivation:
+    """Everything the ledger supports, derived pure — the rows in, the lots
+    and consumptions out, nothing consulted beyond the arguments. One
+    chronological pass over the ledger, keeping a FIFO queue of slices per
+    (Account, Instrument): minting in-legs push, out and fee legs consume,
+    and a confirmed match routes what its out-leg consumed to its in-leg's
+    Account."""
+    decisions_of = grouped(stance_rows, "instrument_id")
+    legs_of = grouped(leg_rows, "transaction_id")
     leg_by_id = {leg.id: leg for leg in leg_rows}
     type_of = {transaction.id: transaction.type for transaction in transaction_rows}
     in_for_out = {match.out_leg_id: match.in_leg_id for match in match_rows}
     out_for_in = {match.in_leg_id: match.out_leg_id for match in match_rows}
-    queues: dict[tuple[int, int], list[_Slice]] = {}
-    arriving: dict[int, list[_Slice]] = {}
+    queues: dict[tuple[int, int], list[Slice]] = {}
+    arriving: dict[int, list[Slice]] = {}
+    consumed_by_leg: dict[int, list[Slice]] = {}
     consumed_out_legs: set[int] = set()
     minted = []
     for transaction in transaction_rows:
@@ -121,7 +152,7 @@ def derive(
             if leg.role in ("out", "fee"):
                 if leg.id in consumed_out_legs:
                     continue
-                consumed = _consume(queue, leg.quantity)
+                consumed = consumed_by_leg[leg.id] = _consume(queue, leg.quantity)
                 if (
                     leg.role == "out"
                     and transaction.type == "transfer_out"
@@ -136,6 +167,8 @@ def derive(
                     consumed = _consume_at_source(
                         leg.id, out_for_in, leg_by_id, type_of, queues, consumed_out_legs
                     )
+                    if out_for_in[leg.id] in consumed_out_legs:
+                        consumed_by_leg[out_for_in[leg.id]] = consumed
                 minted.extend(_carry(leg, consumed, decisions_of, queue))
                 continue
             inflow = TAX_CONSEQUENCES[transaction.type].inflow
@@ -159,14 +192,14 @@ def derive(
             )
             _enqueue(
                 queue,
-                [_Slice(transaction.occurred_at, leg.quantity, basis, _BASIS_SOURCES[inflow])],
+                [Slice(transaction.occurred_at, leg.quantity, basis, _BASIS_SOURCES[inflow])],
             )
-    return minted
+    return Derivation(lots=minted, consumed=consumed_by_leg)
 
 
 def rebuild(engine: Engine) -> None:
     """Derive from the beginning of time and swap the table wholesale."""
-    with _snapshot(engine) as connection:
+    with snapshot(engine) as connection:
         _rebuild_on(connection, fingerprints.current(connection))
 
 
@@ -213,7 +246,7 @@ def fresh_lots(engine: Engine) -> list[Lot]:
     — or never-built — table is rebuilt before anything reads it. Check,
     rebuild and read share one snapshot: no ledger edit can slip between the
     check and the answer, and the fingerprint is computed once, not twice."""
-    with _snapshot(engine) as connection:
+    with snapshot(engine) as connection:
         current = fingerprints.current(connection)
         if fingerprints.stored(connection, SUBJECT) != current:
             _rebuild_on(connection, current)
@@ -233,7 +266,7 @@ def fresh_lots(engine: Engine) -> list[Lot]:
 
 
 @contextmanager
-def _snapshot(engine: Engine) -> Iterator[Connection]:
+def snapshot(engine: Engine) -> Iterator[Connection]:
     """One REPEATABLE READ transaction: every read — and a rebuild's stamp —
     describes the same instant of the ledger."""
     with (
@@ -245,22 +278,22 @@ def _snapshot(engine: Engine) -> Iterator[Connection]:
 
 def _rebuild_on(connection: Connection, fingerprint: dict[str, fingerprints.InputDigest]) -> None:
     transaction_rows, leg_rows = lots.ledger(connection)
-    minted = derive(
+    derived = derive(
         transaction_rows,
         leg_rows,
         numeraire_instruments=lots.numeraire_instruments(connection),
         stance_rows=lots.stance_rows(connection),
         match_rows=lots.match_rows(connection),
     )
-    lots.replace_all(connection, minted)
+    lots.replace_all(connection, derived.lots)
     fingerprints.record(connection, SUBJECT, fingerprint)
 
 
 def _carry(
     leg: Row,
-    consumed: list[_Slice],
+    consumed: list[Slice],
     decisions_of: dict[int, list[Row]],
-    queue: list[_Slice],
+    queue: list[Slice],
 ) -> list[Lot]:
     """The lots a confirmed transfer_in mints: what its out-leg consumed,
     trimmed to what actually arrived. The confirmation is the Admin's
@@ -268,7 +301,7 @@ def _carry(
     standing ignored or dangerous decision there still blocks the mint, as it
     blocks every mint."""
     stance = effective_stance(decisions_of.get(leg.instrument_id, ()), leg.account_id)
-    if stance in ("ignored", "dangerous"):
+    if never_enters_cost_basis(stance):
         return []
     slices = _arrived(consumed, leg.quantity)
     _enqueue(queue, slices)
@@ -292,9 +325,9 @@ def _consume_at_source(
     out_for_in: dict[int, int],
     leg_by_id: dict[int, Row],
     type_of: dict[int, str],
-    queues: dict[tuple[int, int], list[_Slice]],
+    queues: dict[tuple[int, int], list[Slice]],
     consumed_out_legs: set[int],
-) -> list[_Slice]:
+) -> list[Slice]:
     """A deposit recorded before its withdrawal — venue clocks disagree —
     consumes the source queue now; the out-leg's own turn later is a no-op."""
     out_leg = leg_by_id[out_for_in[in_leg_id]]
@@ -305,11 +338,11 @@ def _consume_at_source(
     return _consume(source, out_leg.quantity)
 
 
-def _behead(slices: list[_Slice], quantity: Decimal) -> tuple[list[_Slice], list[_Slice]]:
+def _behead(slices: list[Slice], quantity: Decimal) -> tuple[list[Slice], list[Slice]]:
     """Split a run of slices at a quantity boundary from the head, FIFO, the
     straddling slice divided pro-rata. Holding less than asked, everything is
     the head and the rest is empty."""
-    head: list[_Slice] = []
+    head: list[Slice] = []
     remaining = quantity
     for position, piece in enumerate(slices):
         if remaining == 0:
@@ -323,7 +356,7 @@ def _behead(slices: list[_Slice], quantity: Decimal) -> tuple[list[_Slice], list
     return head, []
 
 
-def _consume(queue: list[_Slice], quantity: Decimal) -> list[_Slice]:
+def _consume(queue: list[Slice], quantity: Decimal) -> list[Slice]:
     """Take quantity from the head of the queue. A queue holding less than
     asked — quantity no lot ever vouched for — yields only what it holds."""
     taken, rest = _behead(queue, quantity)
@@ -331,7 +364,7 @@ def _consume(queue: list[_Slice], quantity: Decimal) -> list[_Slice]:
     return taken
 
 
-def _arrived(consumed: list[_Slice], quantity: Decimal) -> list[_Slice]:
+def _arrived(consumed: list[Slice], quantity: Decimal) -> list[Slice]:
     """What the destination may claim of what left. The missing part — a
     network fee burnt en route — comes off the head, first in first out, so
     the oldest acquisition dates are surrendered before any is claimed."""
@@ -342,7 +375,7 @@ def _arrived(consumed: list[_Slice], quantity: Decimal) -> list[_Slice]:
     return kept
 
 
-def _split(piece: _Slice, first_quantity: Decimal) -> tuple[_Slice, _Slice]:
+def _split(piece: Slice, first_quantity: Decimal) -> tuple[Slice, Slice]:
     """One slice in two, the basis pro-rata: the first part's share stated in
     cents, the exact remainder on the second — no cent invented or lost."""
     if piece.basis_eur is None:
@@ -353,12 +386,12 @@ def _split(piece: _Slice, first_quantity: Decimal) -> tuple[_Slice, _Slice]:
         )
         rest_basis = piece.basis_eur - first_basis
     return (
-        _Slice(piece.acquired_at, first_quantity, first_basis, piece.basis_source),
-        _Slice(piece.acquired_at, piece.quantity - first_quantity, rest_basis, piece.basis_source),
+        Slice(piece.acquired_at, first_quantity, first_basis, piece.basis_source),
+        Slice(piece.acquired_at, piece.quantity - first_quantity, rest_basis, piece.basis_source),
     )
 
 
-def _enqueue(queue: list[_Slice], slices: list[_Slice]) -> None:
+def _enqueue(queue: list[Slice], slices: list[Slice]) -> None:
     """Keep the queue in acquisition order — FIFO consumes the earliest
     Anschaffung first, and a carried slice may be older than what the
     destination already holds."""

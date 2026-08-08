@@ -88,6 +88,18 @@ def match_rows(connection: Connection) -> list[Row]:
     )
 
 
+def instrument_rows(connection: Connection) -> list[Row]:
+    """Each Instrument's tax-relevant classification — the family decides the
+    regime a disposal falls under (§23 or §20), the numéraire designation what
+    disposes at all, and the peg how a stablecoin values (ADR-0017). Read on
+    the caller's snapshot, like every other derivation input."""
+    return list(
+        connection.execute(
+            text("SELECT id, family, symbol, is_numeraire, pegged_currency FROM instrument")
+        ).all()
+    )
+
+
 def replace_all(connection: Connection, lots: list[Lot]) -> None:
     """The whole table swapped for the given derivation — never patched."""
     connection.execute(text("DELETE FROM tax_lot"))

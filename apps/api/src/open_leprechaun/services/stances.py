@@ -73,6 +73,20 @@ def inflow_mints_lot(stance: str) -> bool:
     return stance == "kept"
 
 
+def never_enters_cost_basis(stance: str) -> bool:
+    """Whether a position under this stance stays outside the cost basis
+    entirely — visible in the ledger, but no lot carries it in and no
+    disposal takes it out (ADR-0012).
+
+    Only `ignored` and `dangerous` do. The one rule behind two engines: the
+    lot engine (19) blocks a confirmed transfer's mint at such a destination,
+    and the disposal engine (21) keeps such an outflow a ledger entry rather
+    than a private sale. Unacknowledged is not here: it may hold carried
+    lots, and its unclassified sale should fail loudly, not vanish.
+    """
+    return stance in ("ignored", "dangerous")
+
+
 def settled_inflow_type(*, received_for_counter_performance: bool) -> str:
     """What keeping settles an unsolicited inflow as.
 

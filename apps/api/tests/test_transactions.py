@@ -490,8 +490,9 @@ def test_an_unmatched_outflow_is_never_quietly_a_disposal():
 
 
 def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
-    """The lot engine (ticket 19) is the first; the remaining engines
-    (tickets 21, 22, 26) will amend this list with only themselves."""
+    """The lot engine (ticket 19) and the disposal engine (ticket 21) so far;
+    the remaining engines (tickets 22, 26) will amend this list with only
+    themselves."""
     package = Path(tax_treatment.__file__).resolve().parents[1]
     readers = [
         str(path.relative_to(package))
@@ -502,7 +503,7 @@ def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
             for line in path.read_text().splitlines()
         )
     ]
-    assert readers == ["services/lots.py"]
+    assert sorted(readers) == ["services/lots.py", "services/section23.py"]
 
 
 def test_the_api_speaks_the_same_vocabulary_as_the_service():
