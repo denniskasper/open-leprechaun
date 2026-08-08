@@ -3,6 +3,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config as AlembicConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
@@ -44,6 +45,15 @@ def engine(database_url: str) -> Iterator[Engine]:
     engine = create_engine(database_url)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture
+def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
+    """A migrated database with no instruments yet."""
+    command.upgrade(alembic_config, "head")
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM instrument"))
+    return engine
 
 
 @pytest.fixture

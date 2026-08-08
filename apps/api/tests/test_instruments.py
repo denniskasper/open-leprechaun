@@ -9,7 +9,6 @@ schema's own constraints — and the HTTP endpoint through the app.
 from collections import Counter
 
 import pytest
-from alembic import command
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -18,15 +17,6 @@ from open_leprechaun.seed import seed
 
 UNISWAP_CONTRACT = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
 IMPOSTOR_CONTRACT = "0xb5c578947de0fd71303f71f2c3d41767438bd0de"
-
-
-@pytest.fixture
-def db(alembic_config, engine):
-    """A migrated database with no instruments yet."""
-    command.upgrade(alembic_config, "head")
-    with engine.begin() as connection:
-        connection.execute(text("DELETE FROM instrument"))
-    return engine
 
 
 def test_two_tokens_sharing_a_symbol_coexist(db):

@@ -96,6 +96,14 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
           >
             <td className="py-3 pr-4 font-mono tabular-nums">
               {instrument.symbol}
+              {instrument.is_numeraire && (
+                <span
+                  className="microlabel ml-2 text-signal"
+                  title="The currency every taxable figure is expressed in — moving it is not a disposal."
+                >
+                  numéraire
+                </span>
+              )}
               {shared.has(instrument.symbol) && (
                 // Two Instruments legitimately share this label; the identity
                 // column is what tells them apart.

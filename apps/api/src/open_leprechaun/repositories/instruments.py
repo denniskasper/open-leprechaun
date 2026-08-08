@@ -8,6 +8,21 @@ cleanly. Decisions live in the service.
 from sqlalchemy import Connection, Engine, Row, text
 from sqlalchemy.exc import IntegrityError
 
+# The one shape an Instrument row is read in, wherever it is read.
+_COLUMN_NAMES = (
+    "id",
+    "family",
+    "type",
+    "symbol",
+    "name",
+    "chain",
+    "contract_address",
+    "isin",
+    "is_numeraire",
+)
+_COLUMNS = ", ".join(_COLUMN_NAMES)
+_PREFIXED_COLUMNS = ", ".join(f"i.{name}" for name in _COLUMN_NAMES)
+
 
 def create_crypto_token(
     engine: Engine, *, symbol: str, name: str, chain: str, contract_address: str
@@ -69,8 +84,56 @@ def create_security(engine: Engine, *, symbol: str, name: str, type: str, isin: 
 
 
 def create_cash(engine: Engine, *, symbol: str, name: str) -> int | None:
-    """A fiat currency, keyed on its code within the cash family."""
-    return _create(engine, family="cash", type="fiat", symbol=symbol, name=name)
+    """A fiat currency, keyed on its code within the cash family.
+
+    The code is cash's identity, so it opens the identifier history — as the
+    symbol does for a native coin, and the ISIN for a security.
+    """
+    try:
+        with engine.begin() as connection:
+            instrument_id = _insert_instrument(
+                connection, family="cash", type="fiat", symbol=symbol, name=name
+            )
+            _insert_identifier(connection, instrument_id, kind="symbol", value=symbol)
+            return instrument_id
+    except IntegrityError:
+        return None
+
+
+def numeraire(engine: Engine) -> Row | None:
+    """The one Instrument whose movement is not a disposal (ADR-0011).
+
+    EUR in this deployment — but that is a fact of the data, established by the
+    migration chain and held to at most one row by the schema, not a constant
+    anywhere in logic. None means no numéraire is designated, a state the
+    migration chain never leaves behind on its own.
+    """
+    with engine.connect() as connection:
+        return connection.execute(
+            text(f"SELECT {_COLUMNS} FROM instrument WHERE is_numeraire")
+        ).one_or_none()
+
+
+def designate_numeraire(engine: Engine, instrument_id: int) -> bool:
+    """Move the numéraire designation to another cash Instrument.
+
+    In one transaction the current holder becomes an ordinary asset and the
+    target takes the flag, so no moment leaves two numéraires for the schema
+    to refuse. False when the target is missing or not cash, changing nothing.
+    """
+    with engine.begin() as connection:
+        family = connection.execute(
+            text("SELECT family FROM instrument WHERE id = :instrument_id"),
+            {"instrument_id": instrument_id},
+        ).scalar_one_or_none()
+        if family != "cash":
+            return False
+        connection.execute(text("UPDATE instrument SET is_numeraire = false WHERE is_numeraire"))
+        connection.execute(
+            text("UPDATE instrument SET is_numeraire = true WHERE id = :instrument_id"),
+            {"instrument_id": instrument_id},
+        )
+    return True
 
 
 def add_listing(
@@ -106,10 +169,7 @@ def list_instruments(engine: Engine) -> list[Row]:
     with engine.connect() as connection:
         return list(
             connection.execute(
-                text(
-                    "SELECT id, family, type, symbol, name, chain, contract_address, isin"
-                    " FROM instrument ORDER BY symbol, family, id"
-                )
+                text(f"SELECT {_COLUMNS} FROM instrument ORDER BY symbol, family, id")
             ).all()
         )
 
@@ -165,8 +225,7 @@ def find_by_identifier(engine: Engine, value: str) -> list[Row]:
         return list(
             connection.execute(
                 text(
-                    "SELECT DISTINCT i.id, i.family, i.type, i.symbol, i.name,"
-                    " i.chain, i.contract_address, i.isin"
+                    f"SELECT DISTINCT {_PREFIXED_COLUMNS}"
                     " FROM instrument i"
                     " JOIN instrument_identifier x ON x.instrument_id = i.id"
                     " WHERE x.value = :value ORDER BY i.id"
@@ -174,14 +233,6 @@ def find_by_identifier(engine: Engine, value: str) -> list[Row]:
                 {"value": value},
             ).all()
         )
-
-
-def _create(engine: Engine, **columns: str) -> int | None:
-    try:
-        with engine.begin() as connection:
-            return _insert_instrument(connection, **columns)
-    except IntegrityError:
-        return None
 
 
 def _insert_instrument(connection: Connection, **columns: str) -> int:

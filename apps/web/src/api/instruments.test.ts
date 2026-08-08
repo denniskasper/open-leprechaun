@@ -10,6 +10,7 @@ const uniswap = {
   chain: "ethereum",
   contract_address: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
   isin: null,
+  is_numeraire: false,
   listings: [],
 };
 
@@ -22,6 +23,7 @@ const fund = {
   chain: null,
   contract_address: null,
   isin: "IE00B4L5Y983",
+  is_numeraire: false,
   listings: [{ venue: "XETRA", quote_currency: "EUR" }],
 };
 

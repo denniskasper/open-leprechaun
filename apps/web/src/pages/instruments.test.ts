@@ -12,6 +12,7 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     chain: "ethereum",
     contract_address: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
     isin: null,
+    is_numeraire: false,
     listings: [],
     ...overrides,
   };

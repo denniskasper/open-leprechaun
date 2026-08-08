@@ -114,7 +114,27 @@ def _instruments(connection: Connection) -> None:
         )
 
 
-STEPS: Sequence[SeedStep] = (_instruments,)
+def _cash(connection: Connection) -> None:
+    """A non-EUR currency (ticket 12): an ordinary asset whose movement is a
+    disposal, next to the EUR numéraire the migration chain itself provides.
+    Cash keys on its code, so ON CONFLICT DO NOTHING keeps this idempotent."""
+    connection.execute(
+        text(
+            "INSERT INTO instrument (family, type, symbol, name)"
+            " VALUES ('cash', 'fiat', 'USD', 'US Dollar')"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+    connection.execute(
+        text(
+            "INSERT INTO instrument_identifier (instrument_id, kind, value)"
+            " SELECT id, 'symbol', symbol FROM instrument WHERE family = 'cash'"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+
+
+STEPS: Sequence[SeedStep] = (_instruments, _cash)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

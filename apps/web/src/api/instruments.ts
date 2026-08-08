@@ -17,6 +17,7 @@ export const instrumentSchema = z.object({
   chain: z.string().nullable(),
   contract_address: z.string().nullable(),
   isin: z.string().nullable(),
+  is_numeraire: z.boolean(),
   listings: z.array(listingSchema),
 });
 

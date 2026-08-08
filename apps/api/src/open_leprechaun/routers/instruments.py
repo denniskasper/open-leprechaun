@@ -22,6 +22,7 @@ class InstrumentResponse(BaseModel):
     chain: str | None
     contract_address: str | None
     isin: str | None
+    is_numeraire: bool
     listings: list[ListingResponse]
 
     @classmethod
@@ -35,6 +36,7 @@ class InstrumentResponse(BaseModel):
             chain=instrument.chain,
             contract_address=instrument.contract_address,
             isin=instrument.isin,
+            is_numeraire=instrument.is_numeraire,
             listings=[
                 ListingResponse(venue=listing.venue, quote_currency=listing.quote_currency)
                 for listing in instrument.listings
