@@ -214,7 +214,7 @@ function AuthScreen({
   useEffect(() => watchSystemTheme(), []);
 
   return (
-    <div className="instrument-field flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="flex h-16 items-center gap-2 border-b border-border px-4 sm:px-8">
         <span className="flex items-center gap-2.5">
           <Clover aria-hidden className="size-4 text-primary" />

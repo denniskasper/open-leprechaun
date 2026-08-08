@@ -34,6 +34,11 @@ convention of an accent-highlight instead — a component may keep
 
 ## Shell and navigation
 
+The shell paints the page in `bg-canvas` — a shade darker than the surface,
+seen only in the margins — and centres the content sheet on it: `bg-background`
+edged by hairline `border-x`. The background is deliberately clean; no screen
+adds a texture, gradient or pattern to it.
+
 Pages render into the shell's content region and open with `PageHeader`
 (`apps/web/src/components/page-header.tsx`). A new screen registers its route
 in `apps/web/src/main.tsx` and its nav entry in `apps/web/src/navigation.ts`;

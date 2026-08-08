@@ -18,7 +18,7 @@ export function AppShell() {
   useEffect(() => watchSystemTheme(), []);
 
   return (
-    <div className="instrument-field min-h-dvh">
+    <div className="min-h-dvh bg-canvas">
       <a
         href="#content"
         className="sr-only z-50 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:top-4 focus:left-4"
@@ -26,7 +26,8 @@ export function AppShell() {
         Skip to content
       </a>
 
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl">
+      {/* The content sheet: a clean surface on the canvas, edged by hairlines. */}
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl border-x border-border bg-background">
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border md:flex">
           <Wordmark className="flex h-16 items-center px-6" />
           <NavSections className="flex-1 space-y-8 overflow-y-auto px-3 py-6" />
