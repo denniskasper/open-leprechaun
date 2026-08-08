@@ -24,6 +24,9 @@ class LegRules:
 
     requires: frozenset[str]
     forbids: frozenset[str] = frozenset()
+    # At most one in-leg: the event describes a single position, so its
+    # header-level declarations are unambiguous about what they describe.
+    single_position: bool = False
 
 
 _INFLOW_ONLY = LegRules(requires=frozenset({"in"}), forbids=frozenset({"out"}))
@@ -48,6 +51,13 @@ TRANSACTION_TYPES: Mapping[str, LegRules] = {
     # What keeping an unsolicited inflow settles it as when it was received
     # for nothing (ticket 14); services/stances.py makes that decision.
     "windfall": _INFLOW_ONLY,
+    # A position that predates available history (ticket 15): one in-leg and
+    # nothing else — nothing left anywhere, and no fee was paid inside the
+    # ledger. Exactly one position, because the Transaction's declaration of
+    # what is reconstructed and its estimated basis describe one position.
+    "opening_balance": LegRules(
+        requires=frozenset({"in"}), forbids=frozenset({"out", "fee"}), single_position=True
+    ),
     # Securities and cash income.
     "dividend": _INFLOW_ONLY,
     "distribution": _INFLOW_ONLY,
@@ -57,6 +67,12 @@ TRANSACTION_TYPES: Mapping[str, LegRules] = {
     "fee": LegRules(requires=frozenset({"fee"}), forbids=frozenset({"in", "out"})),
 }
 
+RECONSTRUCTED = ("basis", "basis_and_date")
+"""What an Opening Balance declares as reconstructed, because the difference
+decides a tax outcome: `basis` — the acquisition date is known and used as
+given, only the cost basis is an estimate — or `basis_and_date`, where the
+honest instant is the start of known history, conservatively late."""
+
 _ROLE_PHRASES = {"in": "what arrived", "out": "what left", "fee": "what the fee consumed"}
 
 
@@ -65,13 +81,41 @@ def structural_defect(type: str, legs: Sequence[Leg]) -> str | None:
     type, or None when it does. Judged before anything is written, so an
     unbalanced event can never exist to be repaired later."""
     label = type.replace("_", " ")
+    article = "An" if label[0] in "aeiou" else "A"
     rules = TRANSACTION_TYPES[type]
     roles = {leg.role for leg in legs}
     for role in sorted(rules.requires - roles):
-        return f"A {label} records {_ROLE_PHRASES[role]}, and this one is missing it."
+        return f"{article} {label} records {_ROLE_PHRASES[role]}, and this one is missing it."
     for role in sorted(rules.forbids & roles):
-        return f"A {label} does not record {_ROLE_PHRASES[role]} — that is its own Transaction."
+        return (
+            f"{article} {label} does not record {_ROLE_PHRASES[role]} — that is its own"
+            " Transaction."
+        )
+    if rules.single_position and sum(leg.role == "in" for leg in legs) > 1:
+        return f"{article} {label} records one position — a second one is its own Transaction."
     return _attachment_defect(legs)
+
+
+def declaration_defect(
+    type: str, *, reconstructed: str | None, estimated_basis_eur: Decimal | None
+) -> str | None:
+    """The sentence naming why these declarations do not fit this type, or
+    None when they do. An Opening Balance always names what is reconstructed
+    and always declares its estimate — the declaration is the point — and no
+    other type may wear either, or the assumption would look identical to a
+    real movement in every report."""
+    if type == "opening_balance":
+        if reconstructed is None:
+            return (
+                "An opening balance names what is reconstructed —"
+                " the basis alone, or the date and basis both."
+            )
+        if estimated_basis_eur is None:
+            return "An opening balance declares its estimated cost basis in EUR."
+        return None
+    if reconstructed is not None or estimated_basis_eur is not None:
+        return "Only an opening balance declares a reconstruction or an estimated basis."
+    return None
 
 
 def _attachment_defect(legs: Sequence[Leg]) -> str | None:
@@ -104,6 +148,9 @@ class TransactionOverview:
     type: str
     occurred_at: datetime
     note: str | None
+    # An Opening Balance's declarations (ticket 15); None everywhere else.
+    reconstructed: str | None
+    estimated_basis_eur: Decimal | None
     legs: tuple[LegOverview, ...]
 
 
@@ -126,10 +173,20 @@ def overview(engine: Engine) -> list[TransactionOverview]:
             type=row.type,
             occurred_at=row.occurred_at,
             note=row.note,
+            reconstructed=row.reconstructed,
+            estimated_basis_eur=row.estimated_basis_eur,
             legs=tuple(legs_of.get(row.id, [])),
         )
         for row in transactions.list_transactions(engine)
     ]
 
 
-__all__ = ["TRANSACTION_TYPES", "Leg", "LegRules", "overview", "structural_defect"]
+__all__ = [
+    "RECONSTRUCTED",
+    "TRANSACTION_TYPES",
+    "Leg",
+    "LegRules",
+    "declaration_defect",
+    "overview",
+    "structural_defect",
+]

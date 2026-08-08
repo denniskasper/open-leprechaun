@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, formatNumber, formatQuantity, formatTimestamp } from "./format";
+import {
+  formatMoney,
+  formatMoneyExact,
+  formatNumber,
+  formatQuantity,
+  formatTimestamp,
+} from "./format";
 
 // The ticket's rule: numbers are formatted per locale and money always carries
 // its currency adjacent — a bare number must be impossible to produce.
@@ -31,6 +37,28 @@ describe("formatMoney", () => {
   it("rounds half away from zero as German tax arithmetic expects", () => {
     expect(formatMoney(0.005, "EUR", "en-US")).toBe("€0.01");
     expect(formatMoney(-0.005, "EUR", "en-US")).toBe("-€0.01");
+  });
+});
+
+describe("formatMoneyExact", () => {
+  it("puts the currency where the locale puts it, around the exact digits", () => {
+    // de-DE uses a non-breaking space before the symbol.
+    expect(formatMoneyExact("1234.56", "EUR", "de-DE")).toBe("1.234,56 €");
+    expect(formatMoneyExact("1234.56", "EUR", "en-US")).toBe("€1,234.56");
+  });
+
+  it("keeps every digit — a fixed-point string never meets a float", () => {
+    expect(formatMoneyExact("0.000000000000000001", "EUR", "en-US")).toBe(
+      "€0.000000000000000001",
+    );
+    expect(formatMoneyExact("123456789012345678901", "EUR", "en-US")).toBe(
+      "€123,456,789,012,345,678,901",
+    );
+  });
+
+  it("keeps the recorded scale, trailing zeros included", () => {
+    expect(formatMoneyExact("700.00", "EUR", "en-US")).toBe("€700.00");
+    expect(formatMoneyExact("0", "EUR", "en-US")).toBe("€0");
   });
 });
 

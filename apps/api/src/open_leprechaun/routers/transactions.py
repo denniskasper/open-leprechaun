@@ -17,6 +17,7 @@ from open_leprechaun.repositories import transactions
 from open_leprechaun.repositories.transactions import Leg, Refusal
 from open_leprechaun.services.transactions import (
     TransactionOverview,
+    declaration_defect,
     overview,
     structural_defect,
 )
@@ -36,6 +37,7 @@ TransactionType = Literal[
     "mining_reward",
     "airdrop",
     "windfall",
+    "opening_balance",
     "dividend",
     "distribution",
     "interest",
@@ -43,6 +45,10 @@ TransactionType = Literal[
 ]
 
 LegRole = Literal["in", "out", "fee"]
+
+# What an Opening Balance declares as reconstructed; the service holds the
+# same vocabulary and a test holds the two to each other.
+Reconstructed = Literal["basis", "basis_and_date"]
 
 
 def _decimal_text_only(value: object) -> object:
@@ -63,6 +69,15 @@ Quantity = Annotated[
     PlainSerializer(lambda quantity: format(quantity, "f"), return_type=str),
 ]
 
+# An estimated basis is a quantity that may honestly be zero — the most
+# conservative estimate there is — but never negative.
+EstimatedBasis = Annotated[
+    Decimal,
+    BeforeValidator(_decimal_text_only),
+    Field(ge=0, allow_inf_nan=False),
+    PlainSerializer(lambda basis: format(basis, "f"), return_type=str),
+]
+
 # A note is prose for the Admin; trimmed so blank cannot pose as one.
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
 
@@ -81,6 +96,12 @@ class RecordTransactionRequest(BaseModel):
     type: TransactionType
     occurred_at: AwareDatetime
     note: Note = None
+    # An Opening Balance's declarations (ticket 15): what is reconstructed,
+    # and the declared estimate of the position's cost basis in EUR. Required
+    # for an opening balance, refused on every other type — the service's
+    # declaration_defect judges the pairing.
+    reconstructed: Reconstructed | None = None
+    estimated_basis_eur: EstimatedBasis | None = None
     legs: list[LegPayload]
 
 
@@ -102,6 +123,8 @@ class TransactionResponse(BaseModel):
     type: TransactionType
     occurred_at: AwareDatetime
     note: str | None
+    reconstructed: Reconstructed | None
+    estimated_basis_eur: EstimatedBasis | None
     legs: list[LegResponse]
 
     @classmethod
@@ -111,6 +134,8 @@ class TransactionResponse(BaseModel):
             type=transaction.type,
             occurred_at=transaction.occurred_at,
             note=transaction.note,
+            reconstructed=transaction.reconstructed,
+            estimated_basis_eur=transaction.estimated_basis_eur,
             legs=[
                 LegResponse(
                     id=leg.id,
@@ -145,7 +170,13 @@ def record_transaction(
 ) -> RegisteredResponse:
     legs = _balanced(request)
     created = transactions.create_transaction(
-        engine, type=request.type, occurred_at=request.occurred_at, note=request.note, legs=legs
+        engine,
+        type=request.type,
+        occurred_at=request.occurred_at,
+        note=request.note,
+        legs=legs,
+        reconstructed=request.reconstructed,
+        estimated_basis_eur=request.estimated_basis_eur,
     )
     if isinstance(created, Refusal):
         raise HTTPException(status_code=404, detail=_MISSING[created])
@@ -168,6 +199,8 @@ def revise_transaction(
         occurred_at=request.occurred_at,
         note=request.note,
         legs=legs,
+        reconstructed=request.reconstructed,
+        estimated_basis_eur=request.estimated_basis_eur,
     )
     if refused is not None:
         raise HTTPException(status_code=404, detail=_MISSING[refused])
@@ -192,7 +225,8 @@ _MISSING = {
 
 def _balanced(request: RecordTransactionRequest) -> list[Leg]:
     """The request's legs, refused with the service's own sentence when they
-    do not balance for the type — so no route can write an unbalanced event."""
+    do not balance for the type or the declarations do not fit it — so no
+    route can write an unbalanced or dishonestly-declared event."""
     legs = [
         Leg(
             account_id=leg.account_id,
@@ -203,7 +237,11 @@ def _balanced(request: RecordTransactionRequest) -> list[Leg]:
         )
         for leg in request.legs
     ]
-    defect = structural_defect(request.type, legs)
+    defect = structural_defect(request.type, legs) or declaration_defect(
+        request.type,
+        reconstructed=request.reconstructed,
+        estimated_basis_eur=request.estimated_basis_eur,
+    )
     if defect is not None:
         raise HTTPException(status_code=422, detail=defect)
     return legs

@@ -36,23 +36,38 @@ class Refusal(Enum):
     no_such_instrument = "no_such_instrument"
 
 
-_TRANSACTION_COLUMNS = "id, type, occurred_at, note"
+_TRANSACTION_COLUMNS = "id, type, occurred_at, note, reconstructed, estimated_basis_eur"
 _LEG_COLUMNS = (
     "id, transaction_id, account_id, instrument_id, role, quantity, charged_against_leg_id"
 )
 
 
 def create_transaction(
-    engine: Engine, *, type: str, occurred_at: datetime, note: str | None, legs: list[Leg]
+    engine: Engine,
+    *,
+    type: str,
+    occurred_at: datetime,
+    note: str | None,
+    legs: list[Leg],
+    reconstructed: str | None = None,
+    estimated_basis_eur: Decimal | None = None,
 ) -> int | Refusal:
     try:
         with engine.begin() as connection:
             transaction_id = connection.execute(
                 text(
-                    "INSERT INTO transaction (type, occurred_at, note)"
-                    " VALUES (:type, :occurred_at, :note) RETURNING id"
+                    "INSERT INTO transaction"
+                    " (type, occurred_at, note, reconstructed, estimated_basis_eur)"
+                    " VALUES (:type, :occurred_at, :note, :reconstructed, :estimated_basis_eur)"
+                    " RETURNING id"
                 ),
-                {"type": type, "occurred_at": occurred_at, "note": note},
+                {
+                    "type": type,
+                    "occurred_at": occurred_at,
+                    "note": note,
+                    "reconstructed": reconstructed,
+                    "estimated_basis_eur": estimated_basis_eur,
+                },
             ).scalar_one()
             _insert_legs(connection, transaction_id, legs)
             return transaction_id
@@ -68,6 +83,8 @@ def replace_transaction(
     occurred_at: datetime,
     note: str | None,
     legs: list[Leg],
+    reconstructed: str | None = None,
+    estimated_basis_eur: Decimal | None = None,
 ) -> Refusal | None:
     """Revise an event wholesale: the header updated, the legs swapped for
     the given set in one transaction. None means it was replaced."""
@@ -76,12 +93,16 @@ def replace_transaction(
             revised = connection.execute(
                 text(
                     "UPDATE transaction SET type = :type, occurred_at = :occurred_at,"
-                    " note = :note WHERE id = :transaction_id"
+                    " note = :note, reconstructed = :reconstructed,"
+                    " estimated_basis_eur = :estimated_basis_eur"
+                    " WHERE id = :transaction_id"
                 ),
                 {
                     "type": type,
                     "occurred_at": occurred_at,
                     "note": note,
+                    "reconstructed": reconstructed,
+                    "estimated_basis_eur": estimated_basis_eur,
                     "transaction_id": transaction_id,
                 },
             )

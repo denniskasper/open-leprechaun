@@ -15,6 +15,7 @@ export const transactionTypeSchema = z.enum([
   "mining_reward",
   "airdrop",
   "windfall",
+  "opening_balance",
   "dividend",
   "distribution",
   "interest",
@@ -22,6 +23,12 @@ export const transactionTypeSchema = z.enum([
 ]);
 
 export const legRoleSchema = z.enum(["in", "out", "fee"]);
+
+/**
+ * What an Opening Balance declares as reconstructed — the basis alone, with
+ * the acquisition date known and used as given, or the date and basis both.
+ */
+export const reconstructedSchema = z.enum(["basis", "basis_and_date"]);
 
 /**
  * Quantities are fixed-point decimals throughout, including in JSON: the API
@@ -47,11 +54,16 @@ export const transactionSchema = z.object({
   type: transactionTypeSchema,
   occurred_at: z.iso.datetime({ offset: true }),
   note: z.string().nullable(),
+  // An Opening Balance's declarations; null on every other type. The
+  // estimated basis is a monetary amount and crosses as a decimal string.
+  reconstructed: reconstructedSchema.nullable(),
+  estimated_basis_eur: decimalString.nullable(),
   legs: z.array(legSchema),
 });
 
 export type TransactionType = z.infer<typeof transactionTypeSchema>;
 export type LegRole = z.infer<typeof legRoleSchema>;
+export type Reconstructed = z.infer<typeof reconstructedSchema>;
 export type Leg = z.infer<typeof legSchema>;
 export type Transaction = z.infer<typeof transactionSchema>;
 
@@ -68,6 +80,8 @@ export interface NewTransaction {
   type: TransactionType;
   occurred_at: string;
   note: string | null;
+  reconstructed: Reconstructed | null;
+  estimated_basis_eur: string | null;
   legs: NewLeg[];
 }
 

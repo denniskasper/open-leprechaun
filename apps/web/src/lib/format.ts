@@ -30,6 +30,25 @@ export function formatMoney(
   }).format(amount);
 }
 
+/**
+ * An amount of money that arrives as a fixed-point decimal string — the
+ * currency placed where the locale puts it, around digits that never pass
+ * through a float. Intl is asked to format the number one only to learn the
+ * locale's pattern; the digits themselves come from formatQuantity verbatim.
+ */
+export function formatMoneyExact(value: string, currency: string, locale?: string): string {
+  const digits = "\u0000";
+  const pattern = new Intl.NumberFormat(locale, { style: "currency", currency })
+    .formatToParts(1)
+    .map((part) =>
+      part.type === "integer" || part.type === "decimal" || part.type === "fraction"
+        ? digits
+        : part.value,
+    )
+    .join("");
+  return pattern.replace(/\0+/, formatQuantity(value, locale));
+}
+
 /** Quantities of an asset, not money: up to eight fraction digits, no unit. */
 export function formatNumber(value: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 8 }).format(value);

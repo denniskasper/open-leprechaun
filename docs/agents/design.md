@@ -48,10 +48,11 @@ sidebar, mobile sheet and active states follow from that one entry.
 
 Format through `apps/web/src/lib/format.ts`, always. Money goes through
 `formatMoney`, which keeps the currency adjacent — a bare number for an amount
-of money must not appear on any screen. Quantities use `formatNumber`, or
-`formatQuantity` where the value is a fixed-point decimal string off the API —
-those must never pass through a float. Timestamps use `formatTimestamp`; all
-format per locale.
+of money must not appear on any screen — or `formatMoneyExact` where the
+amount is a fixed-point decimal string off the API. Quantities use
+`formatNumber`, or `formatQuantity` where the value is a fixed-point decimal
+string — those must never pass through a float. Timestamps use
+`formatTimestamp`; all format per locale.
 
 ## Empty and error states
 

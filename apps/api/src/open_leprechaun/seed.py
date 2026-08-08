@@ -197,6 +197,8 @@ def _transactions(connection: Connection) -> None:
             "trade",
             "2026-01-05T10:30:00+00:00",
             "USD for BTC, fee taken in SOL",
+            None,
+            None,
             [
                 ("Kraken", "Main", "USD", "out", "250.00", None),
                 ("Kraken", "Main", "BTC", "in", "0.004", None),
@@ -207,25 +209,48 @@ def _transactions(connection: Connection) -> None:
             "staking_reward",
             "2026-01-20T00:00:00+00:00",
             None,
+            None,
+            None,
             [("Phantom", "Hot wallet", "SOL", "in", "0.35", None)],
         ),
         (
             "transfer_in",
             "2026-02-02T18:45:00+00:00",
             "Moved from the exchange",
+            None,
+            None,
             [("BitBox02", "Savings", "BTC", "in", "0.004", None)],
         ),
+        # A position that predates the ledger's history (ticket 15): the
+        # date-known variant, so the acquisition date is used as given and
+        # only the basis is a declared estimate.
+        (
+            "opening_balance",
+            "2021-04-15T00:00:00+00:00",
+            "Held since before the export window",
+            "basis",
+            "700.00",
+            [("BitBox02", "Savings", "BTC", "in", "0.02", None)],
+        ),
     ]
-    for type_, occurred_at, note, legs in events:
+    for type_, occurred_at, note, reconstructed, estimated_basis_eur, legs in events:
         transaction_id = connection.execute(
             text(
-                "INSERT INTO transaction (type, occurred_at, note)"
-                " SELECT :type, CAST(:occurred_at AS timestamptz), :note"
+                "INSERT INTO transaction"
+                " (type, occurred_at, note, reconstructed, estimated_basis_eur)"
+                " SELECT :type, CAST(:occurred_at AS timestamptz), :note, :reconstructed,"
+                " CAST(:estimated_basis_eur AS numeric)"
                 " WHERE NOT EXISTS (SELECT 1 FROM transaction WHERE type = :type"
                 " AND occurred_at = CAST(:occurred_at AS timestamptz))"
                 " RETURNING id"
             ),
-            {"type": type_, "occurred_at": occurred_at, "note": note},
+            {
+                "type": type_,
+                "occurred_at": occurred_at,
+                "note": note,
+                "reconstructed": reconstructed,
+                "estimated_basis_eur": estimated_basis_eur,
+            },
         ).scalar_one_or_none()
         if transaction_id is None:
             continue

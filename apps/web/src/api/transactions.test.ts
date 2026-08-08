@@ -12,6 +12,8 @@ const buy = {
   type: "trade",
   occurred_at: "2026-03-14T12:00:00Z",
   note: "First buy",
+  reconstructed: null,
+  estimated_basis_eur: null,
   legs: [
     {
       id: 10,
@@ -44,6 +46,8 @@ const drafted: NewTransaction = {
   type: "fee",
   occurred_at: "2026-03-14T12:00:00.000Z",
   note: null,
+  reconstructed: null,
+  estimated_basis_eur: null,
   legs: [
     { account_id: 3, instrument_id: 5, role: "fee", quantity: "4.90", charged_against: null },
   ],
@@ -91,6 +95,39 @@ describe("fetchTransactions", () => {
     respondWith(200, [{ ...buy, type: "barter" }]);
 
     await expect(fetchTransactions()).rejects.toThrow();
+  });
+
+  it("returns an Opening Balance with its declarations, the estimate a string", async () => {
+    // Fixed-point for the estimated basis too: it is a monetary amount and
+    // crosses JSON as a plain decimal string like every quantity.
+    const opening = {
+      ...buy,
+      type: "opening_balance",
+      reconstructed: "basis",
+      estimated_basis_eur: "6543.21",
+      legs: [buy.legs[1]],
+    };
+    respondWith(200, [opening]);
+
+    const transactions = await fetchTransactions();
+
+    expect(transactions[0]?.reconstructed).toBe("basis");
+    expect(transactions[0]?.estimated_basis_eur).toBe("6543.21");
+  });
+
+  it("rejects a reconstruction outside the two variants, or an estimate as a number", async () => {
+    const unnamed = { ...buy, type: "opening_balance", reconstructed: "everything" };
+    const drifted = {
+      ...buy,
+      type: "opening_balance",
+      reconstructed: "basis",
+      estimated_basis_eur: 6543.21,
+    };
+    for (const wrong of [unnamed, drifted]) {
+      respondWith(200, [wrong]);
+
+      await expect(fetchTransactions()).rejects.toThrow();
+    }
   });
 
   it("rejects an error status", async () => {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { transactionTypeSchema, type LegRole } from "@/api/transactions";
+import { reconstructedSchema, transactionTypeSchema, type LegRole } from "@/api/transactions";
 import {
   isPositiveDecimal,
   legTemplate,
+  occurredAtWords,
+  RECONSTRUCTED_WORDS,
   signOf,
   TYPE_VOCABULARY,
   withLegRemoved,
@@ -30,6 +32,40 @@ describe("legTemplate", () => {
 
   it("opens a standalone fee with the one leg it is", () => {
     expect(legTemplate("fee")).toEqual(["fee"]);
+  });
+
+  it("opens an Opening Balance with the one position that already existed", () => {
+    expect(legTemplate("opening_balance")).toEqual(["in"]);
+  });
+});
+
+describe("RECONSTRUCTED_WORDS", () => {
+  it("speaks both variants the API knows, and no other", () => {
+    expect(Object.keys(RECONSTRUCTED_WORDS).sort()).toEqual(
+      [...reconstructedSchema.options].sort(),
+    );
+  });
+
+  it("explains what each choice affects and recommends conservative dating only when the date is unknown", () => {
+    // The difference decides a tax outcome, so the copy is load-bearing: the
+    // known date carries the exemption; the conservative date is for a date
+    // genuinely unknown, and would manufacture tax where the date is known.
+    const dateKnown = RECONSTRUCTED_WORDS.basis;
+    const bothReconstructed = RECONSTRUCTED_WORDS.basis_and_date;
+
+    expect(dateKnown.explanation).toContain("used as given");
+    expect(dateKnown.explanation).toContain("exempt");
+    expect(bothReconstructed.explanation).toContain("start of known history");
+    expect(bothReconstructed.explanation).toContain("genuinely unknown");
+    expect(RECONSTRUCTED_WORDS.basis.marker).not.toEqual(bothReconstructed.marker);
+  });
+});
+
+describe("occurredAtWords", () => {
+  it("names the instant for what it is on each variant", () => {
+    expect(occurredAtWords("trade", null)).toBe("Occurred at");
+    expect(occurredAtWords("opening_balance", "basis")).toBe("Acquired at");
+    expect(occurredAtWords("opening_balance", "basis_and_date")).toBe("Known history begins at");
   });
 });
 

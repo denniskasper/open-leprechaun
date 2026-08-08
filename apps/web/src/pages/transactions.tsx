@@ -11,6 +11,7 @@ import {
   reviseTransaction,
   type LegRole,
   type NewTransaction,
+  type Reconstructed,
   type Transaction,
   type TransactionType,
 } from "@/api/transactions";
@@ -19,7 +20,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
 
 interface TypeWords {
   /** The event as the ledger and the form both speak it. */
@@ -37,6 +38,9 @@ export const TYPE_VOCABULARY: Record<TransactionType, TypeWords> = {
   spend: { label: "Spend", group: "Exchange of value" },
   transfer_in: { label: "Transfer in", group: "Transfers" },
   transfer_out: { label: "Transfer out", group: "Transfers" },
+  // A position that predates the available history — like an inbound
+  // transfer, but declaring its record reconstructed rather than observed.
+  opening_balance: { label: "Opening balance", group: "Before known history" },
   staking_reward: { label: "Staking reward", group: "Income" },
   lending_interest: { label: "Lending interest", group: "Income" },
   mining_reward: { label: "Mining reward", group: "Income" },
@@ -51,6 +55,58 @@ export const TYPE_VOCABULARY: Record<TransactionType, TypeWords> = {
 };
 
 const TYPE_ORDER = Object.keys(TYPE_VOCABULARY) as TransactionType[];
+
+interface ReconstructedWords {
+  /** The choice as the form offers it. */
+  label: string;
+  /** The chip a ledger row wears, so the assumption never poses as a movement. */
+  marker: string;
+  /** Why, and which figures the choice will affect — the copy is load-bearing. */
+  explanation: string;
+}
+
+/**
+ * The two variants of an Opening Balance, distinct because the difference
+ * decides a tax outcome: an exemption depends on the acquisition date, while
+ * the basis may be a genuine estimate.
+ */
+export const RECONSTRUCTED_WORDS: Record<Reconstructed, ReconstructedWords> = {
+  basis: {
+    label: "Acquisition date known — basis estimated",
+    marker: "basis estimated",
+    explanation:
+      "The date is used as given: it decides the holding period, so a disposal after more " +
+      "than a year is exempt and its gain excluded entirely. The estimated basis only sizes " +
+      "a gain that is taxed at all.",
+  },
+  basis_and_date: {
+    label: "Date and basis both reconstructed",
+    marker: "date & basis reconstructed",
+    explanation:
+      "Dated at the start of known history — deliberately late, so disposals count as " +
+      "short-term rather than assuming an older, exempt acquisition. Choose this only where " +
+      "the date is genuinely unknown: applied to a known date it manufactures tax on an " +
+      "exempt holding.",
+  },
+};
+
+/** What lots minted from an Opening Balance carry — shown wherever the marker is worn. */
+const ESTIMATED_LOT_TITLE =
+  "Lots minted from an Opening Balance are marked estimated; any disposal consuming one " +
+  "is flagged as resting on an estimate.";
+
+/** The instant means something different on each variant, and the label says so. */
+export function occurredAtWords(
+  type: TransactionType,
+  reconstructed: Reconstructed | null,
+): string {
+  if (type !== "opening_balance") {
+    return "Occurred at";
+  }
+  // Date-known is the default reading: the conservative label appears only
+  // once the conservative variant is deliberately chosen.
+  return reconstructed === "basis_and_date" ? "Known history begins at" : "Acquired at";
+}
 
 /**
  * The legs a fresh event of this type starts from — the balance the type
@@ -252,6 +308,18 @@ function LedgerRow({
         </td>
         <td className="py-3 pr-4">
           <span className="font-medium">{TYPE_VOCABULARY[transaction.type].label}</span>
+          {transaction.reconstructed && (
+            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+              <span className="microlabel text-caution" title={ESTIMATED_LOT_TITLE}>
+                {RECONSTRUCTED_WORDS[transaction.reconstructed].marker}
+              </span>
+              {transaction.estimated_basis_eur && (
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  est. {formatMoneyExact(transaction.estimated_basis_eur, "EUR")}
+                </span>
+              )}
+            </p>
+          )}
           {transaction.note && (
             <p className="mt-0.5 max-w-52 truncate text-xs text-muted-foreground">
               {transaction.note}
@@ -408,6 +476,13 @@ function TransactionForm({
     revising ? toInput(revising.occurred_at) : nowForInput(),
   );
   const [note, setNote] = useState(revising?.note ?? "");
+  // An Opening Balance's declarations; carried in state whatever the type,
+  // submitted only when the type is opening_balance. Date-known is the
+  // default: the conservative variant is for a date genuinely unknown.
+  const [reconstructed, setReconstructed] = useState<Reconstructed>(
+    revising?.reconstructed ?? "basis",
+  );
+  const [estimatedBasis, setEstimatedBasis] = useState(revising?.estimated_basis_eur ?? "");
   const [legs, setLegs] = useState<DraftLeg[]>(
     revising ? draftsOf(revising) : legTemplate("trade").map(freshLeg),
   );
@@ -444,6 +519,8 @@ function TransactionForm({
       type,
       occurred_at: new Date(occurredAt).toISOString(),
       note: note.trim() || null,
+      reconstructed: type === "opening_balance" ? reconstructed : null,
+      estimated_basis_eur: type === "opening_balance" ? estimatedBasis : null,
       legs: legs.map((leg) => ({
         account_id: Number(leg.accountId),
         instrument_id: Number(leg.instrumentId),
@@ -458,7 +535,10 @@ function TransactionForm({
     legs.length === 0 ||
     legs.some(
       (leg) => !leg.accountId || !leg.instrumentId || !isPositiveDecimal(leg.quantity),
-    );
+    ) ||
+    // Zero is a legitimate estimate — the most conservative there is — so the
+    // basis is judged by shape alone, not by isPositiveDecimal.
+    (type === "opening_balance" && !DECIMAL_PATTERN.test(estimatedBasis));
 
   return (
     <form
@@ -478,7 +558,7 @@ function TransactionForm({
         </div>
         <div className="space-y-2">
           <label htmlFor={`${id}-occurred`} className="microlabel block text-muted-foreground">
-            Occurred at
+            {occurredAtWords(type, reconstructed)}
           </label>
           <Input
             id={`${id}-occurred`}
@@ -502,6 +582,56 @@ function TransactionForm({
           />
         </div>
       </div>
+
+      {type === "opening_balance" && (
+        <fieldset
+          className="mt-5 space-y-4 rounded-md border border-border p-4"
+          aria-label="What is reconstructed"
+        >
+          <legend className="microlabel px-1 text-caution">Reconstructed, not observed</legend>
+          <p className="max-w-prose text-xs text-muted-foreground">
+            A position that already existed when the available history begins. {ESTIMATED_LOT_TITLE}
+          </p>
+          <div className="space-y-3">
+            {(Object.keys(RECONSTRUCTED_WORDS) as Reconstructed[]).map((variant) => (
+              <label key={variant} className="flex max-w-prose cursor-pointer items-start gap-3">
+                <input
+                  type="radio"
+                  name={`${id}-reconstructed`}
+                  value={variant}
+                  checked={reconstructed === variant}
+                  onChange={() => setReconstructed(variant)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    {RECONSTRUCTED_WORDS[variant].label}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {RECONSTRUCTED_WORDS[variant].explanation}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="max-w-56 space-y-2">
+            <label htmlFor={`${id}-basis`} className="microlabel block text-muted-foreground">
+              Estimated basis (EUR)
+            </label>
+            <Input
+              id={`${id}-basis`}
+              required
+              inputMode="decimal"
+              pattern={DECIMAL_PATTERN.source}
+              title="The reconstructed total cost of the position, in EUR. Zero is a legitimate estimate; a point separates the fraction."
+              value={estimatedBasis}
+              onChange={(event) => setEstimatedBasis(event.target.value)}
+              placeholder="0.00"
+              className="font-mono tabular-nums"
+            />
+          </div>
+        </fieldset>
+      )}
 
       <div className="mt-5 space-y-3">
         <p className="microlabel text-muted-foreground">Legs</p>

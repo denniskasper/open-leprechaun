@@ -60,6 +60,49 @@ test("the Admin records, revises and removes a Transaction end to end", async ({
   await expect(page.getByRole("row").filter({ hasText: note })).toHaveCount(0);
 });
 
+test("the Admin records an Opening Balance and the ledger wears the estimated marker", async ({
+  page,
+  request,
+}) => {
+  // Both variants of ticket 15 through the browser's own controls: the form
+  // opens on the date-known variant, the Admin reads why conservative dating
+  // exists and picks it, and the recorded row can never pose as a real
+  // movement. EUR is the only guaranteed Instrument, so it stands in; the
+  // declaration under test is structural, not economic.
+  await arrangeAccount(request);
+  const note = `e2e opening balance ${Date.now()}`;
+
+  await page.goto("/transactions");
+  await page.getByRole("button", { name: "Record Transaction" }).click();
+
+  const form = page.getByRole("form", { name: "Record a Transaction" });
+  await form.getByLabel("Type").selectOption("opening_balance");
+  await form.getByLabel("Note").fill(note);
+
+  // The declaration section explains both variants and which figures the
+  // choice affects; the instant's label follows the variant.
+  const declaration = form.getByRole("group", { name: "What is reconstructed" });
+  await expect(declaration.getByText("The date is used as given")).toBeVisible();
+  await expect(declaration.getByText("genuinely unknown")).toBeVisible();
+  await expect(form.getByLabel("Acquired at")).toBeVisible();
+  await declaration.getByLabel("Date and basis both reconstructed").check();
+  await expect(form.getByLabel("Known history begins at")).toBeVisible();
+  await declaration.getByLabel("Estimated basis (EUR)").fill("120.50");
+
+  await form.getByLabel("Account").selectOption({ label: "Fees" });
+  await form.getByLabel("Instrument").selectOption({ label: "EUR — Euro" });
+  await form.getByLabel("Quantity").fill("120.50");
+  await form.getByRole("button", { name: "Record", exact: true }).click();
+
+  const row = page.getByRole("row").filter({ hasText: note });
+  await expect(row.getByText("date & basis reconstructed")).toBeVisible();
+  await expect(row.getByText("est. €120.50")).toBeVisible();
+
+  await row.getByRole("button", { name: "Remove" }).click();
+  await row.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(page.getByRole("row").filter({ hasText: note })).toHaveCount(0);
+});
+
 test("the leg editor expresses more than two legs, with a fee charged against one", async ({
   page,
   request,

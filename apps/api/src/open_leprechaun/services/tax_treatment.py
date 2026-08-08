@@ -31,6 +31,13 @@ class Inflow(Enum):
     # (15) or a Stance decision (14) settles what the inflow was — an
     # unclassified inflow is never assumed to be a purchase.
     no_lot_until_classified = "no_lot_until_classified"
+    # An Opening Balance: the lot's basis is the Admin's declared estimate,
+    # never something observed, so the lot engine (19) mints it marked
+    # estimated and the disposal engine (21) flags every disposal consuming
+    # it as resting on an estimate. The acquisition date is the transaction's
+    # instant — the known date where the Admin knew it, the start of known
+    # history where date and basis are both reconstructed.
+    mints_estimated_lot = "mints_estimated_lot"
     # Kept, but received for nothing: no income — no Leistung, so nothing
     # under §22 — and no Anschaffungsvorgang either (BMF letter of
     # 10.05.2022 on virtual currencies). The lot is minted at zero basis,
@@ -61,6 +68,17 @@ class TaxConsequence:
     income: str | None = None
 
 
+def rests_on_estimate(inflow: Inflow) -> bool:
+    """Whether a lot minted by this inflow rests on a declared estimate.
+
+    The lot engine (19) mints such a lot marked estimated, and the disposal
+    engine (21) flags every disposal consuming one as resting on an estimate
+    — so a report can say which figures rest on an assumption instead of
+    presenting them with the confidence of a documented purchase.
+    """
+    return inflow is Inflow.mints_estimated_lot
+
+
 TAX_CONSEQUENCES: Mapping[str, TaxConsequence] = {
     # Out legs dispose of what left; in legs mint lots at cost. Which regime
     # — §23 private sale or §20 capital income — follows from the Instrument's
@@ -86,6 +104,11 @@ TAX_CONSEQUENCES: Mapping[str, TaxConsequence] = {
     # An unsolicited inflow kept without a counter-performance — what a
     # Stance decision (ticket 14) settles it as when the answer is no.
     "windfall": TaxConsequence(Inflow.no_acquisition, Outflow.none_expected),
+    # A position that predates available history (ticket 15). Not income and
+    # not a purchase: an honest declaration that the position existed, with
+    # an estimated basis and — where the date too is reconstructed — a
+    # conservatively late acquisition date.
+    "opening_balance": TaxConsequence(Inflow.mints_estimated_lot, Outflow.none_expected),
     # §20 EStG capital income: each becomes a Section 20 Event carrying its
     # category (ticket 26); withholding at source is ticket 43's.
     "dividend": TaxConsequence(
