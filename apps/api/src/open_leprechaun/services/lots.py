@@ -210,41 +210,14 @@ def rebuild(engine: Engine) -> None:
         _rebuild_on(connection, fingerprints.current(connection))
 
 
-@dataclass(frozen=True)
-class DriftedInput:
-    """One input class whose stored fingerprint no longer matches the current
-    inputs. `stored_count` is None when no materialisation has ever run."""
-
-    input_class: str
-    stored_count: int | None
-    current_count: int
-
-
-def drift(engine: Engine) -> list[DriftedInput]:
+def drift(engine: Engine) -> list[fingerprints.DriftedInput]:
     """What no longer matches, by input class — empty means the stored lots
-    are authoritative."""
+    are authoritative. The comparison itself is the fingerprint module's
+    (repositories/fingerprints.drifted), shared with the report lifecycle."""
     with engine.connect() as connection:
         stored = fingerprints.stored(connection, SUBJECT)
         current = fingerprints.current(connection)
-    drifted = [
-        DriftedInput(
-            input_class=input_class,
-            stored_count=stored[input_class].row_count if input_class in stored else None,
-            current_count=digest.row_count,
-        )
-        for input_class, digest in current.items()
-        if stored.get(input_class) != digest
-    ]
-    # A class the registry no longer computes — a refactor, not data — still
-    # means the stored lots rest on inputs nothing vouches for.
-    drifted += [
-        DriftedInput(
-            input_class=input_class, stored_count=stored[input_class].row_count, current_count=0
-        )
-        for input_class in stored
-        if input_class not in current
-    ]
-    return drifted
+    return fingerprints.drifted(stored, current)
 
 
 def fresh_lots(engine: Engine) -> list[Lot]:

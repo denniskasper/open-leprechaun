@@ -55,7 +55,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Transactions first: an Account or Instrument with ledger entries
         # behind it refuses to go. Legs follow their Transaction by cascade,
         # and Tax Lots follow their legs; the fingerprint alone would outlive
-        # its materialisation, so it goes explicitly.
+        # its materialisation, so it goes explicitly. Reports are frozen
+        # artifacts with no foreign keys, so they go explicitly too.
+        connection.execute(text("DELETE FROM report"))
         connection.execute(text("DELETE FROM input_fingerprint"))
         connection.execute(text("DELETE FROM transaction"))
         connection.execute(text("DELETE FROM instrument"))

@@ -7,12 +7,12 @@ reuse the same table and classes under their own subject — the mechanism is
 deliberately shared, never duplicated.
 
 Each class digests exactly the columns a derivation reads, so a note edit
-never churns a materialisation while every tax-relevant change does. Classes
-the roadmap has not built yet — rates (17, 18), corporate actions (52) — are
-declared now with no backing table and digest as empty; the ticket that
-builds a class's table also points its entry here at the rows, and that
-first real digest marks every dependent materialisation stale. An empty
-table digests like an absent one, so the pointing itself drifts nothing.
+never churns a materialisation while every tax-relevant change does. A class
+declared with no source — rates, corporate actions (52) — digests as empty,
+whether its table is unbuilt or deliberately excluded (each entry says
+which); the ticket that points an entry at rows makes that first real digest
+mark every dependent materialisation stale. An empty table digests like an
+absent one, so the pointing itself drifts nothing.
 
 These functions take the caller's Connection, not the Engine: a rebuild must
 stamp the fingerprint inside the same transaction — and snapshot — that read
@@ -87,7 +87,10 @@ INPUT_CLASSES: Mapping[str, str | None] = {
     # The Admin's standing elections, which select the statutory values that
     # apply.
     "tax_election": f"SELECT {_line('filing_status', 'church_tax')} AS line FROM tax_election",
-    # Declared, not yet built: reference rates (17) and prices (18)...
+    # Deliberately empty although the reference-rate store (17) exists: that
+    # store is append-only and immutable (ADR-0017) — a fetch only ever adds
+    # coverage, so no figure already stated can change under it. Prices (18)
+    # point this entry at rows when they arrive, being corrections-capable...
     "rates": None,
     # ...and corporate actions (52), whose reversal is remove-and-rebuild.
     "corporate_actions": None,
@@ -98,6 +101,41 @@ INPUT_CLASSES: Mapping[str, str | None] = {
 class InputDigest:
     row_count: int
     digest: str
+
+
+@dataclass(frozen=True)
+class DriftedInput:
+    """One input class whose stored fingerprint no longer matches the current
+    inputs. `stored_count` is None when the subject never stamped the class."""
+
+    input_class: str
+    stored_count: int | None
+    current_count: int
+
+
+def drifted(stored: dict[str, InputDigest], current: dict[str, InputDigest]) -> list[DriftedInput]:
+    """What no longer matches, by input class — empty means the subject's
+    stored rows are authoritative. The one comparison behind every staleness
+    verdict, for materialisations and reports alike."""
+    changed = [
+        DriftedInput(
+            input_class=input_class,
+            stored_count=stored[input_class].row_count if input_class in stored else None,
+            current_count=digest.row_count,
+        )
+        for input_class, digest in current.items()
+        if stored.get(input_class) != digest
+    ]
+    # A class the registry no longer computes — a refactor, not data — still
+    # means the stored rows rest on inputs nothing vouches for.
+    changed += [
+        DriftedInput(
+            input_class=input_class, stored_count=stored[input_class].row_count, current_count=0
+        )
+        for input_class in stored
+        if input_class not in current
+    ]
+    return changed
 
 
 def current(connection: Connection) -> dict[str, InputDigest]:
