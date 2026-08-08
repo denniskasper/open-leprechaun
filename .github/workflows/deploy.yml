@@ -1,0 +1,16 @@
+# One concern: deploying a green main. Called by ci.yml; not triggered
+# directly. The gate itself lives in the caller — ci.yml's `needs` list is
+# what makes every check a precondition. This body is a placeholder until
+# ticket 06 lands the Dokploy deployment.
+name: Deploy
+
+on:
+  workflow_call:
+
+jobs:
+  deploy:
+    name: Deploy gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: All checks green
+        run: echo "Eligible to deploy — the Dokploy deployment lands with ticket 06."

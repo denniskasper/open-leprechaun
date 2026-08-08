@@ -1,0 +1,24 @@
+# One concern: is the API side healthy? Called by ci.yml; not triggered
+# directly.
+name: API checks
+
+on:
+  workflow_call:
+
+jobs:
+  api:
+    name: Lint, tests, migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-api
+
+      - name: Lint and format check
+        run: pnpm lint
+
+      # Starts Postgres via Compose, then pytest — which includes the
+      # migration chain walk (base ⇄ head ⇄ base ⇄ head), so migrations are
+      # tested up and down as part of these checks.
+      - name: Tests against Postgres
+        run: pnpm test:api

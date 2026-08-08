@@ -1,0 +1,22 @@
+name: Set up the web toolchain
+description: >-
+  Everything a web-side job needs, defined once: pnpm and Node so the root
+  pnpm scripts (the single documented entry point) can run, plus the
+  workspace's node_modules from the frozen lockfile.
+
+runs:
+  using: composite
+  steps:
+    # No version input: the action reads `packageManager` from package.json,
+    # so the pin lives in one place. Safe to run again in the same job — the
+    # installer wipes its destination and reinstalls.
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: pnpm
+
+    - name: Install workspace dependencies
+      run: pnpm install --frozen-lockfile
+      shell: bash

@@ -1,0 +1,39 @@
+# The orchestrator: one job per concern, each a reusable workflow, so a
+# change to one pipeline never means reading another. Toolchain setup lives
+# in .github/actions/, defined once per side.
+name: CI
+
+# `push` covers every branch in this repository, so a branch with an open
+# pull request runs once, not twice. `pull_request` exists solely for forks,
+# whose pushes cannot trigger workflows here; the job-level guard below keeps
+# same-repo pull requests from running a second time.
+on:
+  push:
+  pull_request:
+
+# A superseding push cancels the run it overtook; per-ref, so runs on
+# different branches never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    uses: ./.github/workflows/api-checks.yml
+
+  web:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    uses: ./.github/workflows/web-checks.yml
+
+  e2e:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    uses: ./.github/workflows/e2e.yml
+
+  # The gate every deployment stands behind: eligible only when all three
+  # checks are green, and only on main. Ticket 06 fills the deploy workflow's
+  # body; the `needs` list here is the part that must survive it.
+  deploy:
+    needs: [api, web, e2e]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml

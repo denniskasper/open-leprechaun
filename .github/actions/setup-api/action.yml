@@ -1,0 +1,36 @@
+name: Set up the API toolchain
+description: >-
+  Everything an API-side job needs, defined once: pnpm and Node so the root
+  pnpm scripts (the single documented entry point) can run, Python 3.14, and
+  the virtualenv those scripts expect at apps/api/.venv.
+
+runs:
+  using: composite
+  steps:
+    # No version input: the action reads `packageManager` from package.json,
+    # so the pin lives in one place. Safe to run again in the same job — the
+    # installer wipes its destination and reinstalls.
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+        cache: pip
+        cache-dependency-path: apps/api/requirements*.txt
+
+    # The same command a developer runs; it builds apps/api/.venv, which every
+    # root script that touches Python hardcodes.
+    - name: Build the virtualenv
+      run: pnpm run setup:api
+      shell: bash
+
+    # Compose refuses to start Postgres without the variables .env carries;
+    # the example values are the development values, which is what CI wants.
+    # Here rather than per job because every API-side job talks to Compose.
+    - name: Create the environment file
+      run: cp .env.example .env
+      shell: bash

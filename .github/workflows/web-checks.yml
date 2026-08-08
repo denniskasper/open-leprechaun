@@ -1,0 +1,26 @@
+# One concern: is the web side healthy? Called by ci.yml; not triggered
+# directly.
+name: Web checks
+
+on:
+  workflow_call:
+
+jobs:
+  web:
+    name: Typecheck, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-web
+
+      # `pnpm build` typechecks again before bundling; the explicit step
+      # exists so a type error fails under its own name, not inside "build".
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test:web
+
+      - name: Production build
+        run: pnpm build
