@@ -2,7 +2,7 @@
 
 **What to build:** One event shape that every source of capital income reduces to, and the first half of the engine that consumes it: grouping a year's events by statutory category, netting within each, and applying that category's per-year loss cap. Nothing that produces capital income knows anything about categories, allowances or rates — it emits events, and the engine alone decides.
 
-This is the structural decision the whole rebuild turns on. The shape must be complete and category-driven before any producer is written against it, because a producer written against a futures-shaped calculator cannot later be reused.
+This is the structural decision the whole project turns on. The shape must be complete and category-driven before any producer is written against it, because a producer written against a futures-shaped calculator cannot later be reused.
 
 The report gains a section showing each category's balance for the year. The allowance, the rate and cross-year carryforward are deliberately **not** in this ticket — they follow in 27.
 

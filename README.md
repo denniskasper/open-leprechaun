@@ -4,8 +4,11 @@ A self-hosted ledger of everything the Admin owns — crypto on exchanges, crypt
 futures positions, and shares, ETFs and funds at brokers — that knows German tax law well enough to
 produce the figures for a tax return and shows its working for every one of them.
 
-This is a rebuild. See [`.scratch/greenfield-v2/spec.md`](.scratch/greenfield-v2/spec.md) for the
-plan, [`CONTEXT.md`](CONTEXT.md) for the domain vocabulary and [`docs/adr/`](docs/adr) for the
+> **Note:** This project is under active development and provided as-is. It is not yet ready for
+> production use. Use at your own risk.
+
+See [`.scratch/roadmap/spec.md`](.scratch/roadmap/spec.md) for the plan,
+[`CONTEXT.md`](CONTEXT.md) for the domain vocabulary and [`docs/adr/`](docs/adr) for the
 decisions behind it.
 
 > **Current state: walking skeleton.** The path from Postgres through the API to the browser is

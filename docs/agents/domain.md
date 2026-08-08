@@ -28,7 +28,7 @@ If this repo ever grows into several independently-modelled contexts, the layout
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
 
-`CONTEXT.md` marks superseded v1 terminology with an explicit _Avoid_ line — honour those.
+`CONTEXT.md` marks superseded terminology with an explicit _Avoid_ line — honour those.
 
 If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 

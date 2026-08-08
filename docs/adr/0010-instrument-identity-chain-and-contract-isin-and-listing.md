@@ -13,7 +13,7 @@ disconnected from reality. v1 recorded contract-address keying as the correct fi
 disproportionate to a single-user tool, accepted the weak identity model as known debt, and named
 it the decision most likely to be revisited.
 
-A greenfield rebuild is exactly the moment it becomes proportionate.
+Building the model afresh is exactly the moment it becomes proportionate.
 
 ## Decision
 

@@ -1,37 +1,35 @@
-# Open Leprechaun v2 — Greenfield Rebuild
+# Open Leprechaun — Product Spec
 
 Status: ready-for-agent
 
 ## Problem Statement
 
 The Admin self-hosts a ledger of everything they own and needs German tax figures out of it
-once a year. The existing implementation (v1) produces correct §23 / §22 / §20-futures numbers
-for crypto, but three things about it now block the work rather than support it.
+once a year, across crypto on exchanges, crypto in self-custody, futures positions, and shares,
+ETFs and funds at brokers. Three demands of that domain defeat the obvious data model, and each
+one has to be met in the schema rather than worked around above it.
 
-**The model lies in two places.** The top-level entity that holds value is called `Exchange`,
-and roughly half its rows are hardware wallets — the name asserts "trading venue" for things
-that are not one, and leaves no room for a broker at all. Below it, an `Asset` is keyed on its
-**symbol**, which two unrelated tokens can share; the loser of that collision silently inherits
-the winner's price, name and logo. An entire concept (`Untrusted Asset`) exists to work around
-that one schema decision.
+**Places and assets must be named for what they are.** The thing that holds value is not a
+trading venue — it is equally a hardware wallet, a bank or a broker — so a model that names the
+top-level entity after one of its kinds has no room for the others. Below it, an asset cannot be
+keyed on its **symbol**: two unrelated tokens share one, and the collision silently merges their
+price, name and history. Identity has to come from something that is actually unique.
 
-**The ledger cannot express money.** A transaction carries one asset, one quantity, and a
-scalar EUR total. There is no currency column anywhere, no cash instrument, and no FX rate. So
-a foreign-currency trade cannot be recorded, a cash balance cannot be held, and the other side
-of a trade exists only as a second row that convention — not structure — keeps in step.
+**The ledger must express money.** A record carrying one asset, one quantity and a scalar EUR
+total cannot hold a foreign-currency trade, a cash balance, or an FX rate. Both sides of a trade
+have to be structurally linked rather than kept in step by convention.
 
-**§20 was built as "futures".** The annual summary carries flat futures-shaped totals. There is
-no category, no statutory loss pot, and no carryforward between years. Capital income from
-shares, funds, dividends, interest or **Vorabpauschale** has nowhere to go, and the allowance is
-applied to a single source rather than to the combined picture the law actually taxes.
+**§20 is not one shape.** Capital income arrives from shares, funds, dividends, interest,
+**Vorabpauschale** and futures alike, and the law nets them within statutory loss pots, carries
+losses forward inside their own pot, and applies one allowance across the combined picture. A
+summary shaped around any single source cannot express that.
 
-Meanwhile the Admin now holds securities as well as crypto, across brokers with different
-withholding behaviour, and needs one set of figures covering both.
+The Admin holds securities as well as crypto, across brokers with different withholding
+behaviour, and needs one set of figures covering both.
 
 ## Solution
 
-Rebuild in a new repository, carrying over the domain knowledge and discarding the accreted
-structure. Four changes carry most of the weight:
+Four decisions carry most of the weight:
 
 1. **Name the concepts honestly.** A **Platform** is any place that holds value; an **Account**
    is one holding under it and the boundary for FIFO; a **Depot** is what an Account under a
@@ -50,7 +48,8 @@ structure. Four changes carry most of the weight:
 
 4. **Default to deny for things that arrive unasked.** An Instrument the Admin has never
    classified carries a **Stance** of `unacknowledged`, and an inflow of one mints no **Tax
-   Lot** until it is classified. This replaces both `Untrusted Asset` and `De-minimis Inflow`.
+   Lot** until it is classified. One concept covers both the unrecognised asset and the
+   unsolicited dust inflow, which would otherwise need a special case each.
 
 The first deliverable is a correct German tax return for the 2026 tax year, covering crypto
 spot, crypto income, futures and securities together.
@@ -566,12 +565,14 @@ spot, crypto income, futures and securities together.
 
 ### Approach
 
-- New repository. v1 is not migrated: it stays runnable as a read-only reference. The one-shot
-  legacy database importer is dropped — every source file is available, and v2's shapes differ
-  enough (balanced legs, cash Instruments, evidence-scoped Accounts, chain-and-contract keys)
-  that a v1 reader would map into shapes that no longer exist.
-- v1's statutory test fixtures are ported first and act as a **parity oracle**: v2 must reproduce
-  v1's figures on v1's fixtures, and every divergence must be explained as a deliberate fix.
+- History is re-established from its original sources rather than imported from any earlier
+  database. Every source file is available, and the shapes here — balanced legs, cash
+  Instruments, evidence-scoped Accounts, chain-and-contract keys — differ enough that a reader
+  for an older schema would map into structures that do not exist.
+- The statutory test fixtures from the Admin's earlier implementation are ported first and act
+  as a **parity oracle**: the tax engines must reproduce the figures already filed on those
+  fixtures, and every divergence must be explained as a deliberate fix. See
+  [ADR 0001](../../docs/adr/0001-rebuild-in-a-new-repository-with-a-parity-oracle.md).
 
 ### Stack
 
@@ -583,8 +584,8 @@ spot, crypto income, futures and securities together.
 - **Database:** Postgres, in Docker Compose locally.
 - No Makefile. `pnpm` scripts at the repository root are the single documented entry point;
   Python tasks are invoked through them.
-- Layout is the API service and the web client. There is no shared TypeScript package — its only
-  purpose in v1 was sharing types with a mobile client that is out of scope.
+- Layout is the API service and the web client. There is no shared TypeScript package — it would
+  only earn its keep by sharing types with a mobile client, which is out of scope.
 
 ### Deployment and CI
 
@@ -598,9 +599,9 @@ spot, crypto income, futures and securities together.
 
 ### Domain model
 
-- **Platform** replaces v1's `Exchange`, with kinds covering exchange, cold storage, software
-  wallet, broker and bank. **Account** replaces `Wallet`. **Depot** is vocabulary for an Account
-  under a broker Platform — no table, no subtype, nothing branches on it.
+- **Platform** is any place that holds value, with kinds covering exchange, cold storage,
+  software wallet, broker and bank. **Account** is one holding under it. **Depot** is vocabulary
+  for an Account under a broker Platform — no table, no subtype, nothing branches on it.
 - An Account's scope is as fine as its Platform can evidence. Where an export names an account and
   its extended public key, that is the Account; where it names only an address, the Account is one
   device and one chain. Mixed granularity across Platforms is intended.
@@ -672,12 +673,12 @@ spot, crypto income, futures and securities together.
   rather than merely unlikely.
 - Each connector declares the timezone and units its venue exports in and converts on the way in.
   An export in local time is never tagged UTC; sub-units are normalised.
-- Adapters to build: OKX, Coinbase, Pionex (portable from v1), Trading 212, Bitpanda. Statement
-  import for eToro. CSV connectors: Ledger, BitBox (both portable from v1), plus a generic
+- Adapters to build: OKX, Coinbase, Pionex (portable from existing work), Trading 212, Bitpanda.
+  Statement import for eToro. CSV connectors: Ledger, BitBox (both likewise portable), plus a generic
   column-mapping importer. Address Indexer: Solana first, with the port able to take other chains.
 - Platforms with no ongoing activity are served by Opening Balance and reconciliation, not by an
   adapter.
-- An independent tax tool is used as a downstream verifier only: v2 exports its ledger in that
+- An independent tax tool is used as a downstream verifier only: the ledger is exported in that
   tool's import format so both engines compute the same year from identical transactions. Data
   never flows the other way.
 
@@ -712,8 +713,9 @@ substitute is not acceptable — the queries and the migrations are part of what
 **2. The tax engine as a pure function** — transactions and configuration in, annual result out.
 This is the one place a lower seam is justified, because every statutory rule needs a test that
 fails individually and loudly. Each such test names the paragraph it implements, and its fixture
-must be one that would fail if the rule were dropped. Prior art: v1 already isolates its tax
-intermediates as pure structures with no database dependency, and its fixtures port directly.
+must be one that would fail if the rule were dropped. Prior art: the Admin's earlier
+implementation already isolates its tax intermediates as pure structures with no database
+dependency, and its fixtures port directly.
 
 Boundary cases get explicit tests rather than being assumed to fall out: both sides of a tax-year
 boundary in winter and summer time; a Freigrenze at, just below and just above its threshold; the
@@ -743,7 +745,7 @@ Migrations are tested up and down against a seeded database in CI.
 - **Money-weighted return and performance analytics.** Realised and unrealised results are shown;
   internal rate of return is not computed.
 - **Upcoming income calendar.** No forecast of announced dividend or distribution dates.
-- **Migrating v1's database.** History is re-established from its sources.
+- **Migrating any earlier database.** History is re-established from its original sources.
 - **Filing.** The application states taxable amounts. It does not submit anything to any authority.
 - **Trading.** No order placement and no write access of any kind to any venue. Read-only
   credentials only.

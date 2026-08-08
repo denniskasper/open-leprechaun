@@ -29,7 +29,7 @@ How each criterion is held:
   casing (a raw-SQL test proves the schema alone refuses it). Native coins key on symbol within
   their family slice; cash on symbol within its own. Securities key on ISIN.
 - **Symbol never authoritative**: symbol appears in no token index, and two tokens sharing a
-  ticker — the v1 collision case — are just two rows.
+  ticker — the collision case — are just two rows.
 - **Listing**: `(instrument, venue, quote_currency)` unique; the table exists so the price-source
   tickets (18/45) have a target that names market and currency.
 - **Identifier history**: every Instrument opens its history at creation — a security's ISIN, a
