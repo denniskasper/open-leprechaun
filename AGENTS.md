@@ -14,6 +14,12 @@ fix: handle empty payload
 docs: note commit conventions
 ```
 
+## Versioning
+
+Semantic versioning, judged against the public contract. Before bumping a
+version, cutting a release, or deciding whether a change is breaking, read
+`docs/agents/versioning.md` — three files must move together.
+
 ## Design and UI
 
 Any work on design or UI — new components, layout, styling, visual polish —
