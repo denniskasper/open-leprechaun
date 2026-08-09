@@ -1,9 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Shapes } from "lucide-react";
 import { fetchInstruments, type Instrument } from "@/api/instruments";
+import {
+  fetchCryptoPrices,
+  type PricedInstrument,
+  type ProviderCondition,
+} from "@/api/prices";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { formatMoneyExact, formatTimestamp } from "@/lib/format";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
 export interface InstrumentIdentity {
@@ -71,11 +77,43 @@ const FAMILY_LABEL: Record<Instrument["family"], string> = {
   cash: "Cash",
 };
 
+/**
+ * One line naming each failing provider and what its failure actually was —
+ * a rate limit is its own condition, never conflated with an outage. Null
+ * when every provider answered.
+ */
+export function conditionLine(conditions: ProviderCondition[]): string | null {
+  if (conditions.length === 0) {
+    return null;
+  }
+  return conditions
+    .map(
+      ({ provider, condition }) =>
+        `${provider} ${condition === "rate_limited" ? "rate-limited" : "outage"}`,
+    )
+    .join(" · ");
+}
+
+/**
+ * What a stale price's label explains on demand: whose answer is being
+ * served, and from when — so a stale figure is never mistaken for current.
+ */
+export function staleExplanation(entry: PricedInstrument, locale?: string): string {
+  const age =
+    entry.as_of === null ? "an unknown time" : formatTimestamp(Date.parse(entry.as_of), locale);
+  return `Every provider failed just now — this is the last known price, from ${entry.source} at ${age}.`;
+}
+
 export function InstrumentsPage() {
   const { data, error, refetch } = useQuery({
     queryKey: ["instruments"],
     queryFn: fetchInstruments,
   });
+  // Prices arrive separately: the provider chain may be slow or down, and the
+  // instrument list must not wait on it — a failed report leaves the table
+  // standing with its price column honestly empty.
+  const prices = useQuery({ queryKey: ["crypto-prices"], queryFn: fetchCryptoPrices });
+  const conditions = conditionLine(prices.data?.conditions ?? []);
 
   return (
     <div className="space-y-10">
@@ -98,20 +136,34 @@ export function InstrumentsPage() {
           description="Instruments appear here as imports and later tickets create them — nothing has minted one so far."
         />
       ) : data ? (
-        <InstrumentTable instruments={data} />
+        <div className="space-y-3">
+          {conditions && (
+            <p className="microlabel text-caution">
+              price providers: {conditions} — stale prices below are last known, with their age
+            </p>
+          )}
+          <InstrumentTable instruments={data} prices={prices.data?.prices ?? []} />
+        </div>
       ) : null}
     </div>
   );
 }
 
-function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
+function InstrumentTable({
+  instruments,
+  prices,
+}: {
+  instruments: Instrument[];
+  prices: PricedInstrument[];
+}) {
   const shared = sharedSymbols(instruments);
+  const priceOf = new Map(prices.map((entry) => [entry.instrument_id, entry]));
 
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
         <tr className="border-b border-border text-left">
-          {["Symbol", "Name", "Family", "Identity", "Listings"].map((column) => (
+          {["Symbol", "Name", "Family", "Identity", "Price", "Listings"].map((column) => (
             <th key={column} scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
               {column}
             </th>
@@ -163,6 +215,9 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
             >
               {identityOf(instrument)}
             </td>
+            <td className="py-3 pr-4 font-mono tabular-nums">
+              <PriceCell entry={priceOf.get(instrument.id)} />
+            </td>
             <td className="py-3 font-mono tabular-nums text-muted-foreground">
               {instrument.listings.length === 0
                 ? "—"
@@ -175,5 +230,38 @@ function InstrumentTable({ instruments }: { instruments: Instrument[] }) {
         })}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * The EUR price the chain answered (ticket 18). A stale figure wears its
+ * label and explains its source and age; an Instrument nothing has ever
+ * priced says "unpriced" — never a zero. Instruments the chain does not
+ * price at all — securities (ticket 45), cash and stablecoins (valued by
+ * reference rate) — stay a quiet dash.
+ */
+function PriceCell({ entry }: { entry: PricedInstrument | undefined }) {
+  if (!entry) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  if (entry.status === "unpriced") {
+    return (
+      <span
+        className="microlabel text-caution"
+        title="No provider prices this Instrument and no price was ever known — an unknown value, not zero."
+      >
+        unpriced
+      </span>
+    );
+  }
+  return (
+    <>
+      {entry.price_eur !== null && formatMoneyExact(entry.price_eur, "EUR")}
+      {entry.status === "stale" && (
+        <span className="microlabel ml-2 text-caution" title={staleExplanation(entry)}>
+          stale
+        </span>
+      )}
+    </>
   );
 }

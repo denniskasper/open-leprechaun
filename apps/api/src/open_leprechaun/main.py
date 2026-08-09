@@ -7,6 +7,7 @@ from open_leprechaun.routers import (
     instruments,
     meta,
     platforms,
+    prices,
     reports,
     statutory,
     transactions,
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(instruments.router, prefix=API_PREFIX)
     app.include_router(platforms.router, prefix=API_PREFIX)
+    app.include_router(prices.router, prefix=API_PREFIX)
     app.include_router(reports.router, prefix=API_PREFIX)
     app.include_router(statutory.router, prefix=API_PREFIX)
     app.include_router(transactions.router, prefix=API_PREFIX)

@@ -280,6 +280,33 @@ forms the deduplication key. A **Normalized Fill** carries optional enrichment �
 reduce-only, per-fill realised result — populated by venues that expose it, making derivation
 exact, and left unset otherwise.
 
+## Market data
+
+### Price Chain
+
+The documented order of crypto price providers (CoinGecko, then DefiLlama), each behind one
+port. A provider identifies an Instrument by the ledger's own identity attributes — chain and
+contract for a token, symbol for a native coin — and maps them to whatever identifiers it uses;
+an Instrument it cannot map falls through to the next provider. **No provider-specific
+identifier being absent may exclude an Instrument from pricing.**
+
+What a provider answers becomes the stored **last known price** — price in EUR, source, and the
+instant the quote represents. When every provider fails or passes over an Instrument, the last
+known price is served **clearly labelled stale** with its source and age; an Instrument nothing
+has ever priced is named **unpriced**, never valued at zero. Staleness is reported by naming
+the affected Instruments, and a provider's rate limit is its own named condition, distinct from
+an outage.
+
+The chain prices only what the **Reference Rate** universe cannot: a **Stablecoin** routes to
+its peg's daily rate, and a `dangerous` or everywhere-`ignored` Instrument may never acquire a
+price source.
+
+_Avoid_: a symbol-keyed provider lookup for tokens — two tokens legitimately share a ticker,
+and one would inherit the other's price. Only a native coin, whose symbol is its identity, maps
+through its symbol.
+_Avoid_: reading "stale" as an age judgement. It is an outcome — the chain could not answer
+just now — not a threshold.
+
 ## Derivatives
 
 ### Fill

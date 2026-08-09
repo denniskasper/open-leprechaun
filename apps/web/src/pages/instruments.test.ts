@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Instrument } from "@/api/instruments";
-import { identityOf, sharedSymbols, stanceWarning } from "./instruments";
+import type { PricedInstrument } from "@/api/prices";
+import { conditionLine, identityOf, sharedSymbols, staleExplanation, stanceWarning } from "./instruments";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
   return {
@@ -103,5 +104,40 @@ describe("stanceWarning", () => {
         instrument({ dangerous: true, stances: [{ account_id: 1, stance: "kept" }] }),
       ),
     ).toBe("dangerous");
+  });
+});
+
+describe("conditionLine", () => {
+  it("is null while every provider answers", () => {
+    expect(conditionLine([])).toBeNull();
+  });
+
+  it("names each provider and keeps a rate limit distinct from an outage", () => {
+    expect(
+      conditionLine([
+        { provider: "coingecko", condition: "rate_limited" },
+        { provider: "defillama", condition: "outage" },
+      ]),
+    ).toBe("coingecko rate-limited · defillama outage");
+  });
+});
+
+describe("staleExplanation", () => {
+  const stale: PricedInstrument = {
+    instrument_id: 1,
+    symbol: "BTC",
+    name: "Bitcoin",
+    status: "stale",
+    price_eur: "48000.5",
+    source: "defillama",
+    as_of: "2026-08-07T12:00:00Z",
+  };
+
+  it("names the source and the age of the last known price", () => {
+    const explanation = staleExplanation(stale, "de-DE");
+
+    expect(explanation).toContain("last known price");
+    expect(explanation).toContain("defillama");
+    expect(explanation).toContain("2026");
   });
 });
