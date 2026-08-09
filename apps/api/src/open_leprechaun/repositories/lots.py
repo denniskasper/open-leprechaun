@@ -22,13 +22,16 @@ class Lot:
     """One acquisition still on the books, keyed by the in-leg that minted it
     plus an ordinal — a confirmed self-transfer (ticket 16) may carry several
     source lots across on one in-leg, each keeping its own acquisition date.
+    A coin-margined settlement (ticket 29) is minted by no in-leg — its
+    `leg_id` is None, and it keys on where and when it settled:
+    (account_id, instrument_id, acquired_at, ordinal).
 
     `basis_eur` is None while the basis awaits a valuation the ledger alone
     cannot state (tickets 17, 18); `basis_source` says how the basis was, or
     will be, determined.
     """
 
-    leg_id: int
+    leg_id: int | None
     ordinal: int
     account_id: int
     instrument_id: int

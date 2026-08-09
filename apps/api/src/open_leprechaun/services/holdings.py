@@ -31,9 +31,11 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
+from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import holdings as holdings_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import reference_rates
+from open_leprechaun.services import futures as futures_service
 from open_leprechaun.services import fx, lots
 from open_leprechaun.services.fx import ConvertedAmount, RateUnavailableError
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
@@ -104,12 +106,14 @@ def portfolio(engine: Engine) -> list[Position]:
         instrument_rows = lots_repository.instrument_rows(connection)
         account_rows = holdings_repository.account_rows(connection)
         price_rows = holdings_repository.price_rows(connection)
+        futures_close_rows = futures_repository.closed_position_rows(connection)
     derived = lots.derive(
         transaction_rows,
         leg_rows,
         numeraire_instruments=numeraire,
         stance_rows=stance_rows,
         match_rows=match_rows,
+        futures_close_rows=futures_close_rows,
     )
     instruments = {row.id: row for row in instrument_rows}
     accounts = {row.id: row for row in account_rows}
@@ -117,7 +121,9 @@ def portfolio(engine: Engine) -> list[Position]:
     decisions_of = lots.grouped(stance_rows, "instrument_id")
 
     positions = []
-    for (account_id, instrument_id), quantity in sorted(_held(leg_rows).items()):
+    for (account_id, instrument_id), quantity in sorted(
+        _held(leg_rows, futures_close_rows).items()
+    ):
         if quantity == 0:
             continue
         instrument = instruments[instrument_id]
@@ -172,14 +178,24 @@ class _Valuation:
 _UNVALUED = _Valuation(None, None, None, None)
 
 
-def _held(leg_rows: list[Row]) -> dict[tuple[int, int], Decimal]:
-    """What the ledger says sits where: in-legs minus out- and fee-legs, per
-    (Account, Instrument)."""
+def _held(leg_rows: list[Row], futures_close_rows: list[Row]) -> dict[tuple[int, int], Decimal]:
+    """What the books say sits where: in-legs minus out- and fee-legs, per
+    (Account, Instrument) — plus what coin-margined closes settled
+    (ticket 29), the same positive net figures whose lots the derivation
+    mints, so quantity and queue can never disagree. A losing close reduces
+    nothing here: it consumed no lot, and the drift it leaves at the venue
+    is reconciliation's to surface (ticket 39)."""
     held: dict[tuple[int, int], Decimal] = {}
     for leg in leg_rows:
         key = (leg.account_id, leg.instrument_id)
         signed = leg.quantity if leg.role == "in" else -leg.quantity
         held[key] = held.get(key, Decimal(0)) + signed
+    for close in futures_close_rows:
+        net = futures_service.net_figure(close)
+        if net <= 0:
+            continue
+        key = (close.account_id, close.settlement_instrument_id)
+        held[key] = held.get(key, Decimal(0)) + net
     return held
 
 

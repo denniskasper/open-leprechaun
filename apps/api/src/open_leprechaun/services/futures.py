@@ -14,10 +14,14 @@ documented net accounting applies: an extension averages the entry price, a
 reduction realises against that average, and a fill crossing zero closes one
 position and opens the next with the remainder, its fee split pro rata.
 Where the venue states a fill's own realised result it is used verbatim, and
-reduce-only rules a flip out. A stream the flags contradict — a reduce-only
-fill with nothing open, a hedge-stream reduction beyond what is open — is
-withdrawn whole and flagged as an issue for manual handling rather than
-guessed at (ADR-0009).
+reduce-only rules a flip out. An inverse contract settles in the coin rather
+than a quote currency (ticket 29), so the net-accounting fallback would
+state its result in the wrong unit — such a stream derives only from
+venue-stated per-fill results and is otherwise refused. A stream the flags
+contradict — a reduce-only fill with nothing open, a hedge-stream reduction
+beyond what is open, fills disagreeing on the variant — is withdrawn whole
+and flagged as an issue for manual handling rather than guessed at
+(ADR-0009).
 
 Funding is pulled separately and attributed to the position open for its
 account and symbol at the payment instant; a payment no single position can
@@ -112,6 +116,20 @@ def _walk(
             account_id=account_id, symbol=symbol, position_side=position_side, reason=reason
         )
 
+    variants = {fill.inverse for fill in fills}
+    if None in variants:
+        return issue(
+            "The source does not state whether the contract is inverse —"
+            " assuming a linear contract could book a coin-settled result"
+            " in the wrong unit, so the stream is refused, not converted."
+        )
+    if len(variants) > 1:
+        return issue(
+            "The fills disagree on whether the contract is inverse — the"
+            " stream cannot be one contract's history."
+        )
+    inverse = variants == {True}
+
     positions: list[FuturesPosition] = []
     pos = Decimal(0)
     avg = Decimal(0)
@@ -137,6 +155,13 @@ def _walk(
             total_opened += fill.size
             fees += fill.fee
             continue
+        if inverse and fill.realized is None:
+            return issue(
+                "An inverse contract settles in the coin — net accounting"
+                " would state its result in the quote currency, so the venue"
+                " must state each reducing fill's realised result, or the"
+                " position be entered manually."
+            )
         direction = _sign(pos)
         reduced = min(fill.size, abs(pos))
         remainder = fill.size - reduced

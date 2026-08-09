@@ -22,7 +22,9 @@ from open_leprechaun.repositories import (
     transactions,
 )
 from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.services import futures as futures_service
 from open_leprechaun.services import fx, holdings
+from open_leprechaun.services.futures import NormalizedFill
 
 BOUGHT = datetime(2025, 3, 14, 12, 0, tzinfo=UTC)
 LATER = datetime(2025, 6, 3, 12, 0, tzinfo=UTC)
@@ -531,3 +533,49 @@ def test_the_api_serves_a_display_rate_for_presentation_only(db):
     assert answered.json()["rate"] == "1.10"
     assert answered.json()["currency"] == "USD"
     assert refused.status_code == 404
+
+
+def test_a_coin_margined_close_puts_the_settlement_asset_in_the_portfolio(db):
+    """Ticket 29: the coin a close settled is held — quantity grown by the
+    net figure, its basis read from the settlement lot's queue, awaiting the
+    market value at the close like any income-minted lot."""
+    account, btc = _account(db, platform_name="OKX"), _btc(db)
+    _keep(db, btc, account)
+    futures_service.sync(
+        db,
+        source="okx:futures",
+        fills=[
+            NormalizedFill(
+                external_id="open-1",
+                account_id=account,
+                symbol="BTCUSD-INVERSE",
+                side="buy",
+                price=Decimal("10000"),
+                size=Decimal("1"),
+                fee=Decimal("0.0001"),
+                settlement_instrument_id=btc,
+                occurred_at=BOUGHT,
+                inverse=True,
+            ),
+            NormalizedFill(
+                external_id="close-1",
+                account_id=account,
+                symbol="BTCUSD-INVERSE",
+                side="sell",
+                price=Decimal("11000"),
+                size=Decimal("1"),
+                fee=Decimal("0.0001"),
+                settlement_instrument_id=btc,
+                occurred_at=LATER,
+                realized=Decimal("0.0092"),
+                inverse=True,
+            ),
+        ],
+    )
+
+    (position,) = holdings.portfolio(db)
+
+    assert position.instrument_id == btc
+    assert position.account_id == account
+    assert position.quantity == Decimal("0.0090")
+    assert position.basis_gap == holdings.AWAITING_VALUATION

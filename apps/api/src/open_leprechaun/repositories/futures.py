@@ -36,7 +36,15 @@ class NormalizedFill:
     source — forms the deduplication key. Amounts are in the contract's
     settlement currency, resolved to an Instrument before it reaches here.
     The enrichment trio is populated by venues that expose it and None
-    otherwise — never a default."""
+    otherwise — never a default.
+
+    `inverse` says the contract is coin-margined — it settles in the coin,
+    not a quote currency (ticket 29). None means the port did not say,
+    never a default — and unlike the enrichment trio it cannot degrade
+    gracefully: net accounting assumes a linear contract and would state an
+    inverse result in the wrong unit, so derivation refuses a stream whose
+    variant is unstated. A connector or adapter that cannot tell the
+    variant therefore refuses explicitly rather than converting wrongly."""
 
     external_id: str
     account_id: int
@@ -50,6 +58,7 @@ class NormalizedFill:
     position_side: str | None = None
     reduce_only: bool | None = None
     realized: Decimal | None = None
+    inverse: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -109,10 +118,10 @@ def store_fills(connection: Connection, source: str, fills: Sequence[NormalizedF
             text(
                 "INSERT INTO futures_fill (source, external_id, account_id, symbol, side,"
                 " price, size, fee, settlement_instrument_id, occurred_at, position_side,"
-                " reduce_only, realized)"
+                " reduce_only, realized, inverse)"
                 " VALUES (:source, :external_id, :account_id, :symbol, :side, :price, :size,"
                 " :fee, :settlement_instrument_id, :occurred_at, :position_side, :reduce_only,"
-                " :realized)"
+                " :realized, :inverse)"
                 " ON CONFLICT ON CONSTRAINT futures_fill_dedupe DO NOTHING"
             ),
             {
@@ -129,6 +138,7 @@ def store_fills(connection: Connection, source: str, fills: Sequence[NormalizedF
                 "position_side": fill.position_side,
                 "reduce_only": fill.reduce_only,
                 "realized": fill.realized,
+                "inverse": fill.inverse,
             },
         ).rowcount
     return inserted
@@ -168,7 +178,8 @@ def fills_for_source(connection: Connection, source: str) -> list[Row]:
         connection.execute(
             text(
                 "SELECT id, source, external_id, account_id, symbol, side, price, size, fee,"
-                " settlement_instrument_id, occurred_at, position_side, reduce_only, realized"
+                " settlement_instrument_id, occurred_at, position_side, reduce_only, realized,"
+                " inverse"
                 " FROM futures_fill WHERE source = :source ORDER BY occurred_at, id"
             ),
             {"source": source},

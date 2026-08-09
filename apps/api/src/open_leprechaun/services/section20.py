@@ -544,7 +544,11 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     # Futures (ticket 28, ADR-0009): a closed position emits one event for
     # its net figure — realised result less trading fees plus attributed
     # funding — into the Termingeschäfte pot, and computes no tax of its own
-    # (ADR-0013). The position counts in the year it closed, by the Berlin
+    # (ADR-0013). A coin-margined close has a twin consequence stated
+    # elsewhere: the same net figure mints a Tax Lot for the settlement
+    # asset (ticket 29, services/lots._settlement) — income and basis are
+    # two sides of one event, valued by the same rule at the same instant.
+    # The position counts in the year it closed, by the Berlin
     # clock; an open position never reaches here and counts in no year. The
     # net converts at the close date — the instant the result was realised —
     # by whatever the reference-rate universe can state for the settlement

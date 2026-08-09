@@ -39,9 +39,16 @@ windfall at zero. A basis needing a rate or a market value is None until the
 rate tickets (17, 18) extend the derivation — `basis_source` says which
 valuation each lot awaits, and their tables are already declared input
 classes, so their arrival marks the materialisation stale by itself.
+
+One acquisition has no in-leg: a coin-margined futures close (ticket 29)
+settles its net result in the coin, so the closed positions of the futures
+store — itself a source of truth, ADR-0009 — walk the derivation beside the
+transactions and mint a settlement lot each (`_settlement`). Their tables
+are declared input classes of this materialisation already, so a new fill
+or manual position marks it stale like a ledger edit does.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,8 +56,9 @@ from decimal import ROUND_HALF_EVEN, Decimal
 
 from sqlalchemy import Connection, Engine, Row
 
-from open_leprechaun.repositories import fingerprints, lots
+from open_leprechaun.repositories import fingerprints, futures, lots
 from open_leprechaun.repositories.lots import Lot
+from open_leprechaun.services.futures import net_figure
 from open_leprechaun.services.stances import (
     effective_stance,
     inflow_mints_lot,
@@ -134,13 +142,19 @@ def derive(
     numeraire_instruments: set[int],
     stance_rows: list[Row],
     match_rows: list[Row],
+    futures_close_rows: Sequence[Row] = (),
 ) -> Derivation:
     """Everything the ledger supports, derived pure — the rows in, the lots
     and consumptions out, nothing consulted beyond the arguments. One
     chronological pass over the ledger, keeping a FIFO queue of slices per
     (Account, Instrument): minting in-legs push, out and fee legs consume,
     and a confirmed match routes what its out-leg consumed to its in-leg's
-    Account."""
+    Account.
+
+    Closed futures positions walk the same pass in close order (ticket 29):
+    a coin-margined close puts its settlement asset into the books, so a
+    positive net figure mints a lot at the close — enqueued before any
+    later disposal, consumed FIFO like every other acquisition."""
     decisions_of = grouped(stance_rows, "instrument_id")
     legs_of = grouped(leg_rows, "transaction_id")
     leg_by_id = {leg.id: leg for leg in leg_rows}
@@ -152,7 +166,23 @@ def derive(
     consumed_by_leg: dict[int, list[Slice]] = {}
     consumed_out_legs: set[int] = set()
     minted = []
+    closes = sorted(futures_close_rows, key=lambda row: row.closed_at)
+    settled = 0
+    ordinals: dict[tuple[int, int, datetime], int] = {}
+
+    def settle_through(instant: datetime | None) -> None:
+        """Mint every close up to the instant — before the transaction at
+        that instant, so a disposal at the closing timestamp can already
+        consume what the close settled."""
+        nonlocal settled
+        while settled < len(closes) and (instant is None or closes[settled].closed_at <= instant):
+            minted.extend(
+                _settlement(closes[settled], decisions_of, numeraire_instruments, queues, ordinals)
+            )
+            settled += 1
+
     for transaction in transaction_rows:
+        settle_through(transaction.occurred_at)
         siblings = legs_of.get(transaction.id, [])
         for leg in sorted(siblings, key=lambda leg: (_ROLE_ORDER[leg.role], leg.id)):
             if leg.instrument_id in numeraire_instruments:
@@ -203,6 +233,7 @@ def derive(
                 queue,
                 [Slice(transaction.occurred_at, leg.quantity, basis, _BASIS_SOURCES[inflow])],
             )
+    settle_through(None)
     return Derivation(lots=minted, consumed=consumed_by_leg, remaining=queues)
 
 
@@ -266,9 +297,63 @@ def _rebuild_on(connection: Connection, fingerprint: dict[str, fingerprints.Inpu
         numeraire_instruments=lots.numeraire_instruments(connection),
         stance_rows=lots.stance_rows(connection),
         match_rows=lots.match_rows(connection),
+        futures_close_rows=futures.closed_position_rows(connection),
     )
     lots.replace_all(connection, derived.lots)
     fingerprints.record(connection, SUBJECT, fingerprint)
+
+
+def _settlement(
+    close: Row,
+    decisions_of: dict[int, list[Row]],
+    numeraire_instruments: set[int],
+    queues: dict[tuple[int, int], list[Slice]],
+    ordinals: dict[tuple[int, int, datetime], int],
+) -> list[Lot]:
+    """The lot a settled close mints (ticket 29): the position's net figure
+    (services/futures.net_figure) of the settlement Instrument, acquired at
+    the close, at market value there. The basis is stated at report time by
+    the same rule, and at the same instant, that values the position's
+    Section 20 Event (ticket 28), so income and cost basis can never
+    disagree. The rule is variant-agnostic on purpose: the coin-margined
+    close is the motivating case, but a linear contract's profit in a
+    stablecoin or foreign cash is the same acquisition — an asset entered
+    the books at the close, whatever formula produced its amount.
+
+    The numéraire settles no lot — every basis is expressed in it. An
+    ignored or dangerous settlement Instrument never enters the cost basis,
+    as everywhere (ADR-0012); an unacknowledged one mints regardless — the
+    settlement asset is no unsolicited arrival awaiting classification but
+    the denomination of the Admin's own contract, and its result already
+    counts as capital income whatever the stance. A losing close mints
+    nothing: what the loss took from the margin is reconciliation's to
+    surface (ticket 39), not an acquisition's."""
+    if close.settlement_instrument_id in numeraire_instruments:
+        return []
+    net = net_figure(close)
+    if net <= 0:
+        return []
+    stance = effective_stance(
+        decisions_of.get(close.settlement_instrument_id, ()), close.account_id
+    )
+    if never_enters_cost_basis(stance):
+        return []
+    key = (close.account_id, close.settlement_instrument_id)
+    ordinal = ordinals.get((*key, close.closed_at), 0)
+    ordinals[(*key, close.closed_at)] = ordinal + 1
+    _enqueue(queues.setdefault(key, []), [Slice(close.closed_at, net, None, MARKET_VALUE)])
+    return [
+        Lot(
+            leg_id=None,
+            ordinal=ordinal,
+            account_id=close.account_id,
+            instrument_id=close.settlement_instrument_id,
+            acquired_at=close.closed_at,
+            quantity=net,
+            basis_eur=None,
+            basis_source=MARKET_VALUE,
+        )
+    ]
 
 
 def _carry(

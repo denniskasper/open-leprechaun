@@ -440,6 +440,7 @@ def _futures(connection: Connection) -> None:
             fee=Decimal("15"),
             settlement_instrument_id=usdt,
             occurred_at=datetime(2025, 3, 3, 9, 30, tzinfo=UTC),
+            inverse=False,
         ),
         futures.NormalizedFill(
             external_id="seed-fill-2",
@@ -452,6 +453,7 @@ def _futures(connection: Connection) -> None:
             settlement_instrument_id=usdt,
             occurred_at=datetime(2025, 4, 10, 14, 0, tzinfo=UTC),
             realized=Decimal("2000"),
+            inverse=False,
         ),
         futures.NormalizedFill(
             external_id="seed-fill-3",
@@ -463,6 +465,7 @@ def _futures(connection: Connection) -> None:
             fee=Decimal("3"),
             settlement_instrument_id=usdt,
             occurred_at=datetime(2025, 5, 2, 8, 0, tzinfo=UTC),
+            inverse=False,
         ),
     ]
     funding = [

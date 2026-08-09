@@ -109,6 +109,7 @@ INPUT_CLASSES: Mapping[str, str | None] = {
             "position_side",
             "reduce_only",
             "realized",
+            "inverse",
         )
         + " AS line FROM futures_fill"
     ),

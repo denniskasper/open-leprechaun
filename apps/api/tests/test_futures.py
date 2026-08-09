@@ -47,6 +47,7 @@ def _fill(
     position_side=None,
     reduce_only=None,
     realized=None,
+    inverse=False,
 ):
     return NormalizedFill(
         external_id=external_id or f"fill-{minute}-{side}-{price}",
@@ -61,6 +62,7 @@ def _fill(
         position_side=position_side,
         reduce_only=reduce_only,
         realized=Decimal(realized) if realized is not None else None,
+        inverse=inverse,
     )
 
 
@@ -235,6 +237,74 @@ def test_position_side_separates_hedge_mode_streams():
     assert by_side["long"].closed_at == _at(10)
 
 
+def test_an_inverse_reduction_without_a_venue_result_is_an_issue():
+    """Ticket 29: an inverse contract settles in the coin, so the net
+    accounting fallback — quote-currency price differences — would state its
+    result in the wrong unit entirely. Deriving cannot support the variant
+    without venue-stated per-fill results and refuses it explicitly rather
+    than converting it wrongly."""
+    derivation = futures.derive(
+        [
+            _fill("buy", "10000", "1", minute=0, inverse=True),
+            _fill("sell", "11000", "1", minute=10, inverse=True),
+        ]
+    )
+
+    assert derivation.positions == ()
+    (issue,) = derivation.issues
+    assert issue.symbol == "BTC-PERP"
+    assert "inverse" in issue.reason
+
+
+def test_an_inverse_stream_with_venue_results_derives_exactly():
+    """With every reducing fill's realised result stated by the venue, an
+    inverse stream derives like any other — the coin-denominated results are
+    used verbatim and never computed."""
+    derivation = futures.derive(
+        [
+            _fill("buy", "10000", "1", minute=0, inverse=True, fee="0.0001"),
+            _fill("sell", "11000", "1", minute=10, inverse=True, realized="0.0090", fee="0.0001"),
+        ]
+    )
+
+    assert derivation.issues == ()
+    (position,) = derivation.positions
+    assert position.realized == Decimal("0.0090")
+    assert position.fees == Decimal("0.0002")
+    assert position.closed_at == _at(10)
+
+
+def test_a_stream_with_the_variant_unstated_is_an_issue():
+    """A port that cannot tell whether the contract is inverse leaves the
+    field None — and the stream is refused explicitly, because assuming a
+    linear contract would book a coin-settled result in the wrong unit."""
+    derivation = futures.derive(
+        [
+            _fill("buy", "10000", "1", minute=0, inverse=None),
+            _fill("sell", "11000", "1", minute=10, inverse=None),
+        ]
+    )
+
+    assert derivation.positions == ()
+    (issue,) = derivation.issues
+    assert "inverse" in issue.reason
+
+
+def test_a_stream_disagreeing_on_the_variant_is_an_issue():
+    """One symbol is one contract: fills marking it both inverse and linear
+    cannot be one contract's history, and guessing which half to believe
+    would book results in the wrong unit."""
+    derivation = futures.derive(
+        [
+            _fill("buy", "10000", "1", minute=0, inverse=True),
+            _fill("sell", "11000", "1", minute=10, realized="0.0090"),
+        ]
+    )
+
+    assert derivation.positions == ()
+    assert len(derivation.issues) == 1
+
+
 def test_a_reduce_only_fill_with_nothing_open_is_an_issue_not_a_guess():
     """A reduce-only fill that the reconstruction would have open a position
     contradicts the venue's own flag — the opening fills predate what the
@@ -358,6 +428,25 @@ def test_a_resync_over_an_overlapping_window_stores_and_counts_nothing_twice(db)
     assert position.realized == Decimal("20")
     assert position.origin == "derived"
     assert position.source == "okx:futures"
+
+
+def test_an_inverse_fill_keeps_its_variant_across_storage(db):
+    """The variant survives the round trip: a stored inverse stream still
+    refuses net accounting when the rebuild re-derives it from the rows."""
+    account, usd = _account(db), _usd(db)
+
+    synced = futures.sync(
+        db,
+        source="okx:futures",
+        fills=[
+            _fill("buy", "10000", "1", minute=0, account=account, settlement=usd, inverse=True),
+            _fill("sell", "11000", "1", minute=10, account=account, settlement=usd, inverse=True),
+        ],
+    )
+
+    assert synced.derivation.positions == ()
+    (issue,) = futures.overview(db).derivation_issues
+    assert "inverse" in issue.reason
 
 
 def test_a_rebuild_replaces_one_source_and_leaves_the_other_standing(db):

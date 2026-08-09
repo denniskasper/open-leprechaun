@@ -346,6 +346,20 @@ A periodic financing payment on a perpetual contract, pulled separately from **F
 attributed to the position open for that symbol at the payment timestamp. Counts toward net
 result. Unattributable funding is surfaced, never dropped.
 
+### Inverse Contract
+
+A futures contract that settles in the coin rather than a quote currency — coin-margined. Closing
+one has two consequences, both recorded: the net result is capital income (a **Section 20 Event**
+in the Termingeschäfte pot, converted at the close), and the same net puts the settlement asset
+into the books — a **Tax Lot** minted at the close, at the coin's EUR value there, its
+**Haltefrist** starting at the close. Its result cannot be derived by net accounting — a
+quote-currency price difference is the wrong unit — so every **Fill** states the variant and an
+inverse stream derives only from venue-stated per-fill results; a port that cannot tell either
+refuses explicitly rather than converting wrongly.
+
+_Avoid_: defaulting an unstated variant to linear. That is precisely the wrong conversion the
+refusal exists to prevent.
+
 ## German tax
 
 ### Tax Year

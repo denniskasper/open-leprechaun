@@ -47,6 +47,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
+from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import fx, lots
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
@@ -224,12 +225,14 @@ def _replay(engine: Engine) -> _Replay:
         stance_rows = lots_repository.stance_rows(connection)
         match_rows = lots_repository.match_rows(connection)
         instrument_rows = lots_repository.instrument_rows(connection)
+        futures_close_rows = futures_repository.closed_position_rows(connection)
     derived = lots.derive(
         transaction_rows,
         leg_rows,
         numeraire_instruments=numeraire,
         stance_rows=stance_rows,
         match_rows=match_rows,
+        futures_close_rows=futures_close_rows,
     )
     return _Replay(
         transaction_rows=transaction_rows,

@@ -25,7 +25,9 @@ from open_leprechaun.repositories import (
     transfer_matches,
 )
 from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.services import futures as futures_service
 from open_leprechaun.services import lots
+from open_leprechaun.services.futures import NormalizedFill, NormalizedFunding
 
 NOON = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
 LATER = datetime(2026, 3, 15, 12, 0, tzinfo=UTC)
@@ -821,3 +823,168 @@ def test_the_schema_refuses_a_lot_outside_the_basis_vocabulary(db):
     ):
         with pytest.raises(IntegrityError), db.begin() as connection:
             connection.execute(text(f"UPDATE tax_lot SET {defect}"))
+
+
+# --- What a coin-margined close mints (ticket 29) ----------------------------
+
+
+def _inverse_close(db, account, settlement, *, realized="0.0090", funding=None):
+    """One coin-margined position opened and closed at LATER, its result
+    venue-stated — the only derivation an inverse contract admits."""
+    synced = futures_service.sync(
+        db,
+        source="okx:futures",
+        fills=[
+            NormalizedFill(
+                external_id="open-1",
+                account_id=account,
+                symbol="BTCUSD-INVERSE",
+                side="buy",
+                price=Decimal("10000"),
+                size=Decimal("1"),
+                fee=Decimal("0.0001"),
+                settlement_instrument_id=settlement,
+                occurred_at=NOON,
+                inverse=True,
+            ),
+            NormalizedFill(
+                external_id="close-1",
+                account_id=account,
+                symbol="BTCUSD-INVERSE",
+                side="sell",
+                price=Decimal("11000"),
+                size=Decimal("1"),
+                fee=Decimal("0.0001"),
+                settlement_instrument_id=settlement,
+                occurred_at=LATER,
+                realized=Decimal(realized),
+                inverse=True,
+            ),
+        ],
+        funding=[
+            NormalizedFunding(
+                external_id="funding-1",
+                account_id=account,
+                symbol="BTCUSD-INVERSE",
+                amount=Decimal(funding),
+                settlement_instrument_id=settlement,
+                occurred_at=NOON,
+            )
+        ]
+        if funding is not None
+        else (),
+    )
+    assert synced.derivation.issues == ()
+
+
+def test_a_coin_margined_close_mints_a_lot_for_the_settlement_asset(db):
+    """Ticket 29: the close both realises capital income (ticket 28's
+    emitter) and puts the settlement coin into the books — one lot for the
+    net figure, dated at the close, at market value there, minted by no
+    in-leg."""
+    account, btc = _account(db, platform_name="OKX"), _btc(db)
+    _inverse_close(db, account, btc, realized="0.0090", funding="0.0005")
+
+    (lot,) = lots.fresh_lots(db)
+
+    assert lot.leg_id is None
+    assert lot.account_id == account
+    assert lot.instrument_id == btc
+    # The net figure: realised result less trading fees plus funding.
+    assert lot.quantity == Decimal("0.0093")
+    # The holding period starts at the close.
+    assert lot.acquired_at == LATER
+    assert lot.basis_eur is None
+    assert lot.basis_source == "market_value"
+
+
+def test_a_losing_or_breakeven_close_mints_nothing(db):
+    """No coin arrived — there is nothing to acquire. The loss is the
+    Section 20 Event's to state (ticket 28); what it took from the margin
+    is reconciliation's to surface, never a negative acquisition."""
+    account, btc = _account(db, platform_name="OKX"), _btc(db)
+    _inverse_close(db, account, btc, realized="-0.0040")
+
+    assert lots.fresh_lots(db) == []
+
+
+def test_a_numeraire_settled_close_mints_no_lot(db):
+    """An EUR-settled contract's profit needs no basis — every basis is
+    expressed in the numéraire, so it has none of its own."""
+    account, eur = _account(db, platform_name="OKX"), _eur(db)
+    _inverse_close(db, account, eur, realized="150")
+
+    assert lots.fresh_lots(db) == []
+
+
+def test_an_ignored_or_dangerous_settlement_never_enters_the_cost_basis(db):
+    """The one ADR-0012 rule, here as everywhere: such a position stays
+    visible but no lot carries it in — while the close's capital income
+    still counts, whatever the stance (ticket 28)."""
+    account, btc = _account(db, platform_name="OKX"), _btc(db)
+    assert stances.classify(db, btc, stance="dangerous") == []
+    _inverse_close(db, account, btc, realized="0.0090")
+
+    assert lots.fresh_lots(db) == []
+
+
+def test_a_settlement_lot_rebuilds_identically(db):
+    """Idempotency holds with the futures store as an input: two reads over
+    unchanged fills serve the identical lot."""
+    account, btc = _account(db, platform_name="OKX"), _btc(db)
+    _inverse_close(db, account, btc, realized="0.0090", funding="0.0005")
+
+    first = lots.fresh_lots(db)
+    lots.rebuild(db)
+    second = lots.fresh_lots(db)
+
+    assert first == second
+    assert lots.drift(db) == []
+
+
+def test_a_linear_settlement_mints_the_same_lot(db):
+    """The rule is variant-agnostic: a linear contract's profit in a
+    stablecoin or foreign cash is the same acquisition — an asset entered
+    the books at the close. Coin-margined is the motivating case, not a
+    precondition."""
+    account = _account(db, platform_name="OKX")
+    usd = instruments.create_cash(db, symbol="USD", name="US Dollar")
+    synced = futures_service.sync(
+        db,
+        source="okx:futures",
+        fills=[
+            NormalizedFill(
+                external_id="open-linear",
+                account_id=account,
+                symbol="BTC-USD-PERP",
+                side="buy",
+                price=Decimal("10000"),
+                size=Decimal("1"),
+                fee=Decimal("1"),
+                settlement_instrument_id=usd,
+                occurred_at=NOON,
+                inverse=False,
+            ),
+            NormalizedFill(
+                external_id="close-linear",
+                account_id=account,
+                symbol="BTC-USD-PERP",
+                side="sell",
+                price=Decimal("10101"),
+                size=Decimal("1"),
+                fee=Decimal("1"),
+                settlement_instrument_id=usd,
+                occurred_at=LATER,
+                inverse=False,
+            ),
+        ],
+    )
+    assert synced.derivation.issues == ()
+
+    (lot,) = lots.fresh_lots(db)
+
+    assert lot.instrument_id == usd
+    # Net accounting: 101 realised, less both fills' fees.
+    assert lot.quantity == Decimal("99")
+    assert lot.acquired_at == LATER
+    assert lot.basis_source == "market_value"
