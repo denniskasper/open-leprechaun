@@ -63,6 +63,12 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # rate one test stored for today would answer another test's current-
         # value conversion.
         connection.execute(text("DELETE FROM reference_rate"))
+        # Futures rows hold their Account and settlement Instrument by
+        # RESTRICT; funding first, releasing its position attribution.
+        connection.execute(text("DELETE FROM funding_payment"))
+        connection.execute(text("DELETE FROM futures_fill"))
+        connection.execute(text("DELETE FROM futures_derivation_issue"))
+        connection.execute(text("DELETE FROM futures_position"))
         connection.execute(text("DELETE FROM transaction"))
         connection.execute(text("DELETE FROM instrument"))
         # Accounts first: a Platform still holding one refuses to go.

@@ -87,6 +87,62 @@ INPUT_CLASSES: Mapping[str, str | None] = {
     # The Admin's standing elections, which select the statutory values that
     # apply.
     "tax_election": f"SELECT {_line('filing_status', 'church_tax')} AS line FROM tax_election",
+    # Futures (ticket 28, ADR-0009): the immutable fills and funding
+    # payments, and the Admin's own manual positions. Derived positions are
+    # a pure function of the fills and funding attribution a pure function
+    # of positions and payments, so neither is fingerprinted itself — the
+    # inputs vouch for both.
+    "futures_fills": (
+        "SELECT "
+        + _line(
+            "id",
+            "source",
+            "external_id",
+            "account_id",
+            "symbol",
+            "side",
+            "price",
+            "size",
+            "fee",
+            "settlement_instrument_id",
+            _utc("occurred_at"),
+            "position_side",
+            "reduce_only",
+            "realized",
+        )
+        + " AS line FROM futures_fill"
+    ),
+    "funding_payments": (
+        "SELECT "
+        + _line(
+            "id",
+            "source",
+            "external_id",
+            "account_id",
+            "symbol",
+            "amount",
+            "settlement_instrument_id",
+            _utc("occurred_at"),
+            "position_side",
+        )
+        + " AS line FROM funding_payment"
+    ),
+    "manual_futures_positions": (
+        "SELECT "
+        + _line(
+            "id",
+            "account_id",
+            "symbol",
+            "side",
+            "quantity",
+            "settlement_instrument_id",
+            _utc("opened_at"),
+            _utc("closed_at"),
+            "realized",
+            "fees",
+        )
+        + " AS line FROM futures_position WHERE origin = 'manual'"
+    ),
     # Deliberately empty although the reference-rate store (17) exists: that
     # store is append-only and immutable (ADR-0017) — a fetch only ever adds
     # coverage, so no figure already stated can change under it. Prices (18)

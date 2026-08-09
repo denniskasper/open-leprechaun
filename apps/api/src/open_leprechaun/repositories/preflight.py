@@ -36,6 +36,25 @@ def unacknowledged_arrivals(engine: Engine, *, year: int) -> list[Row]:
         )
 
 
+def unattributable_funding(engine: Engine, *, year: int) -> list[Row]:
+    """Every funding payment up to the end of the Tax Year that no single
+    position could claim (services/futures) — each is part of some net
+    figure the year cannot yet state."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT id, source, symbol, occurred_at FROM funding_payment"
+                    " WHERE position_id IS NULL"
+                    " AND extract(year FROM occurred_at AT TIME ZONE 'Europe/Berlin')"
+                    "  <= :year"
+                    " ORDER BY occurred_at, id"
+                ),
+                {"year": year},
+            ).all()
+        )
+
+
 def active_instrument_ids(engine: Engine, *, year: int) -> set[int]:
     """Every Instrument with a leg on a transaction of this Tax Year."""
     with engine.connect() as connection:

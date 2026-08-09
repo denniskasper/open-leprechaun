@@ -34,9 +34,10 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from sqlalchemy import Engine
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
+from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import statutory as statutory_repository
-from open_leprechaun.services import fx, lots
+from open_leprechaun.services import futures, fx, lots
 from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.statutory import (
     church_tax_rate_key,
@@ -48,6 +49,7 @@ from open_leprechaun.services.tax_treatment import SECTION_20, TAX_CONSEQUENCES
 
 __all__ = [
     "CATEGORIES",
+    "FUTURES_CATEGORY",
     "LOSS_CAP_KEYS",
     "NO_GERMAN_WITHHOLDING",
     "OPENING_CARRYFORWARD_KEYS",
@@ -415,21 +417,26 @@ class Section20Year:
     a crypto price (ticket 18) the year states no balances and no assessment
     — netting around a missing member could flip a pot's sign, and a prior
     year's unvalued loss would falsify every carryforward after it — and
-    names the legs it waits on."""
+    names what it waits on in the events' own source vocabulary ("leg:42",
+    "futures_position:7")."""
 
     year: int
     balances: tuple[CategoryBalance, ...] | None
     assessment: Section20Assessment | None
     excluded: tuple[ExcludedEvent, ...]
-    awaiting_valuation: tuple[int, ...]
+    awaiting_valuation: tuple[str, ...]
 
 
 _CATEGORY_OF = {"dividend": "sonstige", "distribution": "sonstige", "interest": "sonstige"}
 """Which pot each §20-typed transaction feeds — all three in the general
 pot, because the aktien pot holds share *sales* alone (§20 Abs. 6 Satz 4
-EStG) and Termingeschäfte their own. Share disposals (ticket 46) and
-futures (ticket 28) will emit into theirs; the emitters know what they are,
-never how the pots treat them (ADR-0013)."""
+EStG) and Termingeschäfte their own. Futures positions (ticket 28) emit
+into theirs below; share disposals (ticket 46) will too. The emitters know
+what they are, never how the pots treat them (ADR-0013)."""
+
+FUTURES_CATEGORY = "termingeschaefte"
+"""Where every futures close lands (§20 Abs. 2 Satz 1 Nr. 3 EStG): its own
+Verlustverrechnungstopf (§20 Abs. 6 Satz 5 EStG as configured)."""
 
 
 def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Section20Year:
@@ -475,6 +482,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         transaction_rows, leg_rows = lots_repository.ledger(connection)
         stance_rows = lots_repository.stance_rows(connection)
         instrument_rows = lots_repository.instrument_rows(connection)
+        futures_rows = futures_repository.closed_position_rows(connection)
     instruments = {row.id: row for row in instrument_rows}
     decisions_of = lots.grouped(stance_rows, "instrument_id")
     legs_of = lots.grouped(leg_rows, "transaction_id")
@@ -519,7 +527,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
                 at=transaction.occurred_at,
             )
             if gross is None:
-                awaiting.append(leg.id)
+                awaiting.append(f"leg:{leg.id}")
                 continue
             events.append(
                 Section20Event(
@@ -532,6 +540,42 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
                     source=f"leg:{leg.id}",
                 )
             )
+
+    # Futures (ticket 28, ADR-0009): a closed position emits one event for
+    # its net figure — realised result less trading fees plus attributed
+    # funding — into the Termingeschäfte pot, and computes no tax of its own
+    # (ADR-0013). The position counts in the year it closed, by the Berlin
+    # clock; an open position never reaches here and counts in no year. The
+    # net converts at the close date — the instant the result was realised —
+    # by whatever the reference-rate universe can state for the settlement
+    # Instrument; a settlement only a crypto price can value waits exactly
+    # like an unvalued leg. Stance plays no part: the result is capital
+    # income however its settlement currency is regarded as a holding.
+    for position in futures_rows:
+        if fx.event_date(position.closed_at).year > year:
+            continue
+        net_result = futures.net_figure(position)
+        gross = fx.value_eur(
+            engine,
+            source,
+            instrument=instruments[position.settlement_instrument_id],
+            quantity=net_result,
+            at=position.closed_at,
+        )
+        if gross is None:
+            awaiting.append(f"futures_position:{position.id}")
+            continue
+        events.append(
+            Section20Event(
+                date=fx.event_date(position.closed_at),
+                category=FUTURES_CATEGORY,
+                gross_eur=gross,
+                exemption_rate=Decimal(0),
+                german_withholding=NO_GERMAN_WITHHOLDING,
+                foreign_withholding=None,
+                source=f"futures_position:{position.id}",
+            )
+        )
 
     if awaiting:
         return Section20Year(

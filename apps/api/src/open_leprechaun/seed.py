@@ -11,9 +11,13 @@ instance can never write fixture data into a real ledger.
 
 import sys
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import Connection, Engine, create_engine, text
 
+from open_leprechaun.repositories import futures as futures_repository
+from open_leprechaun.services import futures
 from open_leprechaun.settings import Environment, get_settings
 
 SeedStep = Callable[[Connection], None]
@@ -409,7 +413,112 @@ def _delegations(connection: Connection) -> None:
     )
 
 
-STEPS: Sequence[SeedStep] = (_instruments, _cash, _platforms, _transactions, _stances, _delegations)
+def _futures(connection: Connection) -> None:
+    """Futures activity of every shape ticket 28 stores: fills that derive
+    one closed and one open position, a funding payment inside the closed
+    position's interval and one no position can claim, and a manual
+    position beside the derived ones. Fills and funding are idempotent by
+    their dedupe key; the derived rows are rebuilt wholesale either way, and
+    the manual position is keyed on its symbol being absent."""
+    account = connection.execute(
+        text(
+            "SELECT account.id FROM account JOIN platform ON platform.id = account.platform_id"
+            " WHERE platform.name = 'Kraken' AND account.name = 'Main'"
+        )
+    ).scalar_one()
+    usdt = connection.execute(
+        text("SELECT id FROM instrument WHERE symbol = 'USDT' AND chain = 'ethereum'")
+    ).scalar_one()
+    fills = [
+        futures.NormalizedFill(
+            external_id="seed-fill-1",
+            account_id=account,
+            symbol="BTC-USDT-PERP",
+            side="buy",
+            price=Decimal("60000"),
+            size=Decimal("0.5"),
+            fee=Decimal("15"),
+            settlement_instrument_id=usdt,
+            occurred_at=datetime(2025, 3, 3, 9, 30, tzinfo=UTC),
+        ),
+        futures.NormalizedFill(
+            external_id="seed-fill-2",
+            account_id=account,
+            symbol="BTC-USDT-PERP",
+            side="sell",
+            price=Decimal("64000"),
+            size=Decimal("0.5"),
+            fee=Decimal("16"),
+            settlement_instrument_id=usdt,
+            occurred_at=datetime(2025, 4, 10, 14, 0, tzinfo=UTC),
+            realized=Decimal("2000"),
+        ),
+        futures.NormalizedFill(
+            external_id="seed-fill-3",
+            account_id=account,
+            symbol="SOL-USDT-PERP",
+            side="sell",
+            price=Decimal("150"),
+            size=Decimal("20"),
+            fee=Decimal("3"),
+            settlement_instrument_id=usdt,
+            occurred_at=datetime(2025, 5, 2, 8, 0, tzinfo=UTC),
+        ),
+    ]
+    funding = [
+        futures.NormalizedFunding(
+            external_id="seed-funding-1",
+            account_id=account,
+            symbol="BTC-USDT-PERP",
+            amount=Decimal("-4.20"),
+            settlement_instrument_id=usdt,
+            occurred_at=datetime(2025, 3, 15, 4, 0, tzinfo=UTC),
+        ),
+        # Before any position was open — surfaced as unattributable.
+        futures.NormalizedFunding(
+            external_id="seed-funding-2",
+            account_id=account,
+            symbol="ETH-USDT-PERP",
+            amount=Decimal("-1.10"),
+            settlement_instrument_id=usdt,
+            occurred_at=datetime(2025, 2, 1, 12, 0, tzinfo=UTC),
+        ),
+    ]
+    source = "seed:futures"
+    new_fills = futures_repository.store_fills(connection, source, fills)
+    new_funding = futures_repository.store_funding(connection, source, funding)
+    manual = connection.execute(
+        text(
+            "INSERT INTO futures_position (origin, source, account_id, symbol, side, quantity,"
+            " settlement_instrument_id, opened_at, closed_at, realized, fees)"
+            " SELECT 'manual', NULL, :account_id, 'ETH-USDT-PERP', 'long', 1.5,"
+            " :settlement_instrument_id, :opened_at, :closed_at, 350, 4"
+            " WHERE NOT EXISTS (SELECT 1 FROM futures_position"
+            "  WHERE origin = 'manual' AND symbol = 'ETH-USDT-PERP')"
+        ),
+        {
+            "account_id": account,
+            "settlement_instrument_id": usdt,
+            "opened_at": datetime(2025, 6, 1, 10, 0, tzinfo=UTC),
+            "closed_at": datetime(2025, 7, 20, 16, 0, tzinfo=UTC),
+        },
+    ).rowcount
+    # The rebuild swaps the derived rows wholesale, minting fresh ids — run
+    # it only when something was actually new, so a second seed run leaves
+    # the database exactly as one run left it.
+    if new_fills or new_funding or manual:
+        futures.rebuild(connection, source)
+
+
+STEPS: Sequence[SeedStep] = (
+    _instruments,
+    _cash,
+    _platforms,
+    _transactions,
+    _stances,
+    _delegations,
+    _futures,
+)
 """One entry per seeded slice of the schema, in dependency order."""
 
 

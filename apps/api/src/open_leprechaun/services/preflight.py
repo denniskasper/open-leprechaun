@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 
 from open_leprechaun.repositories import crypto_prices
+from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
 from open_leprechaun.services import fx, lots, section23, statutory, transfer_matches
@@ -151,6 +152,50 @@ def _unpriced_instruments(engine: Engine, year: int) -> Blocker | None:
     )
 
 
+def _unattributable_funding(engine: Engine, year: int) -> Blocker | None:
+    """Funding payments up to the end of the report's year that no single
+    position could claim (ticket 28) — surfaced, never dropped: each is part
+    of some position's net figure, so a report over them would understate or
+    overstate a Termingeschäfte result."""
+    payments = preflight_repository.unattributable_funding(engine, year=year)
+    if not payments:
+        return None
+    symbols = ", ".join(sorted({payment.symbol for payment in payments}))
+    return Blocker(
+        kind="unattributable_funding",
+        detail=(
+            f"{_count(len(payments), 'funding payment')} up to the end of {year}"
+            f" {'belongs' if len(payments) == 1 else 'belong'} to no position:"
+            f" {symbols}."
+        ),
+        resolve_path="/futures",
+        count=len(payments),
+    )
+
+
+def _futures_derivation_issues(engine: Engine, year: int) -> Blocker | None:
+    """Fill streams the derivation refused to guess at (ADR-0009). Not
+    bounded by the year: a stream whose opening fills predate what its
+    source returned could move any year's figures, so every report waits on
+    the manual handling."""
+    with engine.connect() as connection:
+        issues = futures_repository.issue_rows(connection)
+    if not issues:
+        return None
+    symbols = ", ".join(sorted({issue.symbol for issue in issues}))
+    return Blocker(
+        kind="futures_derivation_issues",
+        detail=(
+            f"{_count(len(issues), 'futures fill stream')} could not be"
+            f" reconciled into positions and"
+            f" {'awaits' if len(issues) == 1 else 'await'} manual handling:"
+            f" {symbols}."
+        ),
+        resolve_path="/futures",
+        count=len(issues),
+    )
+
+
 def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
@@ -162,6 +207,8 @@ CHECKS: tuple[Check, ...] = (
     _unpriced_instruments,
     _lot_shortfalls,
     _unacknowledged_instruments,
+    _unattributable_funding,
+    _futures_derivation_issues,
     _missing_statutory_configuration,
 )
 """Every registered pre-flight check. A later ticket registers a further
