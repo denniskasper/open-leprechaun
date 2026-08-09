@@ -241,6 +241,21 @@ def test_a_year_with_a_required_value_unset_is_identifiable(store):
     assert statutory_service.missing_for_year(store, 2026) == []
 
 
+def test_an_optional_value_answers_none_when_unset_and_the_value_when_set(store):
+    """How the §20 engine (ticket 26) reads a loss cap: an absent cap means
+    uncapped — None, never an error and never a default — while a set one
+    answers exactly what the store holds, for that year alone."""
+    assert statutory_service.optional_value(store, year=2031, key="loss_cap_aktien") is None
+
+    statutory.upsert_value(
+        store, year=2031, key="loss_cap_aktien", value=Decimal("20000"), source="a cited source"
+    )
+    assert statutory_service.optional_value(store, year=2031, key="loss_cap_aktien") == Decimal(
+        "20000"
+    )
+    assert statutory_service.optional_value(store, year=2032, key="loss_cap_aktien") is None
+
+
 def test_the_election_selects_which_per_year_values_apply():
     """Filing status picks the saver-allowance variant; the church-tax
     election picks a rate key or no church tax at all. The selection lives

@@ -490,9 +490,9 @@ def test_an_unmatched_outflow_is_never_quietly_a_disposal():
 
 
 def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
-    """The lot engine (ticket 19) and the disposal engine (ticket 21) so far;
-    the remaining engines (tickets 22, 26) will amend this list with only
-    themselves."""
+    """The lot engine (ticket 19) and the tax engines (tickets 21, 22, 26)
+    — the complete list; a future producer emits Section 20 Events through
+    section20 rather than reading the table itself (ADR-0013)."""
     package = Path(tax_treatment.__file__).resolve().parents[1]
     readers = [
         str(path.relative_to(package))
@@ -505,6 +505,7 @@ def test_the_tax_consequences_are_read_by_the_tax_engines_alone():
     ]
     assert sorted(readers) == [
         "services/lots.py",
+        "services/section20.py",
         "services/section22.py",
         "services/section23.py",
     ]

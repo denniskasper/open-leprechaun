@@ -42,12 +42,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Engine, Row
+from sqlalchemy import Engine
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import fx, lots
-from open_leprechaun.services.stances import effective_stance, inflow_mints_lot
+from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.statutory import StatutoryValueUnsetError, required_value
 from open_leprechaun.services.tax_treatment import SECTION_22, TAX_CONSEQUENCES
 
@@ -143,7 +143,11 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         for leg in legs_of.get(transaction.id, []):
             if leg.role != "in":
                 continue
-            stance = _excluding_stance(leg, instruments, decisions_of)
+            stance = income_excluding_stance(
+                instrument=instruments[leg.instrument_id],
+                decisions=decisions_of.get(leg.instrument_id, ()),
+                account_id=leg.account_id,
+            )
             if stance is not None:
                 excluded.append(
                     ExcludedEvent(
@@ -185,21 +189,6 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         awaiting_valuation=awaiting,
         freigrenze=_verdict(limit, total) if total is not None else None,
     )
-
-
-def _excluding_stance(
-    leg: Row, instruments: dict[int, Row], decisions_of: dict[int, list[Row]]
-) -> str | None:
-    """The stance keeping this in-leg's income out of the pool — None when it
-    pools. Income pools exactly when the leg mints its Tax Lot
-    (services/stances), because income and basis are two sides of one event;
-    the numéraire mints no lot only because it has no basis of its own, so
-    its income is its quantity and pools unconditionally."""
-    instrument = instruments[leg.instrument_id]
-    if instrument.is_numeraire:
-        return None
-    stance = effective_stance(decisions_of.get(leg.instrument_id, ()), leg.account_id)
-    return None if inflow_mints_lot(stance) else stance
 
 
 def _verdict(limit: Decimal, total: Decimal) -> FreigrenzeVerdict:

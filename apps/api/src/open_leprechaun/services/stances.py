@@ -73,6 +73,29 @@ def inflow_mints_lot(stance: str) -> bool:
     return stance == "kept"
 
 
+class MaybeNumeraire(Protocol):
+    """The one thing the income rule asks of an Instrument — a repository
+    row or anything shaped like one."""
+
+    @property
+    def is_numeraire(self) -> bool: ...
+
+
+def income_excluding_stance(
+    *, instrument: MaybeNumeraire, decisions: Iterable[StanceDecision], account_id: int
+) -> str | None:
+    """The stance keeping an income in-leg's amount out of a tax engine's
+    year — None when it counts. The one rule behind the income engines (22,
+    26): income counts exactly when the leg mints its Tax Lot, because
+    income and basis are two sides of one event; the numéraire mints no lot
+    only because it has no basis of its own, so its income is its quantity
+    and counts unconditionally."""
+    if instrument.is_numeraire:
+        return None
+    stance = effective_stance(decisions, account_id)
+    return None if inflow_mints_lot(stance) else stance
+
+
 def never_enters_cost_basis(stance: str) -> bool:
     """Whether a position under this stance stays outside the cost basis
     entirely — visible in the ledger, but no lot carries it in and no

@@ -159,6 +159,42 @@ def test_generating_a_report_stores_the_figures_and_answers_them_frozen(db, clie
     section22 = report["figures"]["section22"]
     assert section22["total_income_eur"] == "0"
     assert section22["freigrenze"]["tax_free"] is True
+    section20 = report["figures"]["section20"]
+    assert [balance["category"] for balance in section20["balances"]] == [
+        "aktien",
+        "sonstige",
+        "termingeschaefte",
+    ]
+
+
+def test_a_report_carries_each_capital_income_category_s_balance(db, client):
+    """The §20 section (ticket 26): a dividend's euros land in the general
+    pot's frozen balance — each category a line the form can be filled from,
+    traceable to the leg that produced it, the unconfigured cap null."""
+    account, eur = _account(db), _eur(db)
+    dividend = transactions.create_transaction(
+        db,
+        type="dividend",
+        occurred_at=SOLD,
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=eur, role="in", quantity=Decimal("500"))],
+    )
+    assert isinstance(dividend, int)
+
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    section20 = client.get(f"/api/reports/{report_id}").json()["figures"]["section20"]
+    assert section20["awaiting_valuation"] == []
+    assert section20["excluded"] == []
+    aktien, sonstige, termingeschaefte = section20["balances"]
+    assert sonstige["balance_eur"] == "500"
+    assert sonstige["cap_eur"] is None
+    (entry,) = sonstige["entries"]
+    assert entry["counted_eur"] == "500"
+    assert entry["event"]["source"].startswith("leg:")
+    assert entry["event"]["date"] == "2025-06-03"
+    assert aktien["balance_eur"] == "0"
+    assert termingeschaefte["balance_eur"] == "0"
 
 
 def test_regenerating_creates_a_new_report_and_never_mutates_an_existing_one(db, client):

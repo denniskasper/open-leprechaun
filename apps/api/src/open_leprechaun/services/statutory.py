@@ -103,13 +103,27 @@ def required_value(engine: Engine, *, year: int, key: str, statute: str) -> Deci
     (21, 22) one way to a limit, so no constant can hide in logic. A year
     whose value is unset refuses by name: an unset statute is Admin-fixable
     configuration, unlike a valuation nothing can state yet."""
+    value = _stored_value(engine, year=year, key=key)
+    if value is None:
+        raise StatutoryValueUnsetError(
+            f"The {year} value for {key} ({statute}) is unset —"
+            " enter it in the statutory settings before computing this year."
+        )
+    return value
+
+
+def optional_value(engine: Engine, *, year: int, key: str) -> Decimal | None:
+    """The year's value for a key no year requires — how the §20 engine
+    (ticket 26) reads a loss cap, where absence means uncapped, never
+    unknown, so nothing refuses and nothing defaults."""
+    return _stored_value(engine, year=year, key=key)
+
+
+def _stored_value(engine: Engine, *, year: int, key: str) -> Decimal | None:
     for row in statutory.list_values(engine):
         if row.year == year and row.key == key:
             return row.value
-    raise StatutoryValueUnsetError(
-        f"The {year} value for {key} ({statute}) is unset —"
-        " enter it in the statutory settings before computing this year."
-    )
+    return None
 
 
 def entry_defect(*, year: int, key: str, value: Decimal) -> str | None:
