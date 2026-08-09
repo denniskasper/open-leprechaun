@@ -47,6 +47,23 @@ _Avoid_: "account" for the credentialed link to a venue — that is a **Connecti
 _Avoid_: "account" for the reference a venue prints on a statement — that is an external reference
 held by the Account.
 
+### Position
+
+One **Instrument** held at one **Account**: the quantity the ledger's legs sum to, its cost basis
+read from the **Tax Lots**, and a current value stated only where something can vouch for one.
+A Position standing ignored, dangerous or unacknowledged — or one nothing can price — stays
+visible wearing an explicit marker and stands outside every total: never hidden, never counted
+as zero. Cash is a Position like any other, the numéraire valued by identity.
+
+_Avoid_: "Position" bare for the normalized ingestion row or for a futures **Derived Position** —
+those belong to ingestion and derivatives vocabulary.
+
+### Custody Type
+
+Where the assets of an **Account** actually sit, judged from its Platform's kind: `cold_storage`
+and `software_wallet` are **self-custody**, `exchange`, `broker` and `bank` are **third-party
+custody**. A grouping vocabulary for presentation — never a tax input.
+
 ### Depot
 
 The domain word for an **Account** under a broker **Platform** — one that holds securities and

@@ -87,6 +87,14 @@ def reference_rate_currency(instrument: CarriesPeg) -> str | None:
     return instrument.pegged_currency
 
 
+def valuation_currency(instrument: ValuableInstrument) -> str | None:
+    """Which currency's reference rate values a quantity of this Instrument:
+    cash by its own code, a stablecoin by its peg, None where only a crypto
+    price can answer. The one routing rule, shared by value_eur and the
+    holdings view (ticket 20)."""
+    return instrument.symbol if instrument.family == "cash" else reference_rate_currency(instrument)
+
+
 def event_date(at: datetime) -> date:
     """The Europe/Berlin calendar date of an instant — the date whose rate a
     conversion uses, by the same clock that buckets tax years."""
@@ -111,9 +119,7 @@ def value_eur(
     can never disagree."""
     if instrument.is_numeraire:
         return quantity
-    currency = (
-        instrument.symbol if instrument.family == "cash" else reference_rate_currency(instrument)
-    )
+    currency = valuation_currency(instrument)
     if currency is None:
         return None
     return convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur

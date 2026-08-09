@@ -73,6 +73,14 @@ export function formatQuantity(value: string, locale?: string): string {
   return grouped + separator + fraction;
 }
 
+/** A calendar date off the API (ISO `YYYY-MM-DD`), rendered per locale. */
+export function formatDate(isoDate: string, locale?: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
+    new Date(year ?? 0, (month ?? 1) - 1, day ?? 1),
+  );
+}
+
 export function formatTimestamp(epochMs: number, locale?: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",

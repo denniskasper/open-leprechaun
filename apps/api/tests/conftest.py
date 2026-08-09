@@ -59,6 +59,10 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # artifacts with no foreign keys, so they go explicitly too.
         connection.execute(text("DELETE FROM report"))
         connection.execute(text("DELETE FROM input_fingerprint"))
+        # Reference rates key on (currency, date) with no foreign key, so a
+        # rate one test stored for today would answer another test's current-
+        # value conversion.
+        connection.execute(text("DELETE FROM reference_rate"))
         connection.execute(text("DELETE FROM transaction"))
         connection.execute(text("DELETE FROM instrument"))
         # Accounts first: a Platform still holding one refuses to go.

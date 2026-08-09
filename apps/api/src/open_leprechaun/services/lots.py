@@ -116,13 +116,15 @@ class Slice:
 
 @dataclass(frozen=True)
 class Derivation:
-    """One replay of the whole ledger: the lots it mints, and what each
-    consuming leg took from its queue — the pairing the disposal engine
-    (ticket 21) reads, derived in the same pass so the two can never
-    disagree."""
+    """One replay of the whole ledger: the lots it mints, what each consuming
+    leg took from its queue — the pairing the disposal engine (ticket 21)
+    reads — and what remains in each (Account, Instrument) queue at the end —
+    the holdings view's cost basis (ticket 20). All derived in the same pass,
+    so no two of them can disagree."""
 
     lots: list[Lot]
     consumed: dict[int, list[Slice]]
+    remaining: dict[tuple[int, int], list[Slice]]
 
 
 def derive(
@@ -201,7 +203,7 @@ def derive(
                 queue,
                 [Slice(transaction.occurred_at, leg.quantity, basis, _BASIS_SOURCES[inflow])],
             )
-    return Derivation(lots=minted, consumed=consumed_by_leg)
+    return Derivation(lots=minted, consumed=consumed_by_leg, remaining=queues)
 
 
 def rebuild(engine: Engine) -> None:

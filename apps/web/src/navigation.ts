@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowLeftRight,
+  Coins,
   Gavel,
   Inbox,
   type LucideIcon,
@@ -28,6 +29,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Ledger",
     items: [
+      { to: "/holdings", label: "Holdings", icon: Coins },
       { to: "/inbox", label: "Inbox", icon: Inbox },
       { to: "/transactions", label: "Transactions", icon: Scale },
       { to: "/transfers", label: "Transfers", icon: ArrowLeftRight },

@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
+import { HoldingsPage } from "@/pages/holdings";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <HealthPage /> },
+          { path: "holdings", element: <HoldingsPage /> },
           { path: "inbox", element: <InboxPage /> },
           { path: "transactions", element: <TransactionsPage /> },
           { path: "transfers", element: <TransfersPage /> },
