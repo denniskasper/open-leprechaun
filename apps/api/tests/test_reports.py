@@ -19,7 +19,14 @@ from sqlalchemy import text
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.rates import get_reference_rate_source
-from open_leprechaun.repositories import instruments, platforms, stances, statutory, transactions
+from open_leprechaun.repositories import (
+    crypto_prices,
+    instruments,
+    platforms,
+    stances,
+    statutory,
+    transactions,
+)
 from open_leprechaun.repositories.transactions import Leg
 
 BOUGHT = datetime(2025, 3, 14, 12, 0, tzinfo=UTC)
@@ -111,9 +118,13 @@ def _limits(db, *, year):
 
 def _round_trip(db, *, bought_at=BOUGHT, sold_at=SOLD):
     """A ledger with one taxable private sale: bought for 10000, sold for
-    12000 within the year — a gain of 2000."""
+    12000 within the year — a gain of 2000. The coin carries a stored price,
+    so finalisation meets no unpriced-Instrument blocker (ticket 25)."""
     account, eur, btc = _account(db), _eur(db), _btc(db)
     _keep(db, btc, account)
+    crypto_prices.store_quote(
+        db, instrument_id=btc, price_eur=Decimal("50000"), source="a test", as_of=sold_at
+    )
     purchase = _trade(db, account, eur, btc, given="10000", gotten="1", occurred_at=bought_at)
     sale = _trade(db, account, btc, eur, given="1", gotten="12000", occurred_at=sold_at)
     return account, eur, btc, purchase, sale

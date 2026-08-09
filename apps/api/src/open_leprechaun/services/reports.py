@@ -29,7 +29,7 @@ instants as ISO-8601 — never a float — so the figures served years later are
 byte-for-byte what generation computed.
 """
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from datetime import datetime
 from decimal import Decimal
 
@@ -38,9 +38,9 @@ from sqlalchemy import Connection, Engine, Row
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import fingerprints, reports
 from open_leprechaun.repositories.reports import Refusal
-from open_leprechaun.services import lots, section22, section23
+from open_leprechaun.services import lots, preflight, section22, section23
 
-__all__ = ["GenerationRacedError", "detail", "finalise", "generate", "overview"]
+__all__ = ["Blocked", "GenerationRacedError", "detail", "finalise", "generate", "overview"]
 
 
 class GenerationRacedError(Exception):
@@ -68,6 +68,11 @@ class ReportOverview:
     finalised_at: datetime | None
     stale: bool
     changed_inputs: tuple[fingerprints.DriftedInput, ...]
+    # The pre-flight override (ticket 25), where finalisation was one: the
+    # acknowledgement verbatim and the blockers it overrode as stored —
+    # frozen record, answered wherever the report is shown.
+    override_acknowledgement: str | None
+    overridden_blockers: list[dict] | None
 
 
 @dataclass(frozen=True)
@@ -122,10 +127,44 @@ def detail(engine: Engine, report_id: int) -> ReportDetail | None:
         )
 
 
-def finalise(engine: Engine, report_id: int) -> Refusal | None:
-    """Draft → final, the one transition a report ever makes."""
+@dataclass(frozen=True)
+class Blocked:
+    """Finalisation refused: the pre-flight blockers (ticket 25) standing
+    open for the report's year, each linking the screen that resolves it."""
+
+    blockers: tuple[preflight.Blocker, ...]
+
+
+def finalise(
+    engine: Engine, report_id: int, *, acknowledgement: str | None = None
+) -> Refusal | Blocked | None:
+    """Draft → final, the one transition a report ever makes — refused while
+    any pre-flight blocker stands open for the report's year (ticket 25).
+    An acknowledgement overrides the blockers, and the override is recorded
+    on the report itself: what was acknowledged, over which objections. An
+    acknowledgement offered where nothing blocks overrides nothing.
+
+    The checks read the present, then the flip lands in its own transaction:
+    a ledger edit slipped between the two could finalise past a blocker it
+    just created — accepted as negligible on a single-Admin instance, the
+    same judgement generation makes of its ABA window, and the staleness
+    verdict still names whatever moved."""
+    with engine.connect() as connection:
+        row = reports.get(connection, report_id)
+    if row is None:
+        return Refusal.no_such_report
+    if row.status == "final":
+        return Refusal.already_final
+    found = preflight.blockers(engine, year=row.year)
+    if found and acknowledgement is None:
+        return Blocked(blockers=found)
     with engine.begin() as connection:
-        return reports.finalise(connection, report_id)
+        return reports.finalise(
+            connection,
+            report_id,
+            override_acknowledgement=acknowledgement if found else None,
+            overridden_blockers=[asdict(blocker) for blocker in found] if found else None,
+        )
 
 
 def _subject(report_id: int) -> str:
@@ -150,6 +189,8 @@ def _lifecycle(row: Row, changed: tuple[fingerprints.DriftedInput, ...]) -> dict
         "finalised_at": row.finalised_at,
         "stale": bool(changed),
         "changed_inputs": changed,
+        "override_acknowledgement": row.override_acknowledgement,
+        "overridden_blockers": row.overridden_blockers,
     }
 
 

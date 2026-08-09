@@ -1,7 +1,7 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
@@ -34,6 +34,28 @@ class ChangedInputResponse(BaseModel):
     current_count: int
 
 
+class BlockerResponse(BaseModel):
+    """One reason finalisation must wait: what kind of problem, a sentence
+    naming it, how many instances stand open, and the path of the screen
+    that resolves it."""
+
+    kind: str
+    detail: str
+    resolve_path: str
+    count: int
+
+
+class OverrideRequest(BaseModel):
+    """The Admin's deliberate acknowledgement that the blockers are
+    understood and finalisation shall proceed over them."""
+
+    acknowledgement: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class FinaliseReportRequest(BaseModel):
+    override: OverrideRequest | None = None
+
+
 class ReportSummaryResponse(BaseModel):
     id: int
     year: int
@@ -42,6 +64,10 @@ class ReportSummaryResponse(BaseModel):
     finalised_at: AwareDatetime | None
     stale: bool
     changed_inputs: list[ChangedInputResponse]
+    # The pre-flight override, where finalisation was one: the
+    # acknowledgement and the blockers it overrode, as recorded.
+    override_acknowledgement: str | None
+    overridden_blockers: list[BlockerResponse] | None
 
     @classmethod
     def of(cls, report: reports.ReportOverview) -> ReportSummaryResponse:
@@ -74,6 +100,8 @@ def _lifecycle(report: reports.ReportOverview) -> dict:
             )
             for changed in report.changed_inputs
         ],
+        "override_acknowledgement": report.override_acknowledgement,
+        "overridden_blockers": report.overridden_blockers,
     }
 
 
@@ -129,9 +157,36 @@ def generate_report(
     summary="Move a draft report to final — the one transition, made explicitly",
     status_code=204,
 )
-def finalise_report(report_id: int, admin: AdminDep, engine: EngineDep) -> None:
-    refused = reports.finalise(engine, report_id)
+def finalise_report(
+    report_id: int,
+    admin: AdminDep,
+    engine: EngineDep,
+    request: FinaliseReportRequest | None = None,
+) -> None:
+    override = request.override if request is not None else None
+    refused = reports.finalise(
+        engine,
+        report_id,
+        acknowledgement=override.acknowledgement if override is not None else None,
+    )
     if refused is Refusal.no_such_report:
         raise HTTPException(status_code=404, detail="No such report.")
     if refused is Refusal.already_final:
         raise HTTPException(status_code=409, detail="This report is already final.")
+    if isinstance(refused, reports.Blocked):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "The report cannot be finalised while the application"
+                " already knows something is wrong.",
+                "blockers": [
+                    BlockerResponse(
+                        kind=blocker.kind,
+                        detail=blocker.detail,
+                        resolve_path=blocker.resolve_path,
+                        count=blocker.count,
+                    ).model_dump()
+                    for blocker in refused.blockers
+                ],
+            },
+        )

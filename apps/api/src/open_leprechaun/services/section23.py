@@ -39,6 +39,7 @@ A disposal exceeding the lots its Account holds is a hard error naming the
 shortfall — never a silent zero-basis fill.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -52,7 +53,7 @@ from open_leprechaun.services.stances import effective_stance, never_enters_cost
 from open_leprechaun.services.statutory import StatutoryValueUnsetError, required_value
 from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Outflow
 
-__all__ = ["LotShortfallError", "StatutoryValueUnsetError", "year_report"]
+__all__ = ["LotShortfallError", "StatutoryValueUnsetError", "lot_shortfalls", "year_report"]
 
 EXEMPTION_LIMIT_KEY = "private_sale_exemption_limit"
 """The §23 Abs. 3 Satz 5 EStG Freigrenze in the statutory vocabulary."""
@@ -146,42 +147,22 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     limit = required_value(
         engine, year=year, key=EXEMPTION_LIMIT_KEY, statute="§23 Abs. 3 Satz 5 EStG"
     )
-    with lots.snapshot(engine) as connection:
-        transaction_rows, leg_rows = lots_repository.ledger(connection)
-        numeraire = lots_repository.numeraire_instruments(connection)
-        stance_rows = lots_repository.stance_rows(connection)
-        match_rows = lots_repository.match_rows(connection)
-        instrument_rows = lots_repository.instrument_rows(connection)
-    derived = lots.derive(
-        transaction_rows,
-        leg_rows,
-        numeraire_instruments=numeraire,
-        stance_rows=stance_rows,
-        match_rows=match_rows,
-    )
-    instruments = {row.id: row for row in instrument_rows}
-    decisions_of = lots.grouped(stance_rows, "instrument_id")
-    legs_of = lots.grouped(leg_rows, "transaction_id")
+    replay = _replay(engine)
+    instruments = replay.instruments
 
     disposals = []
-    for transaction in transaction_rows:
-        if TAX_CONSEQUENCES[transaction.type].outflow is not Outflow.disposal:
+    for transaction, leg, consumed in _private_sales(replay):
+        siblings = replay.legs_of.get(transaction.id, [])
+        # Whatever year the gap sits in: every later consumption's FIFO
+        # position rests on it, so no year computes over it.
+        _refuse_shortfall(leg, consumed, transaction, instruments)
+        # Only the requested year is valued: another year's disposal must
+        # not cost a rate lookup here — nor fail over one.
+        if fx.event_date(transaction.occurred_at).year != year:
             continue
-        siblings = legs_of.get(transaction.id, [])
-        for leg in siblings:
-            if leg.role != "out" or not _is_private_sale(leg, instruments, decisions_of):
-                continue
-            consumed = derived.consumed.get(leg.id, [])
-            # Whatever year the gap sits in: every later consumption's FIFO
-            # position rests on it, so no year computes over it.
-            _refuse_shortfall(leg, consumed, transaction, instruments)
-            # Only the requested year is valued: another year's disposal must
-            # not cost a rate lookup here — nor fail over one.
-            if fx.event_date(transaction.occurred_at).year != year:
-                continue
-            disposals.append(
-                _disposal(engine, source, transaction, leg, siblings, consumed, instruments)
-            )
+        disposals.append(
+            _disposal(engine, source, transaction, leg, siblings, consumed, instruments)
+        )
 
     awaiting = tuple(
         disposal.leg_id
@@ -208,6 +189,69 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         awaiting_valuation=awaiting,
         freigrenze=_verdict(limit, total) if total is not None else None,
     )
+
+
+def lot_shortfalls(engine: Engine, *, through_year: int) -> list[str]:
+    """One Instrument symbol per disposal up to the end of the Tax Year that
+    exceeds the lots its Account holds — the same judgement year_report
+    refuses over (LotShortfallError), enumerated in full so the pre-flight
+    (ticket 25) can name every gap instead of failing on the first."""
+    replay = _replay(engine)
+    return [
+        replay.instruments[leg.instrument_id].symbol
+        for transaction, leg, consumed in _private_sales(replay)
+        if fx.event_date(transaction.occurred_at).year <= through_year
+        and sum((piece.quantity for piece in consumed), Decimal(0)) < leg.quantity
+    ]
+
+
+@dataclass(frozen=True)
+class _Replay:
+    """One full replay of the ledger with the indexes the disposal walks
+    need, so year_report and lot_shortfalls judge the very same pairing."""
+
+    transaction_rows: list[Row]
+    legs_of: dict[int, list[Row]]
+    instruments: dict[int, Row]
+    decisions_of: dict[int, list[Row]]
+    consumed: dict[int, list[lots.Slice]]
+
+
+def _replay(engine: Engine) -> _Replay:
+    with lots.snapshot(engine) as connection:
+        transaction_rows, leg_rows = lots_repository.ledger(connection)
+        numeraire = lots_repository.numeraire_instruments(connection)
+        stance_rows = lots_repository.stance_rows(connection)
+        match_rows = lots_repository.match_rows(connection)
+        instrument_rows = lots_repository.instrument_rows(connection)
+    derived = lots.derive(
+        transaction_rows,
+        leg_rows,
+        numeraire_instruments=numeraire,
+        stance_rows=stance_rows,
+        match_rows=match_rows,
+    )
+    return _Replay(
+        transaction_rows=transaction_rows,
+        legs_of=lots.grouped(leg_rows, "transaction_id"),
+        instruments={row.id: row for row in instrument_rows},
+        decisions_of=lots.grouped(stance_rows, "instrument_id"),
+        consumed=derived.consumed,
+    )
+
+
+def _private_sales(replay: _Replay) -> Iterator[tuple[Row, Row, list[lots.Slice]]]:
+    """Every §23 disposal leg of the whole ledger with what it consumed —
+    (transaction, out-leg, consumed slices), in ledger order."""
+    for transaction in replay.transaction_rows:
+        if TAX_CONSEQUENCES[transaction.type].outflow is not Outflow.disposal:
+            continue
+        for leg in replay.legs_of.get(transaction.id, []):
+            if leg.role != "out" or not _is_private_sale(
+                leg, replay.instruments, replay.decisions_of
+            ):
+                continue
+            yield transaction, leg, replay.consumed.get(leg.id, [])
 
 
 def _is_private_sale(

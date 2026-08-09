@@ -36,7 +36,11 @@ def list_reports(connection: Connection) -> list[Row]:
     listing shows."""
     return list(
         connection.execute(
-            text("SELECT id, year, status, generated_at, finalised_at FROM report ORDER BY id DESC")
+            text(
+                "SELECT id, year, status, generated_at, finalised_at,"
+                " override_acknowledgement, overridden_blockers"
+                " FROM report ORDER BY id DESC"
+            )
         ).all()
     )
 
@@ -44,22 +48,37 @@ def list_reports(connection: Connection) -> list[Row]:
 def get(connection: Connection, report_id: int) -> Row | None:
     return connection.execute(
         text(
-            "SELECT id, year, status, generated_at, finalised_at, figures"
+            "SELECT id, year, status, generated_at, finalised_at,"
+            " override_acknowledgement, overridden_blockers, figures"
             " FROM report WHERE id = :id"
         ),
         {"id": report_id},
     ).one_or_none()
 
 
-def finalise(connection: Connection, report_id: int) -> Refusal | None:
-    """Flip one report draft → final, stamping the instant. The condition is
-    in the UPDATE itself, so a report can never be finalised twice."""
+def finalise(
+    connection: Connection,
+    report_id: int,
+    *,
+    override_acknowledgement: str | None = None,
+    overridden_blockers: list[dict] | None = None,
+) -> Refusal | None:
+    """Flip one report draft → final, stamping the instant — and, where the
+    finalisation overrode pre-flight blockers, the acknowledgement with what
+    it overrode. The condition is in the UPDATE itself, so a report can never
+    be finalised twice."""
     flipped = connection.execute(
         text(
-            "UPDATE report SET status = 'final', finalised_at = now()"
+            "UPDATE report SET status = 'final', finalised_at = now(),"
+            " override_acknowledgement = :acknowledgement,"
+            " overridden_blockers = CAST(:blockers AS jsonb)"
             " WHERE id = :id AND status = 'draft'"
         ),
-        {"id": report_id},
+        {
+            "id": report_id,
+            "acknowledgement": override_acknowledgement,
+            "blockers": None if overridden_blockers is None else json.dumps(overridden_blockers),
+        },
     )
     if flipped.rowcount == 1:
         return None
