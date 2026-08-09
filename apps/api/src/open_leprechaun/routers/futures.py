@@ -103,6 +103,9 @@ class PositionResponse(BaseModel):
     fees: SignedAmount
     funding: SignedAmount
     net: SignedAmount
+    # The bot aggregate whose scope covers this position (ticket 30) — the
+    # marker the summary presentation collapses on.
+    aggregate_id: int | None
 
     @classmethod
     def of(cls, position: PositionOverview) -> PositionResponse:

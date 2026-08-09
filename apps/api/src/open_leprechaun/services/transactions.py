@@ -151,6 +151,9 @@ class TransactionOverview:
     # An Opening Balance's declarations (ticket 15); None everywhere else.
     reconstructed: str | None
     estimated_basis_eur: Decimal | None
+    # The dust-sweep Aggregate this event belongs to (ticket 30) — a
+    # presentation marker the summary collapses on, never a tax input.
+    aggregate_id: int | None
     legs: tuple[LegOverview, ...]
 
 
@@ -175,6 +178,7 @@ def overview(engine: Engine) -> list[TransactionOverview]:
             note=row.note,
             reconstructed=row.reconstructed,
             estimated_basis_eur=row.estimated_basis_eur,
+            aggregate_id=row.aggregate_id,
             legs=tuple(legs_of.get(row.id, [])),
         )
         for row in transactions.list_transactions(engine)

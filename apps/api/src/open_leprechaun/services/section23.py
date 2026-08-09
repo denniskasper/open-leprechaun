@@ -111,6 +111,10 @@ class Disposal:
     # Whether a consumed lot rests on an Opening Balance's declared estimate,
     # so a report can say which figures rest on an assumption.
     rests_on_estimate: bool
+    # The dust-sweep Aggregate the disposing Transaction belongs to (ticket
+    # 30): the marker the summary presentation collapses on. The disposal
+    # itself stays in every total — an Aggregate suppresses nothing.
+    aggregate_id: int | None
     consumptions: tuple[Consumption, ...]
 
 
@@ -327,6 +331,7 @@ def _disposal(
         proceeds_eur=proceeds,
         costs_eur=costs,
         rests_on_estimate=any(piece.basis_source == lots.ESTIMATE for piece in consumed),
+        aggregate_id=transaction.aggregate_id,
         consumptions=consumptions,
     )
 

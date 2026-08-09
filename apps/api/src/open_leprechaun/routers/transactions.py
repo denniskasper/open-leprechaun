@@ -125,6 +125,9 @@ class TransactionResponse(BaseModel):
     note: str | None
     reconstructed: Reconstructed | None
     estimated_basis_eur: EstimatedBasis | None
+    # The dust-sweep aggregate this event belongs to (ticket 30) — the
+    # marker the summary presentation collapses on.
+    aggregate_id: int | None
     legs: list[LegResponse]
 
     @classmethod
@@ -136,6 +139,7 @@ class TransactionResponse(BaseModel):
             note=transaction.note,
             reconstructed=transaction.reconstructed,
             estimated_basis_eur=transaction.estimated_basis_eur,
+            aggregate_id=transaction.aggregate_id,
             legs=[
                 LegResponse(
                     id=leg.id,

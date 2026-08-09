@@ -41,6 +41,7 @@ from decimal import Decimal
 from sqlalchemy import Connection, Engine, Row
 from sqlalchemy.exc import IntegrityError
 
+from open_leprechaun.repositories import aggregates as aggregates_repository
 from open_leprechaun.repositories import futures as repository
 from open_leprechaun.repositories.futures import (
     DerivationIssue,
@@ -357,6 +358,20 @@ def _attribute(connection: Connection) -> None:
     repository.set_attributions(connection, attributions)
 
 
+def _aggregate_of(row, bot_scopes) -> int | None:  # noqa: ANN001 — a position row
+    """The bot aggregate whose scope covers this position, if any (ticket
+    30). Overlapping scopes are refused on recording, so at most one can."""
+    for scope in bot_scopes:
+        if aggregates_repository.scope_covers(
+            scope_source=scope.futures_source,
+            scope_symbol=scope.futures_symbol,
+            source=row.source,
+            symbol=row.symbol,
+        ):
+            return scope.id
+    return None
+
+
 def net_figure(position) -> Decimal:  # noqa: ANN001 — a position row or overview alike
     """The one net a position states (ticket 28): realised result less
     trading fees plus attributed funding — the figure a close emits into the
@@ -384,6 +399,9 @@ class PositionOverview:
     fees: Decimal
     funding: Decimal
     net: Decimal
+    # The bot aggregate whose scope covers this position (ticket 30) — a
+    # presentation marker the summary collapses on, never a tax input.
+    aggregate_id: int | None
 
 
 @dataclass(frozen=True)
@@ -426,6 +444,7 @@ def overview(engine: Engine) -> FuturesOverview:
         positions = repository.position_rows(connection)
         unattributable = repository.unattributable_rows(connection)
         issues = repository.issue_rows(connection)
+        bot_scopes = aggregates_repository.bot_rows(connection)
     return FuturesOverview(
         positions=tuple(
             PositionOverview(
@@ -443,6 +462,7 @@ def overview(engine: Engine) -> FuturesOverview:
                 fees=row.fees,
                 funding=row.funding,
                 net=net_figure(row),
+                aggregate_id=_aggregate_of(row, bot_scopes),
             )
             for row in positions
         ),

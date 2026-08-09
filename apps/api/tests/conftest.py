@@ -70,6 +70,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         connection.execute(text("DELETE FROM futures_derivation_issue"))
         connection.execute(text("DELETE FROM futures_position"))
         connection.execute(text("DELETE FROM transaction"))
+        # Aggregates after their member transactions; the SET NULL release
+        # makes either order work, this one just deletes nothing twice.
+        connection.execute(text("DELETE FROM aggregate"))
         connection.execute(text("DELETE FROM instrument"))
         # Accounts first: a Platform still holding one refuses to go.
         connection.execute(text("DELETE FROM account"))

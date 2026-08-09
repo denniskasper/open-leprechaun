@@ -36,7 +36,9 @@ class Refusal(Enum):
     no_such_instrument = "no_such_instrument"
 
 
-_TRANSACTION_COLUMNS = "id, type, occurred_at, note, reconstructed, estimated_basis_eur"
+_TRANSACTION_COLUMNS = (
+    "id, type, occurred_at, note, reconstructed, estimated_basis_eur, aggregate_id"
+)
 _LEG_COLUMNS = (
     "id, transaction_id, account_id, instrument_id, role, quantity, charged_against_leg_id"
 )

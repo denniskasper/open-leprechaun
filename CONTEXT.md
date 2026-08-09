@@ -539,6 +539,24 @@ behind.
 The selected display currency. German tax calculations always use EUR regardless — DisplayCurrency
 affects presentation only, and never a tax figure.
 
+### Aggregate
+
+One summary line over many tiny records of one origin, whose constituents remain retrievable in
+full. Two kinds: a **bot** summarises a fill source's futures activity — a scope, not a member
+list, because **Derived Positions** are rebuilt wholesale and only the scope survives — and a
+**dust sweep** collects the trades that disposed many dust balances into one received
+**Instrument**.
+
+An Aggregate is presentation only. Its figures are sums over its constituents, never
+recomputations, so summarising cannot change a number; the tax engines never read it — every
+constituent position still emits its own **Section 20 Event** and every constituent disposal still
+consumes its own **Tax Lots** — and membership sits outside the input fingerprint like a note, so
+recording one marks no report stale. Disbanding one releases its members and touches nothing else.
+
+_Avoid_: netting constituents into one synthetic record. The constituents are the record; the
+Aggregate only collapses how they are shown.
+_Avoid_: "dust sweep" for an unsolicited dust *inflow* — that is a **Stance** question.
+
 ### Bearer Token Auth
 
 The token-in-the-response-body half of authentication, alongside the httpOnly cookie the browser

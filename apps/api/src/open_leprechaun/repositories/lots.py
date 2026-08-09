@@ -47,7 +47,7 @@ def ledger(connection: Connection) -> tuple[list[Row], list[Row]]:
     transactions = list(
         connection.execute(
             text(
-                "SELECT id, type, occurred_at, reconstructed, estimated_basis_eur"
+                "SELECT id, type, occurred_at, reconstructed, estimated_basis_eur, aggregate_id"
                 " FROM transaction ORDER BY occurred_at, id"
             )
         ).all()
