@@ -14,11 +14,14 @@ never the port's. Failures are named: a rate limit is its own condition,
 distinct from an outage, so the chain can report what actually happened.
 """
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
+
+import httpx
 
 
 class PriceableInstrument(Protocol):
@@ -65,6 +68,24 @@ class RateLimitedError(Exception):
 
 class ProviderOutageError(Exception):
     """The provider failed to answer at all."""
+
+
+def fetch_json(
+    client: httpx.Client, url: str, *, provider: str, params: dict[str, str] | None = None
+) -> Any:  # noqa: ANN401
+    """One GET in the port's failure vocabulary, shared by the provider
+    implementations: 429 is the rate-limit condition, any other failure an
+    outage naming the provider — and numbers decode through Decimal, never a
+    float."""
+    try:
+        response = client.get(url, params=params)
+    except httpx.HTTPError as error:
+        raise ProviderOutageError(f"{provider} is unreachable: {error}") from error
+    if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
+        raise RateLimitedError(f"{provider} asked for a pause (HTTP 429).")
+    if response.is_error:
+        raise ProviderOutageError(f"{provider} answered HTTP {response.status_code}.")
+    return json.loads(response.text, parse_float=Decimal)
 
 
 class CryptoPriceProvider(Protocol):

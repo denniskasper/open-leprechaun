@@ -9,7 +9,6 @@ factually is that provider's namespace. An Instrument neither mapping covers
 is simply not covered here. Prices decode through Decimal, never a float.
 """
 
-import json
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
@@ -21,9 +20,8 @@ from open_leprechaun.ports.coingecko import NATIVE_COIN_IDS
 from open_leprechaun.ports.crypto_prices import (
     DailyClose,
     PriceableInstrument,
-    ProviderOutageError,
     Quote,
-    RateLimitedError,
+    fetch_json,
 )
 
 API = "https://coins.llama.fi"
@@ -94,15 +92,7 @@ class DefiLlamaProvider:
         ]
 
     def _get(self, path: str, *, params: dict[str, str] | None = None) -> Any:  # noqa: ANN401
-        try:
-            response = self._client.get(f"{API}{path}", params=params)
-        except httpx.HTTPError as error:
-            raise ProviderOutageError(f"DefiLlama is unreachable: {error}") from error
-        if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
-            raise RateLimitedError("DefiLlama asked for a pause (HTTP 429).")
-        if response.is_error:
-            raise ProviderOutageError(f"DefiLlama answered HTTP {response.status_code}.")
-        return json.loads(response.text, parse_float=Decimal)
+        return fetch_json(self._client, f"{API}{path}", provider="DefiLlama", params=params)
 
 
 def _key_for(instrument: PriceableInstrument) -> str | None:

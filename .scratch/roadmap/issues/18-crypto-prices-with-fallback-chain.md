@@ -65,3 +65,16 @@ Decisions worth recording:
 - Verified against the live providers in the running app: the seed's BTC/SOL/UNI price fresh
   via CoinGecko; the ticker-colliding BSC token and the spam token fall through both providers
   and come back named `unpriced`; the stablecoin is absent as designed.
+
+Post-review fixes (two-axis review):
+
+- A provider answering a **zero price** (DefiLlama does, for dead tokens) is now "no answer" —
+  the Instrument falls through to the next provider or the store — instead of tripping the
+  `crypto_price_is_positive` constraint and failing the whole report.
+- A quote the reference-rate universe cannot state in EUR (ECB down or a genuine rate gap)
+  likewise degrades that Instrument to its stored stale price instead of erroring the report;
+  a backfill skips such closes rather than failing.
+- A failed price fetch on the Instruments page now shows the ErrorState pattern with retry,
+  so an empty Price column is never mistaken for "the chain doesn't price this".
+- The two providers' identical HTTP-and-error handling collapsed into `fetch_json` on the
+  port module; `_from_store` gained a real `NamedInstrument` protocol instead of a `noqa`.

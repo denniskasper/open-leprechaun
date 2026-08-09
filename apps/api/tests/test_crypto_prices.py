@@ -303,6 +303,71 @@ def test_a_non_eur_quote_converts_by_the_reference_rate_rule(priced_db):
     assert entry.price_eur == Decimal("50000")
 
 
+def test_a_zero_price_is_no_answer_and_falls_through(priced_db):
+    """Some providers answer 0 for a dead token. Zero is a statement about
+    value the chain must never make — the quote is discarded like any other
+    non-answer, and the next provider or the store speaks instead."""
+    _btc(priced_db)
+    zeroing = FakeCryptoPriceProvider("coingecko", {"BTC": (Decimal("0"), "EUR")})
+    fallback = FakeCryptoPriceProvider("defillama", {"BTC": (Decimal("49000"), "EUR")})
+
+    report = crypto_prices.refresh_prices(priced_db, [zeroing, fallback], FakeReferenceRateSource())
+
+    (entry,) = report.prices
+    assert entry.status == "fresh"
+    assert entry.price_eur == Decimal("49000")
+    assert entry.source == "defillama"
+
+
+def test_an_unconvertible_quote_degrades_to_the_stored_price_not_an_error(priced_db):
+    """A provider up while the reference-rate source is down must not take the
+    whole report with it: the USD quote cannot be expressed in EUR, so the
+    Instrument is served from the store, clearly labelled stale."""
+    instrument_id = _btc(priced_db)
+    _insert_price(priced_db, instrument_id, price_eur=Decimal("48000"), source="coingecko")
+    provider = FakeCryptoPriceProvider("defillama", {"BTC": (Decimal("60000"), "USD")})
+
+    report = crypto_prices.refresh_prices(priced_db, [provider], FakeReferenceRateSource())
+
+    (entry,) = report.prices
+    assert entry.status == "stale"
+    assert entry.price_eur == Decimal("48000")
+
+
+def test_a_backfill_skips_a_close_it_cannot_state_in_eur(priced_db):
+    """One zero close, one unconvertible close, one good one: only the good
+    close is stored, and the backfill still answers rather than erroring."""
+    instrument_id = _btc(priced_db)
+    provider = FakeCryptoPriceProvider(
+        "defillama",
+        closes_by_symbol={
+            "BTC": [
+                DailyClose(close_date=date(2026, 8, 4), price=Decimal("0"), currency="USD"),
+                DailyClose(close_date=date(2026, 8, 5), price=Decimal("60000"), currency="USD"),
+                DailyClose(close_date=date(2026, 8, 6), price=Decimal("61000"), currency="CHF"),
+            ]
+        },
+    )
+    rate_source = FakeReferenceRateSource([ReferenceRate("USD", date(2026, 8, 5), Decimal("1.20"))])
+
+    report = crypto_prices.backfill_daily_closes(
+        priced_db,
+        [provider],
+        rate_source,
+        instrument_id=instrument_id,
+        start=date(2026, 8, 4),
+        end=date(2026, 8, 6),
+    )
+
+    assert report.stored == 1
+    stored = stored_prices.daily_closes(
+        priced_db, instrument_id, start=date(2026, 8, 1), end=date(2026, 8, 31)
+    )
+    assert [(row.close_date, row.price_eur) for row in stored] == [
+        (date(2026, 8, 5), Decimal("50000"))
+    ]
+
+
 # --- Who is priceable at all -------------------------------------------------
 
 

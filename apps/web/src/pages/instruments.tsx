@@ -137,6 +137,13 @@ export function InstrumentsPage() {
         />
       ) : data ? (
         <div className="space-y-3">
+          {prices.error != null && (
+            <ErrorState
+              title="The crypto price report could not be loaded"
+              detail="The API did not answer with prices, so the Price column below is empty — not zero, and not a statement about value."
+              onRetry={() => void prices.refetch()}
+            />
+          )}
           {conditions && (
             <p className="microlabel text-caution">
               price providers: {conditions} — stale prices below are last known, with their age

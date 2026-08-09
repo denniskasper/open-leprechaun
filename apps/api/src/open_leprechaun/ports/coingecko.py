@@ -11,7 +11,6 @@ The free API answers 429 when it wants a pause; that is the rate-limit
 condition, its own named thing, distinct from an outage.
 """
 
-import json
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
@@ -23,9 +22,8 @@ import httpx
 from open_leprechaun.ports.crypto_prices import (
     DailyClose,
     PriceableInstrument,
-    ProviderOutageError,
     Quote,
-    RateLimitedError,
+    fetch_json,
 )
 
 API = "https://api.coingecko.com/api/v3"
@@ -147,15 +145,7 @@ class CoinGeckoProvider:
         ]
 
     def _get(self, path: str, *, params: dict[str, str]) -> Any:  # noqa: ANN401
-        try:
-            response = self._client.get(f"{API}{path}", params=params)
-        except httpx.HTTPError as error:
-            raise ProviderOutageError(f"CoinGecko is unreachable: {error}") from error
-        if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
-            raise RateLimitedError("CoinGecko asked for a pause (HTTP 429).")
-        if response.is_error:
-            raise ProviderOutageError(f"CoinGecko answered HTTP {response.status_code}.")
-        return json.loads(response.text, parse_float=Decimal)
+        return fetch_json(self._client, f"{API}{path}", provider="CoinGecko", params=params)
 
 
 def _quote_from(answer: dict | None, instrument: PriceableInstrument) -> Quote | None:
