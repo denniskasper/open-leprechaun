@@ -114,9 +114,17 @@ def _trade(db, account, give, get, *, given, gotten, occurred_at):
 
 
 def _limits(db, *, year):
-    """Both engines' Freigrenzen for a year no migration seeds."""
-    for key in ("private_sale_exemption_limit", "other_income_exemption_limit"):
-        statutory.upsert_value(db, year=year, key=key, value=Decimal("1000"), source="a test value")
+    """What generation itself reads, for a year no migration seeds: the
+    §23/§22 Freigrenzen and the §20 assessment's values — the other required
+    keys stay unset, which is exactly what the statutory blocker names."""
+    for key, value in (
+        ("private_sale_exemption_limit", "1000"),
+        ("other_income_exemption_limit", "1000"),
+        ("saver_allowance_single", "1000"),
+        ("flat_rate", "0.25"),
+        ("solidarity_surcharge_rate", "0.055"),
+    ):
+        statutory.upsert_value(db, year=year, key=key, value=Decimal(value), source="a test value")
 
 
 def _round_trip(db, *, bought_at=BOUGHT, sold_at=SOLD):
@@ -183,9 +191,9 @@ def _blockers(refused):
 
 
 def test_missing_statutory_configuration_blocks_finalisation(store, client):
-    """A year holding only its Freigrenzen generates, but finalising is
-    refused while required statutory values are missing — the blocker names
-    the gap and links the statutory settings."""
+    """A year holding only what generation itself reads generates, but
+    finalising is refused while other required statutory values are missing —
+    the blocker names the gap and links the statutory settings."""
     _round_trip(store, bought_at=BOUGHT_2031, sold_at=SOLD_2031)
     _limits(store, year=2031)
     report_id = client.post("/api/reports", json={"year": 2031}).json()["id"]
@@ -195,7 +203,7 @@ def test_missing_statutory_configuration_blocks_finalisation(store, client):
     blockers = _blockers(refused)
     blocker = blockers["missing_statutory_configuration"]
     assert blocker["resolve_path"] == "/settings/statutory"
-    assert "flat_rate" in blocker["detail"]
+    assert "advance_lump_sum_base_rate" in blocker["detail"]
     assert "2031" in blocker["detail"]
     report = client.get(f"/api/reports/{report_id}").json()
     assert report["status"] == "draft"

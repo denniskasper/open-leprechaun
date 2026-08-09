@@ -31,6 +31,9 @@ StatutoryKey = Literal[
     "loss_cap_aktien",
     "loss_cap_sonstige",
     "loss_cap_termingeschaefte",
+    "opening_carryforward_aktien",
+    "opening_carryforward_sonstige",
+    "opening_carryforward_termingeschaefte",
 ]
 
 # The elections that select which per-year values apply; the service holds

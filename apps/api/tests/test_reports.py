@@ -111,9 +111,16 @@ def _trade(db, account, give, get, *, given, gotten, occurred_at):
 
 
 def _limits(db, *, year):
-    """Both engines' Freigrenzen for a year no migration seeds."""
-    for key in ("private_sale_exemption_limit", "other_income_exemption_limit"):
-        statutory.upsert_value(db, year=year, key=key, value=Decimal("1000"), source="a test value")
+    """Every value the three engines read, for a year no migration seeds:
+    the §23/§22 Freigrenzen and what the §20 assessment requires."""
+    for key, value in (
+        ("private_sale_exemption_limit", "1000"),
+        ("other_income_exemption_limit", "1000"),
+        ("saver_allowance_single", "1000"),
+        ("flat_rate", "0.25"),
+        ("solidarity_surcharge_rate", "0.055"),
+    ):
+        statutory.upsert_value(db, year=year, key=key, value=Decimal(value), source="a test value")
 
 
 def _round_trip(db, *, bought_at=BOUGHT, sold_at=SOLD):
@@ -195,6 +202,18 @@ def test_a_report_carries_each_capital_income_category_s_balance(db, client):
     assert entry["event"]["date"] == "2025-06-03"
     assert aktien["balance_eur"] == "0"
     assert termingeschaefte["balance_eur"] == "0"
+    # The assessment (ticket 27), frozen beside the balances: the migration-
+    # seeded 2025 allowance covers the dividend, so nothing is taxable — and
+    # the personal-rate comparison is noted, never computed (ADR-0007).
+    assessment = section20["assessment"]
+    assert assessment["combined_eur"] == "500"
+    assert assessment["allowance_applied_eur"] == "500"
+    assert assessment["taxable_eur"] == "0"
+    # Tax figures are cent-quantized, so the frozen string states cents.
+    assert assessment["tax"]["total_eur"] == "0.00"
+    assert "Günstigerprüfung" in assessment["personal_rate_note"]
+    carried = {pot["category"]: pot for pot in assessment["categories"]}
+    assert carried["sonstige"]["carryforward_out"] == []
 
 
 def test_regenerating_creates_a_new_report_and_never_mutates_an_existing_one(db, client):

@@ -40,6 +40,9 @@ _AMOUNT = KeyDefinition(unit="eur")
 # cases (JStG 2024, BGBl. 2024 I Nr. 387): an absent cap means uncapped,
 # never unknown — so no year requires one.
 _OPTIONAL_CAP = KeyDefinition(unit="eur", required=False)
+# An opening loss carryforward from an assessment predating the ledger
+# (ticket 27): absent means zero, never unknown — so no year requires one.
+_OPTIONAL_OPENING = KeyDefinition(unit="eur", required=False)
 
 KEYS: Mapping[str, KeyDefinition] = {
     # The §23 Abs. 3 Satz 5 EStG Freigrenze on private sales.
@@ -63,6 +66,12 @@ KEYS: Mapping[str, KeyDefinition] = {
     "loss_cap_aktien": _OPTIONAL_CAP,
     "loss_cap_sonstige": _OPTIONAL_CAP,
     "loss_cap_termingeschaefte": _OPTIONAL_CAP,
+    # Per-category opening loss carryforwards, the balance a §20 pot opens
+    # the entered year with — from a Verlustfeststellung predating the
+    # ledger (ticket 27), the one personal figure this store holds.
+    "opening_carryforward_aktien": _OPTIONAL_OPENING,
+    "opening_carryforward_sonstige": _OPTIONAL_OPENING,
+    "opening_carryforward_termingeschaefte": _OPTIONAL_OPENING,
 }
 
 
@@ -117,6 +126,13 @@ def optional_value(engine: Engine, *, year: int, key: str) -> Decimal | None:
     (ticket 26) reads a loss cap, where absence means uncapped, never
     unknown, so nothing refuses and nothing defaults."""
     return _stored_value(engine, year=year, key=key)
+
+
+def optional_values(engine: Engine, *, key: str) -> dict[int, Decimal]:
+    """Every year's value for a key no year requires, keyed by year — how
+    the §20 engine (ticket 27) reads loss caps and opening carryforwards
+    across a chain of years in one read."""
+    return {row.year: row.value for row in statutory.list_values(engine) if row.key == key}
 
 
 def _stored_value(engine: Engine, *, year: int, key: str) -> Decimal | None:

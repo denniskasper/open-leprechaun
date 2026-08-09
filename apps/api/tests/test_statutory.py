@@ -69,6 +69,14 @@ def test_the_schema_refuses_a_rate_above_one(store):
     _insert_value(store, year=2031, key="loss_cap_termingeschaefte", value=Decimal("20000"))
 
 
+def test_the_schema_accepts_an_opening_carryforward(store):
+    """Ticket 27: a loss carryforward established by an assessment predating
+    the ledger enters as per-year configuration — the vocabulary knows one
+    per §20 category."""
+    for category in ("aktien", "sonstige", "termingeschaefte"):
+        _insert_value(store, year=2031, key=f"opening_carryforward_{category}", value=Decimal("5"))
+
+
 def test_the_schema_refuses_a_blank_source(store):
     """Each value records where it came from — a citation is not optional."""
     with pytest.raises(IntegrityError):
@@ -135,8 +143,10 @@ def test_a_fresh_database_knows_the_statutory_values_for_the_deliverable_era(fre
     assert all(source.strip() for _, source in rows.values())
     assert "BMF" in rows[(2026, "advance_lump_sum_base_rate")][1]
     # The §20 Abs. 6 Satz 5/6 loss caps were struck retroactively for all open
-    # cases (JStG 2024), so no cap rides in — absence means uncapped.
-    assert not any(key.startswith("loss_cap") for _, key in rows)
+    # cases (JStG 2024), so no cap rides in — absence means uncapped. And no
+    # opening carryforward rides in either: that is the Admin's own assessment
+    # data, never public law.
+    assert not any(key.startswith(("loss_cap", "opening_carryforward")) for _, key in rows)
 
 
 # --- The repository ----------------------------------------------------------
@@ -207,13 +217,17 @@ def test_the_vocabulary_covers_every_constant_the_tax_engines_will_need():
         "loss_cap_aktien",
         "loss_cap_sonstige",
         "loss_cap_termingeschaefte",
+        "opening_carryforward_aktien",
+        "opening_carryforward_sonstige",
+        "opening_carryforward_termingeschaefte",
     }
 
 
 def test_every_key_knows_its_unit_and_whether_a_year_requires_it():
-    """Amounts are EUR, the rest are fractions of one; only the loss caps are
-    optional — the §20 Abs. 6 Satz 5/6 caps were struck retroactively (JStG
-    2024), so an absent cap means uncapped, never unknown."""
+    """Amounts are EUR, the rest are fractions of one; only the loss caps and
+    the opening carryforwards are optional — an absent cap means uncapped
+    (JStG 2024 struck the §20 Abs. 6 Satz 5/6 caps retroactively) and an
+    absent opening carryforward means zero, never unknown."""
     keys = statutory_service.KEYS
     rates = {key for key, definition in keys.items() if definition.unit == "rate"}
     optional = {key for key, definition in keys.items() if not definition.required}
@@ -225,7 +239,14 @@ def test_every_key_knows_its_unit_and_whether_a_year_requires_it():
         "church_tax_rate_other_laender",
         "advance_lump_sum_base_rate",
     }
-    assert optional == {"loss_cap_aktien", "loss_cap_sonstige", "loss_cap_termingeschaefte"}
+    assert optional == {
+        "loss_cap_aktien",
+        "loss_cap_sonstige",
+        "loss_cap_termingeschaefte",
+        "opening_carryforward_aktien",
+        "opening_carryforward_sonstige",
+        "opening_carryforward_termingeschaefte",
+    }
 
 
 def test_a_year_with_a_required_value_unset_is_identifiable(store):

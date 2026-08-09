@@ -25,9 +25,13 @@ import { formatMoneyExact, formatQuantity } from "@/lib/format";
 /**
  * The words each statutory constant is spoken in — the German term the law
  * and the glossary use, kept beside a plain-English gloss. The value's own
- * citation rides on the row as its source.
+ * citation rides on the row as its source. An optional key also says what
+ * its absence means, because absence is an answer, never a gap.
  */
-export const KEY_WORDS: Record<StatutoryKey, { label: string; gloss: string }> = {
+export const KEY_WORDS: Record<
+  StatutoryKey,
+  { label: string; gloss: string; absent?: string }
+> = {
   private_sale_exemption_limit: {
     label: "Freigrenze — private sales",
     gloss: "All-or-nothing annual limit on §23 private-sale gains",
@@ -67,14 +71,32 @@ export const KEY_WORDS: Record<StatutoryKey, { label: string; gloss: string }> =
   loss_cap_aktien: {
     label: "Loss cap — Aktien",
     gloss: "Per-year cap on the share-sale loss pot",
+    absent: "not set — uncapped",
   },
   loss_cap_sonstige: {
     label: "Loss cap — Sonstige",
     gloss: "Per-year cap on the other-capital-income loss pot",
+    absent: "not set — uncapped",
   },
   loss_cap_termingeschaefte: {
     label: "Loss cap — Termingeschäfte",
     gloss: "Per-year cap on the futures loss pot",
+    absent: "not set — uncapped",
+  },
+  opening_carryforward_aktien: {
+    label: "Opening carryforward — Aktien",
+    gloss: "Share-sale loss carried into this year from an assessment predating the ledger",
+    absent: "not set — none carried",
+  },
+  opening_carryforward_sonstige: {
+    label: "Opening carryforward — Sonstige",
+    gloss: "Other-capital-income loss carried into this year from an assessment predating the ledger",
+    absent: "not set — none carried",
+  },
+  opening_carryforward_termingeschaefte: {
+    label: "Opening carryforward — Termingeschäfte",
+    gloss: "Futures loss carried into this year from an assessment predating the ledger",
+    absent: "not set — none carried",
   },
 };
 
@@ -109,7 +131,7 @@ export function displayValue(unit: "eur" | "rate", value: string, locale?: strin
   return formatMoneyExact(value, "EUR", locale);
 }
 
-export type RowState = "set" | "missing" | "uncapped";
+export type RowState = "set" | "missing" | "absent";
 
 export interface KeyRow {
   definition: StatutoryKeyDefinition;
@@ -119,8 +141,8 @@ export interface KeyRow {
 
 /**
  * Every key of the vocabulary as one row for a year: set with its value, or
- * honestly absent — a caution where the year requires it, "uncapped" where an
- * optional loss cap is simply not law that year.
+ * honestly absent — a caution where the year requires it, and where the key
+ * is optional the row says what absence means (uncapped, none carried).
  */
 export function rowsForYear(keys: StatutoryKeyDefinition[], year: StatutoryYear): KeyRow[] {
   const valueOf = new Map(year.values.map((value) => [value.key, value]));
@@ -129,7 +151,7 @@ export function rowsForYear(keys: StatutoryKeyDefinition[], year: StatutoryYear)
     return {
       definition,
       value,
-      state: value ? "set" : definition.required ? "missing" : "uncapped",
+      state: value ? "set" : definition.required ? "missing" : "absent",
     };
   });
 }
@@ -380,7 +402,7 @@ function ValueRow({ year, row }: { year: number; row: KeyRow }) {
               row.state === "missing" ? "text-caution" : "text-muted-foreground"
             }`}
           >
-            {row.state === "missing" ? "not set" : "not set — uncapped"}
+            {row.state === "missing" ? "not set" : (words.absent ?? "not set")}
           </span>
         )}
         <Button

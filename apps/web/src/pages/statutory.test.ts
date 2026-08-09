@@ -56,10 +56,11 @@ const KEYS: StatutoryKeyDefinition[] = [
   { key: "flat_rate", unit: "rate", required: true },
   { key: "saver_allowance_single", unit: "eur", required: true },
   { key: "loss_cap_termingeschaefte", unit: "eur", required: false },
+  { key: "opening_carryforward_aktien", unit: "eur", required: false },
 ];
 
 describe("rowsForYear", () => {
-  it("shows every key: set with its value, required gaps as missing, absent caps as uncapped", () => {
+  it("shows every key: set with its value, required gaps as missing, optional gaps as absent", () => {
     const year: StatutoryYear = {
       year: 2031,
       values: [{ key: "flat_rate", value: "0.25", source: "§ 32d Abs. 1 Satz 1 EStG" }],
@@ -71,9 +72,17 @@ describe("rowsForYear", () => {
     expect(rows.map((row) => [row.definition.key, row.state])).toEqual([
       ["flat_rate", "set"],
       ["saver_allowance_single", "missing"],
-      ["loss_cap_termingeschaefte", "uncapped"],
+      ["loss_cap_termingeschaefte", "absent"],
+      ["opening_carryforward_aktien", "absent"],
     ]);
     expect(rows[0]?.value?.source).toBe("§ 32d Abs. 1 Satz 1 EStG");
+  });
+});
+
+describe("absence wording", () => {
+  it("says what an absent optional value means — uncapped for a cap, zero for an opening carryforward", () => {
+    expect(KEY_WORDS.loss_cap_termingeschaefte.absent).toContain("uncapped");
+    expect(KEY_WORDS.opening_carryforward_aktien.absent).toContain("none");
   });
 });
 
