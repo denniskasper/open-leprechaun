@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     environment: Environment = Field(description="development or production")
     database_url: str = Field(description="SQLAlchemy URL of the application database")
+    application_secret: str = Field(
+        min_length=16,
+        description=(
+            "Root secret venue-credential encryption keys derive from (ADR-0003). "
+            "Held outside the database and backed up separately; losing it means "
+            "re-entering every venue credential. Deliberately without a default: "
+            "ciphertext under an ad-hoc key would be unrecoverable."
+        ),
+    )
     api_host: str = Field(default="127.0.0.1", description="Address the dev server binds to")
     api_port: int = Field(default=8000, description="Port the dev server binds to")
     release_version: str = Field(

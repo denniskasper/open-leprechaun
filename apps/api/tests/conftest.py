@@ -79,6 +79,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # makes either order work, this one just deletes nothing twice.
         connection.execute(text("DELETE FROM aggregate"))
         connection.execute(text("DELETE FROM instrument"))
+        # Connections before Platforms for the same reason as Accounts; their
+        # per-kind status rows follow by cascade.
+        connection.execute(text("DELETE FROM connection"))
         # Accounts first: a Platform still holding one refuses to go.
         connection.execute(text("DELETE FROM account"))
         connection.execute(text("DELETE FROM platform"))

@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { AppShell } from "@/components/shell/app-shell";
 import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
+import { ConnectionsPage } from "@/pages/connections";
 import { HealthPage } from "@/pages/health";
 import { HoldingsPage } from "@/pages/holdings";
 import { ImportsPage } from "@/pages/imports";
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
           { path: "imports", element: <ImportsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
+          { path: "settings/connections", element: <ConnectionsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },
         ],
       },

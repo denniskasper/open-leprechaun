@@ -5,6 +5,7 @@ import {
   Download,
   Gavel,
   Inbox,
+  KeyRound,
   type LucideIcon,
   Scale,
   Shapes,
@@ -42,6 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Settings",
     items: [
       { to: "/settings/platforms", label: "Platforms", icon: Vault },
+      { to: "/settings/connections", label: "Connections", icon: KeyRound },
       { to: "/settings/statutory", label: "Statutory", icon: Gavel },
     ],
   },
