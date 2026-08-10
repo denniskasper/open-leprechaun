@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
 import { HealthPage } from "@/pages/health";
 import { HoldingsPage } from "@/pages/holdings";
+import { ImportsPage } from "@/pages/imports";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
           { path: "inbox", element: <InboxPage /> },
           { path: "transactions", element: <TransactionsPage /> },
           { path: "transfers", element: <TransfersPage /> },
+          { path: "imports", element: <ImportsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },

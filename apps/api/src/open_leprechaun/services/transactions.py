@@ -11,11 +11,24 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Protocol
 
 from sqlalchemy import Engine
 
-from open_leprechaun.repositories import transactions
+from open_leprechaun.repositories import imports, transactions
 from open_leprechaun.repositories.transactions import Leg
+
+
+class LegShape(Protocol):
+    """What the structural judgement reads off a leg: its role and, for a
+    fee, the sibling it was charged against, by position in the same set —
+    so an import row is judged by the same sentences as a hand-recorded one."""
+
+    @property
+    def role(self) -> str: ...
+
+    @property
+    def charged_against(self) -> int | None: ...
 
 
 @dataclass(frozen=True)
@@ -76,7 +89,7 @@ honest instant is the start of known history, conservatively late."""
 _ROLE_PHRASES = {"in": "what arrived", "out": "what left", "fee": "what the fee consumed"}
 
 
-def structural_defect(type: str, legs: Sequence[Leg]) -> str | None:
+def structural_defect(type: str, legs: Sequence[LegShape]) -> str | None:
     """The sentence naming why this set of legs does not balance for this
     type, or None when it does. Judged before anything is written, so an
     unbalanced event can never exist to be repaired later."""
@@ -118,7 +131,7 @@ def declaration_defect(
     return None
 
 
-def _attachment_defect(legs: Sequence[Leg]) -> str | None:
+def _attachment_defect(legs: Sequence[LegShape]) -> str | None:
     for position, leg in enumerate(legs):
         if leg.charged_against is None:
             continue
@@ -154,6 +167,13 @@ class TransactionOverview:
     # The dust-sweep Aggregate this event belongs to (ticket 30) — a
     # presentation marker the summary collapses on, never a tax input.
     aggregate_id: int | None
+    # Import provenance (ticket 31): the batch and source that created this
+    # row, None on a hand-recorded event. An imported row the Admin edited by
+    # hand is manually overridden — a re-import will not silently revert it,
+    # and reversing its batch spares it.
+    import_batch_id: int | None
+    import_source: str | None
+    manually_overridden: bool
     legs: tuple[LegOverview, ...]
 
 
@@ -170,19 +190,65 @@ def overview(engine: Engine) -> list[TransactionOverview]:
                 charged_against_leg_id=row.charged_against_leg_id,
             )
         )
-    return [
-        TransactionOverview(
-            id=row.id,
-            type=row.type,
-            occurred_at=row.occurred_at,
-            note=row.note,
-            reconstructed=row.reconstructed,
-            estimated_basis_eur=row.estimated_basis_eur,
-            aggregate_id=row.aggregate_id,
-            legs=tuple(legs_of.get(row.id, [])),
+    provenance = {row.transaction_id: row for row in imports.list_provenance(engine)}
+    ledger = []
+    for row in transactions.list_transactions(engine):
+        imported = provenance.get(row.id)
+        ledger.append(
+            TransactionOverview(
+                id=row.id,
+                type=row.type,
+                occurred_at=row.occurred_at,
+                note=row.note,
+                reconstructed=row.reconstructed,
+                estimated_basis_eur=row.estimated_basis_eur,
+                aggregate_id=row.aggregate_id,
+                import_batch_id=imported.batch_id if imported else None,
+                import_source=imported.source if imported else None,
+                manually_overridden=imported.overridden if imported else False,
+                legs=tuple(legs_of.get(row.id, [])),
+            )
         )
-        for row in transactions.list_transactions(engine)
-    ]
+    return ledger
+
+
+@dataclass(frozen=True)
+class _RoleOnly:
+    role: str
+    charged_against: int | None = None
+
+
+def retype_defect(new_type: str, transaction: TransactionOverview) -> str | None:
+    """Whether this event could honestly wear the new type: the same
+    structural and declaration judgement as at recording, over the legs and
+    declarations it already has. Fee attachments are judged as unattached —
+    which sibling a fee was charged against does not depend on the type."""
+    legs = [_RoleOnly(role=leg.role) for leg in transaction.legs]
+    return structural_defect(new_type, legs) or declaration_defect(
+        new_type,
+        reconstructed=transaction.reconstructed,
+        estimated_basis_eur=transaction.estimated_basis_eur,
+    )
+
+
+def retype_all(
+    engine: Engine, transaction_ids: Sequence[int], *, type: str
+) -> str | transactions.Refusal | None:
+    """Re-type the chosen events in one act, every one judged first so a bulk
+    repair never half-lands: the sentence naming the first event that would
+    not balance, a Refusal when one is missing, None when all were re-typed."""
+    chosen = {
+        transaction.id: transaction
+        for transaction in overview(engine)
+        if transaction.id in set(transaction_ids)
+    }
+    for transaction_id in transaction_ids:
+        if transaction_id not in chosen:
+            return transactions.Refusal.no_such_transaction
+        defect = retype_defect(type, chosen[transaction_id])
+        if defect is not None:
+            return f"Transaction {transaction_id}: {defect}"
+    return transactions.retype(engine, list(transaction_ids), type=type)
 
 
 __all__ = [
@@ -190,7 +256,10 @@ __all__ = [
     "TRANSACTION_TYPES",
     "Leg",
     "LegRules",
+    "LegShape",
     "declaration_defect",
     "overview",
+    "retype_all",
+    "retype_defect",
     "structural_defect",
 ]

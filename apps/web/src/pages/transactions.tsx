@@ -4,6 +4,8 @@ import { useId, useState, type FormEvent } from "react";
 import { fetchInstruments, type Instrument } from "@/api/instruments";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import {
+  bulkReassign,
+  bulkRetype,
   DECIMAL_PATTERN,
   fetchTransactions,
   recordTransaction,
@@ -166,6 +168,22 @@ export function signOf(role: LegRole): string {
   return role === "in" ? "+" : "−";
 }
 
+/** Why the overridden marker exists — shown wherever it is worn. */
+const OVERRIDDEN_TITLE =
+  "Edited or moved by hand after import: a re-import will not silently revert it, and " +
+  "reversing its batch leaves it standing.";
+
+/** A selection with one membership toggled — the checkbox column's one move. */
+export function withToggled(selected: ReadonlySet<number>, id: number): Set<number> {
+  const next = new Set(selected);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  return next;
+}
+
 export function TransactionsPage() {
   const transactions = useQuery({ queryKey: ["transactions"], queryFn: fetchTransactions });
   const instruments = useQuery({ queryKey: ["instruments"], queryFn: fetchInstruments });
@@ -246,36 +264,168 @@ function LedgerTable({
       platform.accounts.map((account) => [account.id, `${platform.name} · ${account.name}`]),
     ),
   );
+  // The bulk selection: fixing a systematic import error is one act over the
+  // chosen rows, not a hundred edits.
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const chosen = transactions.filter((transaction) => selected.has(transaction.id));
 
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-border text-left">
-          {["When", "Event", "Legs", ""].map((column, index) => (
-            <th
-              key={column || "actions"}
-              scope="col"
-              className={`microlabel py-2.5 text-muted-foreground ${index === 3 ? "" : "pr-4"}`}
-            >
-              {column}
+    <div className="space-y-4">
+      {chosen.length > 0 && (
+        <BulkToolbar
+          chosen={chosen}
+          platforms={platforms}
+          onDone={() => setSelected(new Set())}
+        />
+      )}
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left">
+            <th scope="col" className="w-8 py-2.5 pr-2">
+              <input
+                type="checkbox"
+                aria-label="Select every Transaction"
+                checked={selected.size === transactions.length && transactions.length > 0}
+                onChange={() =>
+                  setSelected(
+                    selected.size === transactions.length
+                      ? new Set()
+                      : new Set(transactions.map((transaction) => transaction.id)),
+                  )
+                }
+              />
             </th>
+            {["When", "Event", "Legs", ""].map((column, index) => (
+              <th
+                key={column || "actions"}
+                scope="col"
+                className={`microlabel py-2.5 text-muted-foreground ${index === 3 ? "" : "pr-4"}`}
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.map((transaction, index) => (
+            <LedgerRow
+              key={transaction.id}
+              transaction={transaction}
+              instruments={instruments}
+              platforms={platforms}
+              instrumentById={instrumentById}
+              accountName={accountName}
+              index={index}
+              selected={selected.has(transaction.id)}
+              onToggle={() => setSelected((current) => withToggled(current, transaction.id))}
+            />
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {transactions.map((transaction, index) => (
-          <LedgerRow
-            key={transaction.id}
-            transaction={transaction}
-            instruments={instruments}
-            platforms={platforms}
-            instrumentById={instrumentById}
-            accountName={accountName}
-            index={index}
-          />
-        ))}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BulkToolbar({
+  chosen,
+  platforms,
+  onDone,
+}: {
+  chosen: Transaction[];
+  platforms: Platform[];
+  onDone: () => void;
+}) {
+  const [accountId, setAccountId] = useState("");
+  const [type, setType] = useState<TransactionType>("trade");
+  const id = useId();
+  const queryClient = useQueryClient();
+  const ids = chosen.map((transaction) => transaction.id);
+
+  const done = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    onDone();
+  };
+  const reassign = useMutation({
+    mutationFn: () => bulkReassign(ids, Number(accountId)),
+    onSuccess: done,
+  });
+  const retype = useMutation({
+    mutationFn: () => bulkRetype(ids, type),
+    onSuccess: done,
+  });
+  const failed = reassign.error ?? retype.error;
+  const busy = reassign.isPending || retype.isPending;
+
+  return (
+    <div
+      className="rise rounded-xl border border-border p-4"
+      role="group"
+      aria-label="Bulk repair"
+    >
+      <p className="microlabel mb-3 text-muted-foreground">
+        {chosen.length === 1 ? "1 Transaction selected" : `${chosen.length} Transactions selected`}
+      </p>
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-44 space-y-2">
+            <label htmlFor={`${id}-account`} className="microlabel block text-muted-foreground">
+              Reassign to Account
+            </label>
+            <select
+              id={`${id}-account`}
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value)}
+              className={SELECT_SHELL}
+            >
+              <option value="" disabled className="bg-background text-foreground">
+                Select…
+              </option>
+              {platforms
+                .filter((platform) => platform.accounts.length > 0)
+                .map((platform) => (
+                  <optgroup key={platform.id} label={platform.name}>
+                    {platform.accounts.map((account) => (
+                      <option
+                        key={account.id}
+                        value={account.id}
+                        className="bg-background text-foreground"
+                      >
+                        {account.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+            </select>
+          </div>
+          <Button
+            variant="outline"
+            disabled={busy || accountId === ""}
+            onClick={() => reassign.mutate()}
+          >
+            {reassign.isPending ? "Reassigning…" : "Reassign"}
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-2">
+            <label htmlFor={`${id}-type`} className="microlabel block text-muted-foreground">
+              Re-type as
+            </label>
+            <TypeSelect id={`${id}-type`} value={type} onChange={setType} />
+          </div>
+          <Button variant="outline" disabled={busy} onClick={() => retype.mutate()}>
+            {retype.isPending ? "Re-typing…" : "Re-type"}
+          </Button>
+        </div>
+        <Button variant="ghost" className="text-muted-foreground" onClick={onDone}>
+          Clear selection
+        </Button>
+      </div>
+      {failed && (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          {failed.message}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -286,6 +436,8 @@ function LedgerRow({
   instrumentById,
   accountName,
   index,
+  selected,
+  onToggle,
 }: {
   transaction: Transaction;
   instruments: Instrument[];
@@ -293,6 +445,8 @@ function LedgerRow({
   instrumentById: Map<number, Instrument>;
   accountName: Map<number, string>;
   index: number;
+  selected: boolean;
+  onToggle: () => void;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -303,11 +457,36 @@ function LedgerRow({
         style={{ animationDelay: `${120 + index * 40}ms` }}
         aria-label={`${TYPE_VOCABULARY[transaction.type].label} on ${transaction.occurred_at}`}
       >
+        <td className="py-3 pr-2">
+          <input
+            type="checkbox"
+            aria-label={`Select the ${TYPE_VOCABULARY[transaction.type].label} on ${transaction.occurred_at}`}
+            checked={selected}
+            onChange={onToggle}
+          />
+        </td>
         <td className="py-3 pr-4 font-mono text-xs tabular-nums text-muted-foreground">
           {formatTimestamp(Date.parse(transaction.occurred_at))}
         </td>
         <td className="py-3 pr-4">
           <span className="font-medium">{TYPE_VOCABULARY[transaction.type].label}</span>
+          {(transaction.import_source || transaction.manually_overridden) && (
+            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+              {transaction.import_source && (
+                <span
+                  className="microlabel text-muted-foreground"
+                  title="Created by an import; its batch can be reversed as a unit on the Imports screen."
+                >
+                  imported · {transaction.import_source}
+                </span>
+              )}
+              {transaction.manually_overridden && (
+                <span className="microlabel text-caution" title={OVERRIDDEN_TITLE}>
+                  overridden by hand
+                </span>
+              )}
+            </p>
+          )}
           {transaction.reconstructed && (
             <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
               <span className="microlabel text-caution" title={ESTIMATED_LOT_TITLE}>
@@ -371,7 +550,7 @@ function LedgerRow({
       </tr>
       {editing && (
         <tr className="border-b border-border">
-          <td colSpan={4} className="py-4">
+          <td colSpan={5} className="py-4">
             <TransactionForm
               instruments={instruments}
               platforms={platforms}

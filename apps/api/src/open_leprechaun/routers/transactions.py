@@ -19,6 +19,7 @@ from open_leprechaun.services.transactions import (
     TransactionOverview,
     declaration_defect,
     overview,
+    retype_all,
     structural_defect,
 )
 
@@ -128,6 +129,12 @@ class TransactionResponse(BaseModel):
     # The dust-sweep aggregate this event belongs to (ticket 30) — the
     # marker the summary presentation collapses on.
     aggregate_id: int | None
+    # Import provenance (ticket 31): the batch and source that created this
+    # row, null on a hand-recorded event; manually_overridden marks an
+    # imported row the Admin has edited, which a re-import never reverts.
+    import_batch_id: int | None
+    import_source: str | None
+    manually_overridden: bool
     legs: list[LegResponse]
 
     @classmethod
@@ -140,6 +147,9 @@ class TransactionResponse(BaseModel):
             reconstructed=transaction.reconstructed,
             estimated_basis_eur=transaction.estimated_basis_eur,
             aggregate_id=transaction.aggregate_id,
+            import_batch_id=transaction.import_batch_id,
+            import_source=transaction.import_source,
+            manually_overridden=transaction.manually_overridden,
             legs=[
                 LegResponse(
                     id=leg.id,
@@ -218,6 +228,48 @@ def revise_transaction(
 def remove_transaction(transaction_id: int, admin: AdminDep, engine: EngineDep) -> None:
     if not transactions.delete_transaction(engine, transaction_id):
         raise HTTPException(status_code=404, detail="No such Transaction.")
+
+
+class BulkReassignmentRequest(BaseModel):
+    transaction_ids: list[int] = Field(min_length=1)
+    account_id: int
+
+
+class BulkRetypingRequest(BaseModel):
+    transaction_ids: list[int] = Field(min_length=1)
+    type: TransactionType
+
+
+@router.post(
+    "/transactions/bulk-reassignment",
+    summary="Move the chosen events' legs into another Account, in one act",
+    status_code=204,
+)
+def bulk_reassignment(request: BulkReassignmentRequest, admin: AdminDep, engine: EngineDep) -> None:
+    """The repair for a file imported against the wrong holding — a
+    systematic error is one act, not a hundred edits. Imported rows among the
+    chosen are marked manually overridden."""
+    refused = transactions.reassign_account(
+        engine, request.transaction_ids, account_id=request.account_id
+    )
+    if refused is not None:
+        raise HTTPException(status_code=404, detail=_MISSING[refused])
+
+
+@router.post(
+    "/transactions/bulk-retyping",
+    summary="Re-type the chosen events, in one act",
+    status_code=204,
+)
+def bulk_retyping(request: BulkRetypingRequest, admin: AdminDep, engine: EngineDep) -> None:
+    """Each event must balance for the new type by the same judgement as at
+    recording; one that would not refuses the whole act, so a bulk repair
+    never half-lands."""
+    refused = retype_all(engine, request.transaction_ids, type=request.type)
+    if isinstance(refused, str):
+        raise HTTPException(status_code=422, detail=refused)
+    if refused is not None:
+        raise HTTPException(status_code=404, detail=_MISSING[refused])
 
 
 _MISSING = {

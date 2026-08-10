@@ -8,6 +8,7 @@ import {
   signOf,
   TYPE_VOCABULARY,
   withLegRemoved,
+  withToggled,
   type DraftLeg,
 } from "./transactions";
 
@@ -123,5 +124,19 @@ describe("signOf", () => {
     expect(signOf("in")).toBe("+");
     expect(signOf("out")).toBe("−");
     expect(signOf("fee")).toBe("−");
+  });
+});
+
+describe("withToggled", () => {
+  it("adds an absent id and removes a present one, without touching the original", () => {
+    const none: ReadonlySet<number> = new Set();
+
+    const one = withToggled(none, 7);
+    expect([...one]).toEqual([7]);
+
+    const back = withToggled(one, 7);
+    expect(back.size).toBe(0);
+    expect([...one]).toEqual([7]);
+    expect(none.size).toBe(0);
   });
 });

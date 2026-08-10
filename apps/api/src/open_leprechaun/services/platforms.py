@@ -16,6 +16,9 @@ class Account:
     chain: str | None
     external_reference: str | None
     access_software: str | None
+    # The one ingestion source that may write here (ticket 31); None until an
+    # import declares itself or the Admin declares one.
+    authoritative_source: str | None
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,7 @@ def overview(engine: Engine) -> list[PlatformOverview]:
                 chain=row.chain,
                 external_reference=row.external_reference,
                 access_software=row.access_software,
+                authoritative_source=row.authoritative_source,
             )
         )
     return [

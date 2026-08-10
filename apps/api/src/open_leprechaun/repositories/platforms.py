@@ -85,8 +85,21 @@ def list_accounts(engine: Engine) -> list[Row]:
         return list(
             connection.execute(
                 text(
-                    "SELECT id, platform_id, name, chain, external_reference, access_software"
+                    "SELECT id, platform_id, name, chain, external_reference, access_software,"
+                    " authoritative_source"
                     " FROM account ORDER BY platform_id, name, id"
                 )
             ).all()
         )
+
+
+def set_authoritative_source(engine: Engine, account_id: int, source: str | None) -> bool:
+    """Declare which ingestion source may write into this Account — exactly
+    one (ticket 31) — or clear the declaration so the next commit declares
+    itself. False when there is no such Account."""
+    with engine.begin() as connection:
+        declared = connection.execute(
+            text("UPDATE account SET authoritative_source = :source WHERE id = :account_id"),
+            {"source": source, "account_id": account_id},
+        )
+    return declared.rowcount == 1

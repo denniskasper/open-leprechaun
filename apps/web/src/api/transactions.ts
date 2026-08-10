@@ -58,6 +58,12 @@ export const transactionSchema = z.object({
   // estimated basis is a monetary amount and crosses as a decimal string.
   reconstructed: reconstructedSchema.nullable(),
   estimated_basis_eur: decimalString.nullable(),
+  // Import provenance (ticket 31): the batch and source that created this
+  // row, null on a hand-recorded event. An imported row the Admin edited by
+  // hand is manually overridden — a re-import never silently reverts it.
+  import_batch_id: z.number().nullable(),
+  import_source: z.string().nullable(),
+  manually_overridden: z.boolean(),
   legs: z.array(legSchema),
 });
 
@@ -114,5 +120,33 @@ export async function removeTransaction(transactionId: number): Promise<void> {
   const response = await fetch(`${TRANSACTIONS_URL}/${transactionId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Transaction could not be removed.");
+  }
+}
+
+/**
+ * Move every leg of the chosen events into another Account, in one act — the
+ * repair for a file imported against the wrong holding (ticket 31).
+ */
+export async function bulkReassign(transactionIds: number[], accountId: number): Promise<void> {
+  const response = await postJson(`${TRANSACTIONS_URL}/bulk-reassignment`, {
+    transaction_ids: transactionIds,
+    account_id: accountId,
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The Transactions could not be reassigned.");
+  }
+}
+
+/**
+ * Re-type the chosen events in one act. One that would not balance for the
+ * new type refuses the whole act with a sentence naming it.
+ */
+export async function bulkRetype(transactionIds: number[], type: TransactionType): Promise<void> {
+  const response = await postJson(`${TRANSACTIONS_URL}/bulk-retyping`, {
+    transaction_ids: transactionIds,
+    type,
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The Transactions could not be re-typed.");
   }
 }

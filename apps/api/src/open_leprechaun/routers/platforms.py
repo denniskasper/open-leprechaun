@@ -26,6 +26,9 @@ class AccountResponse(BaseModel):
     chain: str | None
     external_reference: str | None
     access_software: str | None
+    # The one ingestion source that may write here (ticket 31); null until an
+    # import declares itself or the Admin declares one.
+    authoritative_source: str | None
 
 
 class PlatformResponse(BaseModel):
@@ -47,6 +50,7 @@ class PlatformResponse(BaseModel):
                     chain=account.chain,
                     external_reference=account.external_reference,
                     access_software=account.access_software,
+                    authoritative_source=account.authoritative_source,
                 )
                 for account in platform.accounts
             ],
@@ -122,3 +126,22 @@ def add_account(
             detail=f"{request.name!r} already exists under this Platform.",
         )
     return RegisteredResponse(id=created)
+
+
+class AuthoritativeSourceRequest(BaseModel):
+    # None clears the declaration; the next committed import declares itself.
+    source: Name | None
+
+
+@router.put(
+    "/accounts/{account_id}/authoritative-source",
+    summary="Declare which ingestion source may write into this Account",
+    status_code=204,
+)
+def declare_authoritative_source(
+    account_id: int, request: AuthoritativeSourceRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """Exactly one ingestion mode is authoritative per Account (ticket 31);
+    any other source may reconcile against it but may not write."""
+    if not platforms.set_authoritative_source(engine, account_id, request.source):
+        raise HTTPException(status_code=404, detail="No such Account.")

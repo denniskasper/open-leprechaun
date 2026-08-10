@@ -14,6 +14,9 @@ const buy = {
   note: "First buy",
   reconstructed: null,
   estimated_basis_eur: null,
+  import_batch_id: null,
+  import_source: null,
+  manually_overridden: false,
   legs: [
     {
       id: 10,

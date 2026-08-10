@@ -69,6 +69,11 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         connection.execute(text("DELETE FROM futures_fill"))
         connection.execute(text("DELETE FROM futures_derivation_issue"))
         connection.execute(text("DELETE FROM futures_position"))
+        # The import registry before the transactions it points at: deleting a
+        # Transaction under a live registry row would leave a row the schema
+        # only permits as an overridden tombstone.
+        connection.execute(text("DELETE FROM imported_row"))
+        connection.execute(text("DELETE FROM import_batch"))
         connection.execute(text("DELETE FROM transaction"))
         # Aggregates after their member transactions; the SET NULL release
         # makes either order work, this one just deletes nothing twice.

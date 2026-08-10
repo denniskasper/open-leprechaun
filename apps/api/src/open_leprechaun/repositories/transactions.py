@@ -56,25 +56,48 @@ def create_transaction(
 ) -> int | Refusal:
     try:
         with engine.begin() as connection:
-            transaction_id = connection.execute(
-                text(
-                    "INSERT INTO transaction"
-                    " (type, occurred_at, note, reconstructed, estimated_basis_eur)"
-                    " VALUES (:type, :occurred_at, :note, :reconstructed, :estimated_basis_eur)"
-                    " RETURNING id"
-                ),
-                {
-                    "type": type,
-                    "occurred_at": occurred_at,
-                    "note": note,
-                    "reconstructed": reconstructed,
-                    "estimated_basis_eur": estimated_basis_eur,
-                },
-            ).scalar_one()
-            _insert_legs(connection, transaction_id, legs)
-            return transaction_id
+            return insert_transaction(
+                connection,
+                type=type,
+                occurred_at=occurred_at,
+                note=note,
+                legs=legs,
+                reconstructed=reconstructed,
+                estimated_basis_eur=estimated_basis_eur,
+            )
     except IntegrityError as refused:
         return _which_foundation_was_missing(refused)
+
+
+def insert_transaction(
+    connection: Connection,
+    *,
+    type: str,
+    occurred_at: datetime,
+    note: str | None,
+    legs: list[Leg],
+    reconstructed: str | None = None,
+    estimated_basis_eur: Decimal | None = None,
+) -> int:
+    """The insert itself, on the caller's connection — for a caller that
+    writes many events atomically, as an import commit does."""
+    transaction_id = connection.execute(
+        text(
+            "INSERT INTO transaction"
+            " (type, occurred_at, note, reconstructed, estimated_basis_eur)"
+            " VALUES (:type, :occurred_at, :note, :reconstructed, :estimated_basis_eur)"
+            " RETURNING id"
+        ),
+        {
+            "type": type,
+            "occurred_at": occurred_at,
+            "note": note,
+            "reconstructed": reconstructed,
+            "estimated_basis_eur": estimated_basis_eur,
+        },
+    ).scalar_one()
+    _insert_legs(connection, transaction_id, legs)
+    return transaction_id
 
 
 def replace_transaction(
@@ -115,19 +138,83 @@ def replace_transaction(
                 {"transaction_id": transaction_id},
             )
             _insert_legs(connection, transaction_id, legs)
+            _mark_overridden(connection, [transaction_id])
             return None
     except IntegrityError as refused:
         return _which_foundation_was_missing(refused)
 
 
 def delete_transaction(engine: Engine, transaction_id: int) -> bool:
-    """Remove an event and, by cascade, its legs. False when it was not there."""
+    """Remove an event and, by cascade, its legs. False when it was not there.
+
+    Marked overridden before the delete, so an imported row leaves a tombstone
+    in the registry rather than an opening a re-import would silently refill.
+    """
     with engine.begin() as connection:
+        _mark_overridden(connection, [transaction_id])
         removed = connection.execute(
             text("DELETE FROM transaction WHERE id = :transaction_id"),
             {"transaction_id": transaction_id},
         )
     return removed.rowcount == 1
+
+
+def reassign_account(engine: Engine, transaction_ids: list[int], account_id: int) -> Refusal | None:
+    """Move every leg of the chosen events into another Account in one act —
+    the repair for a file imported against the wrong holding, so a systematic
+    error is not a hundred edits. None means they moved."""
+    try:
+        with engine.begin() as connection:
+            missing = _any_missing(connection, transaction_ids)
+            if missing is not None:
+                return missing
+            connection.execute(
+                text(
+                    "UPDATE transaction_leg SET account_id = :account_id"
+                    " WHERE transaction_id = ANY(:ids)"
+                ),
+                {"account_id": account_id, "ids": transaction_ids},
+            )
+            _mark_overridden(connection, transaction_ids)
+            return None
+    except IntegrityError as refused:
+        return _which_foundation_was_missing(refused)
+
+
+def retype(engine: Engine, transaction_ids: list[int], *, type: str) -> Refusal | None:
+    """Re-type the chosen events in one act. Whether each event's legs balance
+    for the new type is the service's judgement, made before this is called."""
+    with engine.begin() as connection:
+        missing = _any_missing(connection, transaction_ids)
+        if missing is not None:
+            return missing
+        connection.execute(
+            text("UPDATE transaction SET type = :type WHERE id = ANY(:ids)"),
+            {"type": type, "ids": transaction_ids},
+        )
+        _mark_overridden(connection, transaction_ids)
+        return None
+
+
+def _any_missing(connection: Connection, transaction_ids: list[int]) -> Refusal | None:
+    """Judged before anything is touched, so a bulk act is all or nothing."""
+    found = connection.execute(
+        text("SELECT count(DISTINCT id) FROM transaction WHERE id = ANY(:ids)"),
+        {"ids": transaction_ids},
+    ).scalar_one()
+    if found != len(set(transaction_ids)):
+        return Refusal.no_such_transaction
+    return None
+
+
+def _mark_overridden(connection: Connection, transaction_ids: list[int]) -> None:
+    # The Admin's own hands changed an imported row: the registry keeps the
+    # deduplication key but now calls the row overridden, so a re-import will
+    # not silently revert the correction and a batch reversal spares it.
+    connection.execute(
+        text("UPDATE imported_row SET overridden = true WHERE transaction_id = ANY(:ids)"),
+        {"ids": transaction_ids},
+    )
 
 
 def list_transactions(engine: Engine) -> list[Row]:
