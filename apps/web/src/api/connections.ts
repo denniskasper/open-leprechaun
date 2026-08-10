@@ -60,6 +60,8 @@ export const kindSyncResultSchema = z.object({
   adapter_kind: z.string(),
   ok: z.boolean(),
   error: z.string().nullable(),
+  /** How far back the pull reached — null where nothing was pulled. */
+  covered_days: z.number().nullable(),
   futures: z.object({ new_fills: z.number(), new_funding: z.number() }).nullable(),
   imported: z
     .object({

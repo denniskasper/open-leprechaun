@@ -241,6 +241,9 @@ class KindSyncResponse(BaseModel):
     error: str | None
     futures: FuturesOutcomeResponse | None
     imported: ImportOutcomeResponse | None
+    # The adapter's declared lookback the pull reached over — None where
+    # nothing was pulled.
+    covered_days: int | None
 
     @classmethod
     def of(cls, result: exchange_sync.KindSync) -> KindSyncResponse:
@@ -248,6 +251,7 @@ class KindSyncResponse(BaseModel):
             adapter_kind=result.adapter_kind,
             ok=result.error is None,
             error=result.error,
+            covered_days=result.covered_days,
             futures=None
             if result.futures is None
             else FuturesOutcomeResponse(

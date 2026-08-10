@@ -115,6 +115,11 @@ export function describeSyncResult(result: KindSyncResult, locale?: string): str
   if (result.error) {
     return landed ? `${result.error} (${landed} before the refusal)` : result.error;
   }
+  if (result.covered_days !== null) {
+    return landed
+      ? `${landed} · covering the last ${count(result.covered_days, "day", locale)}`
+      : `Nothing to pull — the last ${count(result.covered_days, "day", locale)} are covered.`;
+  }
   return landed || "Nothing to pull for this kind.";
 }
 

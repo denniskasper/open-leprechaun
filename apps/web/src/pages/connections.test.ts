@@ -58,6 +58,7 @@ function syncResult(overrides: Partial<KindSyncResult>): KindSyncResult {
     error: null,
     futures: null,
     imported: null,
+    covered_days: null,
     ...overrides,
   };
 }
@@ -177,6 +178,20 @@ describe("describeSyncResult", () => {
 
   it("says so when a kind had nothing to pull", () => {
     expect(describeSyncResult(syncResult({}))).toBe("Nothing to pull for this kind.");
+  });
+
+  it("states the period the pull covered beside what landed", () => {
+    expect(
+      describeSyncResult(
+        syncResult({ futures: { new_fills: 1, new_funding: 2 }, covered_days: 90 }),
+      ),
+    ).toBe("1 new fill · 2 new funding payments · covering the last 90 days");
+  });
+
+  it("names the covered period when it held nothing, so empty is never ambiguous", () => {
+    expect(describeSyncResult(syncResult({ covered_days: 90 }))).toBe(
+      "Nothing to pull — the last 90 days are covered.",
+    );
   });
 
   it("keeps what landed visible beside the error that followed it", () => {

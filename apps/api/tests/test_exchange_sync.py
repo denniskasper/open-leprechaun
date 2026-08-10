@@ -75,7 +75,8 @@ def test_the_venue_registry_names_its_adapter_kinds(client):
     venues = {venue["venue"]: venue for venue in client.get("/api/connections/venues").json()}
 
     assert venues["pionex"]["adapter_kinds"] == ["futures"]
-    assert venues["okx"]["adapter_kinds"] == []
+    assert venues["okx"]["adapter_kinds"] == ["spot", "futures"]
+    assert venues["coinbase"]["adapter_kinds"] == []
 
 
 # --- Account pairing: which Account each kind writes into (ADR-0004) ---
@@ -149,11 +150,14 @@ class FakeAdapter:
     """A fake of the port: one kind, a scripted answer, and a record of the
     credentials it was handed."""
 
-    def __init__(self, kind, *, harvest=None, detail="Authenticated.", failure=None):
+    def __init__(
+        self, kind, *, harvest=None, detail="Authenticated.", failure=None, lookback_days=90
+    ):
         self.kind = kind
         self.harvest = harvest or port.Harvest()
         self.detail = detail
         self.failure = failure
+        self.lookback_days = lookback_days
         self.seen_credentials = []
 
     def _answer(self, credentials):
@@ -426,6 +430,93 @@ def test_a_symbol_two_instruments_wear_refuses_the_kind(client, adapters, db):
 
 def test_syncing_an_unknown_connection_says_so(client):
     assert client.post("/api/connections/12345/sync").status_code == 404
+
+
+# --- Syncing: the result states the period the pull covered ---
+
+
+def test_a_sync_reports_the_period_the_pull_covered(client, adapters, db):
+    """The adapter declares how far back the venue reaches (ADR-0008); a
+    successful pull answers that declaration with the result, so "nothing
+    found" is never mistaken for "nothing exists"."""
+    usdt(db)
+    connection_id, _ = paired_futures_connection(client, adapters)
+
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["ok"] is True
+    assert result["covered_days"] == 90
+
+
+def test_a_sync_of_an_account_with_no_history_completes_cleanly(client, adapters):
+    """An empty harvest is a clean outcome, not an error — and the period
+    covered is still stated, because "nothing in 90 days" is the finding."""
+    platform_id = okx(client)
+    account_id = account(client, platform_id)
+    connection_id = connect(client, platform_id)
+    client.put(
+        f"/api/connections/{connection_id}/pairings/futures", json={"account_id": account_id}
+    )
+    adapters["okx"] = (FakeAdapter("futures", harvest=port.Harvest()),)
+
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["ok"] is True
+    assert result["error"] is None
+    assert result["futures"] is None and result["imported"] is None
+    assert result["covered_days"] == 90
+
+
+def test_a_refused_commit_states_no_coverage(client, adapters, db):
+    """The pull succeeded, the account refused — records did not all land,
+    so the kind must not claim its period is covered (while the other kind,
+    landing first, claims its own)."""
+    spot_instruments(db)
+    platform_id = okx(client)
+    account_id = account(client, platform_id)
+    connection_id = connect(client, platform_id)
+    for kind in ("spot", "futures"):
+        client.put(
+            f"/api/connections/{connection_id}/pairings/{kind}", json={"account_id": account_id}
+        )
+    late_transfer = port.Harvest(
+        transfers=(
+            port.NormalizedTransfer(
+                external_id="transfer-2",
+                occurred_at=AN_INSTANT,
+                direction="in",
+                symbol="BTC",
+                quantity=Decimal("1"),
+            ),
+        )
+    )
+    adapters["okx"] = (
+        FakeAdapter("spot", harvest=spot_harvest()),
+        FakeAdapter("futures", harvest=late_transfer),
+    )
+
+    spot, futures = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert spot["ok"] is True and spot["covered_days"] == 90
+    assert futures["ok"] is False and "okx:spot" in futures["error"]
+    assert futures["covered_days"] is None
+
+
+def test_a_failed_pull_covers_no_period(client, adapters):
+    """A kind that never pulled states no coverage — an error and a covered
+    period would contradict each other."""
+    platform_id = okx(client)
+    account_id = account(client, platform_id)
+    connection_id = connect(client, platform_id)
+    client.put(
+        f"/api/connections/{connection_id}/pairings/futures", json={"account_id": account_id}
+    )
+    adapters["okx"] = (FakeAdapter("futures", failure="The venue is down."),)
+
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["ok"] is False
+    assert result["covered_days"] is None
 
 
 # --- Syncing: trades, transfers and cash movements land in the ledger ---

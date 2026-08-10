@@ -120,6 +120,10 @@ class KindSync:
     error: str | None
     futures: FuturesOutcome | None
     imported: ImportOutcome | None
+    # How far back the pull reached — the adapter's declared lookback
+    # (ADR-0008), stated only once the pull succeeded, so "nothing found" is
+    # never mistaken for "nothing exists". None where nothing was pulled.
+    covered_days: int | None = None
 
 
 def sync_connection(
@@ -239,7 +243,13 @@ def _sync_kind(
                 skipped=committed.skipped,
             )
     return KindSync(
-        adapter_kind=adapter.kind, error=error, futures=futures_outcome, imported=imported_outcome
+        adapter_kind=adapter.kind,
+        error=error,
+        futures=futures_outcome,
+        imported=imported_outcome,
+        # A refused commit means the account does not hold the period the
+        # pull reached — an error and a coverage claim would contradict.
+        covered_days=None if error else adapter.lookback_days,
     )
 
 

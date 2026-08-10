@@ -12,6 +12,7 @@ more.
 from dataclasses import dataclass
 
 from open_leprechaun.ports.exchange import ExchangeAdapter
+from open_leprechaun.ports.okx import OkxFuturesAdapter, OkxSpotAdapter
 from open_leprechaun.ports.pionex import PionexFuturesAdapter
 
 
@@ -60,6 +61,7 @@ VENUES: dict[str, Venue] = {
             ),
             requires_secret=True,
             requires_passphrase=True,
+            adapters=(OkxSpotAdapter(), OkxFuturesAdapter()),
         ),
         Venue(
             venue="coinbase",
