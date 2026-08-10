@@ -42,7 +42,7 @@ shortfall — never a silent zero-basis fill.
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
 from sqlalchemy import Engine, Row
 
@@ -50,11 +50,18 @@ from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import fx, lots
+from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
 from open_leprechaun.services.statutory import StatutoryValueUnsetError, required_value
 from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Outflow
 
-__all__ = ["LotShortfallError", "StatutoryValueUnsetError", "lot_shortfalls", "year_report"]
+__all__ = [
+    "LotShortfallError",
+    "StatutoryValueUnsetError",
+    "counts",
+    "lot_shortfalls",
+    "year_report",
+]
 
 EXEMPTION_LIMIT_KEY = "private_sale_exemption_limit"
 """The §23 Abs. 3 Satz 5 EStG Freigrenze in the statutory vocabulary."""
@@ -62,10 +69,6 @@ EXEMPTION_LIMIT_KEY = "private_sale_exemption_limit"
 _PRIVATE_SALE_FAMILIES = ("crypto", "cash")
 """The families whose disposal is a private sale — securities are capital
 income (§20, ticket 46), and the numéraire never disposes at all."""
-
-_CENT = Decimal("0.01")
-"""A pro-rated share of proceeds or costs is stated in cents, the exact
-remainder staying on the last consumption — no cent invented or lost."""
 
 
 class LotShortfallError(Exception):
@@ -90,6 +93,9 @@ class Consumption:
     basis_eur: Decimal | None
     basis_source: str
     proceeds_eur: Decimal | None
+    # This slice's share of the disposal's own costs, pro-rated exactly as
+    # the proceeds are.
+    costs_eur: Decimal | None
     gain_eur: Decimal | None
 
 
@@ -384,15 +390,22 @@ def _consumption(
         basis_eur=basis_eur,
         basis_source=piece.basis_source,
         proceeds_eur=proceeds_share,
+        costs_eur=costs_share,
         gain_eur=gain,
     )
 
 
-def _counts(piece: Consumption) -> bool:
-    """Whether this consumption enters the Gesamtgewinn: exempt long-term
+def counts(*, long_term: bool, basis_source: str) -> bool:
+    """Whether a consumption enters the Gesamtgewinn: exempt long-term
     holdings and acquisitions without consideration stay visible in detail
-    but never in the total."""
-    return not piece.long_term and piece.basis_source != lots.WITHOUT_CONSIDERATION
+    but never in the total. Takes the two frozen facts rather than the
+    Consumption, so the appendix (ticket 24) applies the very same rule to a
+    report's frozen JSON — the counting rule lives once."""
+    return not long_term and basis_source != lots.WITHOUT_CONSIDERATION
+
+
+def _counts(piece: Consumption) -> bool:
+    return counts(long_term=piece.long_term, basis_source=piece.basis_source)
 
 
 def _one_year_after(acquired_at: datetime) -> datetime:
@@ -475,14 +488,14 @@ def _shares(
     total: Decimal | None, consumed: list[lots.Slice], quantity: Decimal
 ) -> list[Decimal | None]:
     """One disposal-level amount pro-rated over its consumptions by quantity:
-    every share but the last stated in cents, the exact remainder on the last
-    — no cent invented or lost."""
+    every share but the last stated in cents (services/rounding), the exact
+    remainder on the last — no cent invented or lost."""
     if total is None or not consumed:
         return [None] * len(consumed)
     shares: list[Decimal | None] = []
     allocated = Decimal(0)
     for piece in consumed[:-1]:
-        share = (total * piece.quantity / quantity).quantize(_CENT, ROUND_HALF_EVEN)
+        share = cents(total * piece.quantity / quantity)
         shares.append(share)
         allocated += share
     shares.append(total - allocated)

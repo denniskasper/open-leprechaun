@@ -1,13 +1,13 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.rates import ReferenceRateSourceDep
 from open_leprechaun.repositories.reports import Refusal
-from open_leprechaun.services import reports
+from open_leprechaun.services import appendix, reports
 from open_leprechaun.services.fx import RateUnavailableError
 from open_leprechaun.services.section23 import LotShortfallError, StatutoryValueUnsetError
 from open_leprechaun.services.statutory import FIRST_YEAR
@@ -150,6 +150,44 @@ def generate_report(
         # produce the figure — the sentence names what stands in the way.
         raise HTTPException(status_code=409, detail=str(refusal)) from refusal
     return GeneratedResponse(id=created)
+
+
+@router.get(
+    "/reports/{report_id}/appendix.csv",
+    summary="The report's line items behind every headline figure, as CSV",
+)
+def report_appendix_csv(report_id: int, admin: AdminDep, engine: EngineDep) -> Response:
+    assembled = _appendix(engine, report_id)
+    return Response(
+        content=appendix.csv_export(assembled),
+        media_type="text/csv; charset=utf-8",
+        headers=_attachment(assembled, "csv"),
+    )
+
+
+@router.get(
+    "/reports/{report_id}/appendix.pdf",
+    summary="The same appendix, same figures, in archival form",
+)
+def report_appendix_pdf(report_id: int, admin: AdminDep, engine: EngineDep) -> Response:
+    assembled = _appendix(engine, report_id)
+    return Response(
+        content=appendix.pdf_export(assembled),
+        media_type="application/pdf",
+        headers=_attachment(assembled, "pdf"),
+    )
+
+
+def _appendix(engine: EngineDep, report_id: int) -> appendix.Appendix:
+    assembled = appendix.assemble(engine, report_id)
+    if assembled is None:
+        raise HTTPException(status_code=404, detail="No such report.")
+    return assembled
+
+
+def _attachment(assembled: appendix.Appendix, extension: str) -> dict[str, str]:
+    filename = f"report-{assembled.report_id}-{assembled.year}-appendix.{extension}"
+    return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
 @router.post(

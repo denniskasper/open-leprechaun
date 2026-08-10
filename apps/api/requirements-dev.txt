@@ -1,4 +1,5 @@
 # Development and test dependencies, pinned. Installed by `pnpm setup`.
 -r requirements.txt
 pytest==9.1.1
+pypdf==6.15.0
 ruff==0.16.2

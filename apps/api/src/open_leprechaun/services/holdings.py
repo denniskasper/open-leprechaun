@@ -26,7 +26,7 @@ no tax figure ever passes through it.
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
 from sqlalchemy import Engine, Row
 
@@ -38,6 +38,7 @@ from open_leprechaun.repositories import reference_rates
 from open_leprechaun.services import futures as futures_service
 from open_leprechaun.services import fx, lots
 from open_leprechaun.services.fx import ConvertedAmount, RateUnavailableError
+from open_leprechaun.services.rounding import cents, per_unit
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
 
 __all__ = ["Position", "RateUnavailableError", "display_rate", "portfolio"]
@@ -50,14 +51,6 @@ UNVOUCHED = "unvouched"
 """The basis gap of a position holding quantity no lot ever vouched for — an
 unmatched transfer in, or an inflow minted nothing — so a stated basis would
 cover less than the position holds."""
-
-_CENT = Decimal("0.01")
-"""Derived money — a value, an unrealised result, an average — is stated in
-cents; a basis is passed through as the lots state it."""
-
-_FINE = Decimal("1E-8")
-"""An average cost below one euro keeps eight fraction digits — a cent would
-round a micro-priced token's whole answer away."""
 
 
 @dataclass(frozen=True)
@@ -228,22 +221,20 @@ def _valuation(engine: Engine, instrument: Row, quantity: Decimal, price: Row | 
     block the view — and crypto by the last known stored price. What nothing
     stored can value stays None, never a guess."""
     if instrument.is_numeraire:
-        return _Valuation(_cents(quantity), None, None, None)
+        return _Valuation(cents(quantity), None, None, None)
     currency = fx.valuation_currency(instrument)
     if currency == "EUR":
         # A euro stablecoin pegs to the numéraire itself — identity, no rate.
-        return _Valuation(
-            _cents(quantity), "reference_rate", None, fx.event_date(datetime.now(UTC))
-        )
+        return _Valuation(cents(quantity), "reference_rate", None, fx.event_date(datetime.now(UTC)))
     if currency is not None:
         on = fx.event_date(datetime.now(UTC))
         floor = on - timedelta(days=fx.PUBLICATION_LOOKBACK_DAYS)
         row = reference_rates.latest_on_or_before(engine, currency=currency, on=on, floor=floor)
         if row is None:
             return _UNVALUED
-        return _Valuation(_cents(quantity / row.rate), "reference_rate", None, row.rate_date)
+        return _Valuation(cents(quantity / row.rate), "reference_rate", None, row.rate_date)
     if instrument.family == "crypto" and price is not None:
-        return _Valuation(_cents(quantity * price.price_eur), price.source, price.as_of, None)
+        return _Valuation(cents(quantity * price.price_eur), price.source, price.as_of, None)
     return _UNVALUED
 
 
@@ -297,12 +288,9 @@ def _position(
 
 
 def _average(basis: Decimal | None, quantity: Decimal) -> Decimal | None:
+    """The per-unit average cost, by the price rule (services/rounding) —
+    derived money states cents, while a basis passes through as the lots
+    state it."""
     if basis is None or quantity == 0:
         return None
-    average = basis / quantity
-    fine = average != 0 and abs(average) < 1
-    return average.quantize(_FINE if fine else _CENT, ROUND_HALF_EVEN)
-
-
-def _cents(amount: Decimal) -> Decimal:
-    return amount.quantize(_CENT, ROUND_HALF_EVEN)
+    return per_unit(basis / quantity)

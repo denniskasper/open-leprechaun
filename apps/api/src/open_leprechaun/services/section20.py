@@ -29,7 +29,7 @@ paragraph and failing alone.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
 from sqlalchemy import Engine
 
@@ -38,6 +38,7 @@ from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import statutory as statutory_repository
 from open_leprechaun.services import futures, fx, lots
+from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.statutory import (
     church_tax_rate_key,
@@ -158,9 +159,6 @@ class CategoryBalance:
     loss_beyond_cap_eur: Decimal
 
 
-_CENT = Decimal("0.01")
-
-
 def net(
     events: Iterable[Section20Event], *, year: int, caps: Mapping[str, Decimal]
 ) -> tuple[CategoryBalance, ...]:
@@ -205,7 +203,7 @@ def _counted(event: Section20Event) -> Decimal:
     gross exact."""
     if event.exemption_rate == 0:
         return event.gross_eur
-    return (event.gross_eur * (1 - event.exemption_rate)).quantize(_CENT, ROUND_HALF_EVEN)
+    return cents(event.gross_eur * (1 - event.exemption_rate))
 
 
 @dataclass(frozen=True)
@@ -369,12 +367,12 @@ def assess(
     applied = min(combined, max(allowance_eur - allowance_used_at_source_eur, Decimal(0)))
     taxable = combined - applied
     if church_tax_rate is None:
-        income_tax = (taxable * flat_rate).quantize(_CENT, ROUND_HALF_EVEN)
+        income_tax = cents(taxable * flat_rate)
         church_tax = Decimal(0)
     else:
-        income_tax = (taxable / (1 / flat_rate + church_tax_rate)).quantize(_CENT, ROUND_HALF_EVEN)
-        church_tax = (income_tax * church_tax_rate).quantize(_CENT, ROUND_HALF_EVEN)
-    surcharge = (income_tax * solidarity_surcharge_rate).quantize(_CENT, ROUND_HALF_EVEN)
+        income_tax = cents(taxable / (1 / flat_rate + church_tax_rate))
+        church_tax = cents(income_tax * church_tax_rate)
+    surcharge = cents(income_tax * solidarity_surcharge_rate)
     return Section20Assessment(
         year=year,
         categories=carried,

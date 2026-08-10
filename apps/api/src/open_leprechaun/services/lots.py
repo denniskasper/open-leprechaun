@@ -52,13 +52,14 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
 from sqlalchemy import Connection, Engine, Row
 
 from open_leprechaun.repositories import fingerprints, futures, lots
 from open_leprechaun.repositories.lots import Lot
 from open_leprechaun.services.futures import net_figure
+from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.stances import (
     effective_stance,
     inflow_mints_lot,
@@ -92,10 +93,6 @@ _BASIS_SOURCES = {
 }
 """How each minting consequence determines its basis; an inflow absent here
 mints nothing of its own — a matched transfer_in mints what it carries."""
-
-_CENT = Decimal("0.01")
-"""A pro-rated slice of a basis is stated in cents, the exact remainder
-staying on the other part — no cent invented or lost by a split."""
 
 _ROLE_ORDER = {"out": 0, "fee": 1, "in": 2}
 """Within one Transaction, what leaves is consumed before what arrives."""
@@ -444,13 +441,12 @@ def _arrived(consumed: list[Slice], quantity: Decimal) -> list[Slice]:
 
 def _split(piece: Slice, first_quantity: Decimal) -> tuple[Slice, Slice]:
     """One slice in two, the basis pro-rata: the first part's share stated in
-    cents, the exact remainder on the second — no cent invented or lost."""
+    cents (services/rounding), the exact remainder on the second — no cent
+    invented or lost."""
     if piece.basis_eur is None:
         first_basis = rest_basis = None
     else:
-        first_basis = (piece.basis_eur * first_quantity / piece.quantity).quantize(
-            _CENT, ROUND_HALF_EVEN
-        )
+        first_basis = cents(piece.basis_eur * first_quantity / piece.quantity)
         rest_basis = piece.basis_eur - first_basis
     return (
         Slice(piece.acquired_at, first_quantity, first_basis, piece.basis_source),
