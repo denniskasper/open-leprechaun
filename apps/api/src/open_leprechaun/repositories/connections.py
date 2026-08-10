@@ -189,19 +189,23 @@ def record_result(
     *,
     error: str | None,
     at: datetime,
+    covered_from: datetime | None = None,
 ) -> bool:
     """Upsert one kind's outcome: a success stamps last_success_at and clears
     the error, an error stamps last_error_at and keeps the last success — the
-    health panel needs both. False when there is no such Connection."""
+    health panel needs both. covered_from (ticket 40) only ever moves earlier:
+    LEAST ignores the NULL a test or a failure passes, so coverage a sync once
+    achieved is never un-claimed. False when there is no such Connection."""
     statement = (
         "INSERT INTO connection_adapter_status"
-        " (connection_id, adapter_kind, last_success_at, last_error_at, last_error)"
-        " VALUES (:connection_id, :adapter_kind, :success_at, :error_at, :error)"
+        " (connection_id, adapter_kind, last_success_at, last_error_at, last_error, covered_from)"
+        " VALUES (:connection_id, :adapter_kind, :success_at, :error_at, :error, :covered_from)"
         " ON CONFLICT (connection_id, adapter_kind) DO UPDATE SET"
         "  last_success_at = COALESCE(EXCLUDED.last_success_at,"
         "   connection_adapter_status.last_success_at),"
         "  last_error_at = EXCLUDED.last_error_at,"
-        "  last_error = EXCLUDED.last_error"
+        "  last_error = EXCLUDED.last_error,"
+        "  covered_from = LEAST(connection_adapter_status.covered_from, EXCLUDED.covered_from)"
     )
     try:
         with engine.begin() as connection:
@@ -213,6 +217,7 @@ def record_result(
                     "success_at": None if error else at,
                     "error_at": at if error else None,
                     "error": error,
+                    "covered_from": covered_from,
                 },
             )
     except IntegrityError:

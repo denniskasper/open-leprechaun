@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Coins } from "lucide-react";
+import { Coins, TriangleAlert } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
+import { type CoverageWarning, fetchCoverageWarnings } from "@/api/connections";
 import {
   type DisplayRate,
   fetchDisplayRate,
@@ -215,6 +217,69 @@ export function valuationTitle(position: Position, locale?: string): string | un
   return undefined;
 }
 
+/**
+ * One coverage gap in words: the venue named by its Platform and Account,
+ * both instants as dates — the day coverage begins (the sync window's
+ * horizon, or older activity already recorded in the Account) against the
+ * day recorded history begins elsewhere. Dates are read from the instants'
+ * UTC days, matching the API's own statement of the horizon.
+ */
+export function describeCoverageWarning(warning: CoverageWarning, locale?: string): string {
+  const starts = formatDate(warning.coverage_starts_at.slice(0, 10), locale);
+  const elsewhere = formatDate(warning.earliest_elsewhere_at.slice(0, 10), locale);
+  return (
+    `${warning.platform_name} · ${warning.account_name}: coverage starts ${starts},` +
+    ` but activity elsewhere starts ${elsewhere} — older history at this venue cannot` +
+    " arrive by sync."
+  );
+}
+
+/**
+ * The dashboard's coverage warnings: a venue whose history window opens
+ * later than the earliest activity recorded elsewhere is a silent gap —
+ * "no trades found" would pass for "no trades exist" — so it is named here,
+ * with the import path that closes it. Absent quietly only while nothing
+ * warns: a check that could not run says so, because for a warning whose
+ * job is surfacing silence, silence on failure would be dishonest.
+ */
+function CoverageWarnings() {
+  const { data, error } = useQuery({
+    queryKey: ["coverage-warnings"],
+    queryFn: fetchCoverageWarnings,
+  });
+  if (error) {
+    return (
+      <p className="microlabel text-caution">
+        the coverage check could not run — a history gap may be going unreported
+      </p>
+    );
+  }
+  if (!data || data.length === 0) {
+    return null;
+  }
+  return (
+    <section aria-label="Coverage warnings" className="rise space-y-2.5">
+      {data.map((warning) => (
+        <aside
+          key={`${warning.connection_id}-${warning.account_id}`}
+          className="flex gap-2.5 rounded-lg border border-border p-3.5 text-sm"
+        >
+          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-caution" />
+          <div className="space-y-1">
+            <p>{describeCoverageWarning(warning)}</p>
+            <p className="text-xs text-muted-foreground">
+              <Link to="/imports" className="underline underline-offset-2">
+                Import the missing history
+              </Link>{" "}
+              to close the gap — a file export reaches further back than the venue's API.
+            </p>
+          </div>
+        </aside>
+      ))}
+    </section>
+  );
+}
+
 export function HoldingsPage() {
   const { data, error, refetch } = useQuery({ queryKey: ["holdings"], queryFn: fetchHoldings });
   const [groupMode, setGroupMode] = useState<GroupMode>("asset_class");
@@ -266,6 +331,8 @@ export function HoldingsPage() {
           </>
         }
       />
+
+      <CoverageWarnings />
 
       {error ? (
         <ErrorState

@@ -16,7 +16,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from cryptography.exceptions import InvalidTag
@@ -204,12 +204,24 @@ def remove(engine: Engine, connection_id: int) -> bool:
 
 
 def record_result(
-    engine: Engine, connection_id: int, adapter_kind: str, *, error: str | None
+    engine: Engine,
+    connection_id: int,
+    adapter_kind: str,
+    *,
+    error: str | None,
+    covered_lookback_days: int | None = None,
 ) -> bool:
     """One kind's test or sync outcome, kept apart from every other kind's —
-    one failing must never hide another succeeding (ADR-0004)."""
+    one failing must never hide another succeeding (ADR-0004). A successful
+    sync passes the days its window reached over (ticket 40), claiming
+    coverage from that instant; a test passes nothing, because proving a
+    credential opens the venue pulls no history."""
+    at = datetime.now(UTC)
+    covered_from = None
+    if error is None and covered_lookback_days is not None:
+        covered_from = at - timedelta(days=covered_lookback_days)
     return repository.record_result(
-        engine, connection_id, adapter_kind, error=error, at=datetime.now(UTC)
+        engine, connection_id, adapter_kind, error=error, at=at, covered_from=covered_from
     )
 
 

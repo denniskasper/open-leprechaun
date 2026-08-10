@@ -3,6 +3,7 @@ import type { AdapterStatus, Connection, KindSyncResult, Venue } from "@/api/con
 import type { Platform } from "@/api/platforms";
 import {
   describeLastUse,
+  describeLookback,
   describeSyncResult,
   describeTestResult,
   groupByPlatform,
@@ -46,7 +47,7 @@ function venue(overrides: Partial<Venue>): Venue {
     required_scope: "Read only.",
     requires_secret: true,
     requires_passphrase: false,
-    adapter_kinds: [],
+    adapters: [],
     ...overrides,
   };
 }
@@ -128,7 +129,7 @@ describe("READ_ONLY_RULE", () => {
 
 describe("kindsOf", () => {
   it("offers the kinds the venue's adapters serve, before anything has run", () => {
-    expect(kindsOf(connection({}), venue({ adapter_kinds: ["futures"] }))).toEqual(["futures"]);
+    expect(kindsOf(connection({}), venue({ adapters: [{ kind: "futures", lookback_days: 90 }] }))).toEqual(["futures"]);
   });
 
   it("keeps a kind a status or pairing already names, even off the registry", () => {
@@ -137,7 +138,7 @@ describe("kindsOf", () => {
       pairings: [{ adapter_kind: "margin", account_id: 4 }],
     });
 
-    expect(kindsOf(recorded, venue({ adapter_kinds: ["futures"] }))).toEqual([
+    expect(kindsOf(recorded, venue({ adapters: [{ kind: "futures", lookback_days: 90 }] }))).toEqual([
       "futures",
       "spot",
       "margin",
@@ -147,6 +148,17 @@ describe("kindsOf", () => {
   it("shows nothing for a venue whose adapters have not shipped", () => {
     expect(kindsOf(connection({}), venue({}))).toEqual([]);
     expect(kindsOf(connection({}), undefined)).toEqual([]);
+  });
+});
+
+describe("describeLookback", () => {
+  it("states a capped window in plain language, singular and plural", () => {
+    expect(describeLookback(90)).toBe("The venue serves the last 90 days of history.");
+    expect(describeLookback(1)).toBe("The venue serves the last 1 day of history.");
+  });
+
+  it("states an unbounded window as full history", () => {
+    expect(describeLookback(null)).toBe("The venue serves its full history.");
   });
 });
 

@@ -73,7 +73,7 @@ export function statusTone(status: AdapterStatus): "signal" | "alarm" {
  * ships.
  */
 export function kindsOf(connection: Connection, venue: Venue | undefined): string[] {
-  const kinds = [...(venue?.adapter_kinds ?? [])];
+  const kinds = (venue?.adapters ?? []).map((adapter) => adapter.kind);
   for (const named of [
     ...connection.statuses.map((status) => status.adapter_kind),
     ...connection.pairings.map((pairing) => pairing.adapter_kind),
@@ -85,6 +85,16 @@ export function kindsOf(connection: Connection, venue: Venue | undefined): strin
 
 function count(quantity: number, noun: string, locale?: string): string {
   return `${formatNumber(quantity, locale)} ${quantity === 1 ? noun : `${noun}s`}`;
+}
+
+/**
+ * How far back one adapter kind's venue actually reaches, in plain language —
+ * so "no trades found" is never mistaken for "no trades exist".
+ */
+export function describeLookback(lookbackDays: number | null, locale?: string): string {
+  return lookbackDays === null
+    ? "The venue serves its full history."
+    : `The venue serves the last ${count(lookbackDays, "day", locale)} of history.`;
 }
 
 /** One kind's test outcome as the line under the kind states it. */
@@ -353,6 +363,9 @@ function ConnectionRow({
               connection={connection}
               accounts={accounts}
               outcome={outcomes[kind]}
+              lookbackDays={
+                venue?.adapters.find((adapter) => adapter.kind === kind)?.lookback_days
+              }
             />
           ))}
         </ul>
@@ -371,20 +384,24 @@ function ConnectionRow({
 }
 
 /**
- * One adapter kind: its tone dot, the Account it writes into, and its latest
- * outcome — the just-answered test or sync where there is one, the recorded
- * status otherwise.
+ * One adapter kind: its tone dot, the Account it writes into, how far back
+ * the venue reaches, and its latest outcome — the just-answered test or sync
+ * where there is one, the recorded status otherwise. lookbackDays is
+ * undefined for a kind the registry no longer serves; null means the venue's
+ * history is unbounded.
  */
 function KindLine({
   kind,
   connection,
   accounts,
   outcome,
+  lookbackDays,
 }: {
   kind: string;
   connection: Connection;
   accounts: Account[];
   outcome: { ok: boolean; text: string } | undefined;
+  lookbackDays?: number | null;
 }) {
   const queryClient = useQueryClient();
   const status = connection.statuses.find((entry) => entry.adapter_kind === kind);
@@ -430,6 +447,9 @@ function KindLine({
         <span role="alert" className="text-alarm">
           {pair.error.message}
         </span>
+      )}
+      {lookbackDays !== undefined && (
+        <span className="text-muted-foreground">{describeLookback(lookbackDays)}</span>
       )}
       {outcome ? (
         <span className={outcome.ok ? "text-muted-foreground" : "text-alarm"}>{outcome.text}</span>

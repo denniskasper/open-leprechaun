@@ -12,7 +12,7 @@ from open_leprechaun.adapters import ExchangeAdaptersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.ports.venues import VENUES
-from open_leprechaun.services import connections, exchange_sync
+from open_leprechaun.services import connections, coverage, exchange_sync
 from open_leprechaun.services.connections import (
     ConnectionOverview,
     CredentialsUnreadableError,
@@ -27,6 +27,15 @@ router = APIRouter(tags=["connections"])
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+class VenueAdapterResponse(BaseModel):
+    """One adapter kind a venue serves, with its declared capability: how far
+    back the venue actually reaches (ADR-0008) — None where its history is
+    unbounded."""
+
+    kind: str
+    lookback_days: int | None
+
+
 class VenueResponse(BaseModel):
     venue: str
     name: str
@@ -36,7 +45,7 @@ class VenueResponse(BaseModel):
     requires_passphrase: bool
     # The kinds this venue's adapters serve — what pairing is offered for;
     # empty until the venue's adapters ship.
-    adapter_kinds: list[str]
+    adapters: list[VenueAdapterResponse]
 
 
 class AdapterStatusResponse(BaseModel):
@@ -118,7 +127,10 @@ def list_venues(admin: AdminDep) -> list[VenueResponse]:
             required_scope=venue.required_scope,
             requires_secret=venue.requires_secret,
             requires_passphrase=venue.requires_passphrase,
-            adapter_kinds=[adapter.kind for adapter in venue.adapters],
+            adapters=[
+                VenueAdapterResponse(kind=adapter.kind, lookback_days=adapter.lookback_days)
+                for adapter in venue.adapters
+            ],
         )
         for venue in VENUES.values()
     ]
@@ -131,6 +143,42 @@ def list_venues(admin: AdminDep) -> list[VenueResponse]:
 )
 def list_connections(admin: AdminDep, engine: EngineDep) -> list[ConnectionResponse]:
     return [ConnectionResponse.of(connection) for connection in connections.overview(engine)]
+
+
+class CoverageWarningResponse(BaseModel):
+    """One venue account whose synced coverage begins after the earliest
+    activity recorded elsewhere (ticket 40) — a silent history gap, named."""
+
+    connection_id: int
+    connection_label: str
+    venue: str
+    platform_name: str
+    account_id: int
+    account_name: str
+    coverage_starts_at: datetime
+    earliest_elsewhere_at: datetime
+
+    @classmethod
+    def of(cls, warning: coverage.CoverageWarning) -> CoverageWarningResponse:
+        return cls(
+            connection_id=warning.connection_id,
+            connection_label=warning.connection_label,
+            venue=warning.venue,
+            platform_name=warning.platform_name,
+            account_id=warning.account_id,
+            account_name=warning.account_name,
+            coverage_starts_at=warning.coverage_starts_at,
+            earliest_elsewhere_at=warning.earliest_elsewhere_at,
+        )
+
+
+@router.get(
+    "/connections/coverage-warnings",
+    summary="Every venue whose coverage starts later than the earliest activity elsewhere",
+    response_model=list[CoverageWarningResponse],
+)
+def coverage_warnings(admin: AdminDep, engine: EngineDep) -> list[CoverageWarningResponse]:
+    return [CoverageWarningResponse.of(warning) for warning in coverage.warnings(engine)]
 
 
 @router.post(

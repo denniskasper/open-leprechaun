@@ -12,7 +12,7 @@ const okxVenue = {
   required_scope: "Create the API key with the Read permission only — no Trade, no Withdraw.",
   requires_secret: true,
   requires_passphrase: true,
-  adapter_kinds: [],
+  adapters: [{ kind: "spot", lookback_days: 90 }],
 };
 
 const connection = {

@@ -5,6 +5,15 @@ import { postJson, putJson, refusal } from "@/api/http";
 export const CONNECTIONS_URL = "/api/connections";
 
 /**
+ * One adapter kind a venue serves, with its declared capability: how far back
+ * the venue actually reaches — null where its history is unbounded.
+ */
+export const venueAdapterSchema = z.object({
+  kind: z.string(),
+  lookback_days: z.number().nullable(),
+});
+
+/**
  * A venue as the registry describes it: what its credential is made of and
  * the read-only scope to grant when minting the key there.
  */
@@ -15,7 +24,7 @@ export const venueSchema = z.object({
   requires_secret: z.boolean(),
   requires_passphrase: z.boolean(),
   /** The kinds this venue's adapters serve — empty until its adapters ship. */
-  adapter_kinds: z.array(z.string()),
+  adapters: z.array(venueAdapterSchema),
 });
 
 export const adapterStatusSchema = z.object({
@@ -73,7 +82,25 @@ export const kindSyncResultSchema = z.object({
     .nullable(),
 });
 
+/**
+ * One venue account whose synced coverage begins after the earliest activity
+ * recorded elsewhere — a silent history gap, named so the Admin can close it
+ * by importing the older history.
+ */
+export const coverageWarningSchema = z.object({
+  connection_id: z.number(),
+  connection_label: z.string(),
+  venue: z.string(),
+  platform_name: z.string(),
+  account_id: z.number(),
+  account_name: z.string(),
+  coverage_starts_at: z.string(),
+  earliest_elsewhere_at: z.string(),
+});
+
 export type Venue = z.infer<typeof venueSchema>;
+export type VenueAdapter = z.infer<typeof venueAdapterSchema>;
+export type CoverageWarning = z.infer<typeof coverageWarningSchema>;
 export type AdapterStatus = z.infer<typeof adapterStatusSchema>;
 export type AccountPairing = z.infer<typeof accountPairingSchema>;
 export type Connection = z.infer<typeof connectionSchema>;
@@ -103,6 +130,14 @@ export async function fetchConnections(): Promise<Connection[]> {
     throw new Error(`The API answered ${response.status} instead of listing connections.`);
   }
   return z.array(connectionSchema).parse(await response.json());
+}
+
+export async function fetchCoverageWarnings(): Promise<CoverageWarning[]> {
+  const response = await fetch(`${CONNECTIONS_URL}/coverage-warnings`);
+  if (!response.ok) {
+    throw new Error(`The API answered ${response.status} instead of listing coverage warnings.`);
+  }
+  return z.array(coverageWarningSchema).parse(await response.json());
 }
 
 export async function registerConnection(connection: NewConnection): Promise<void> {

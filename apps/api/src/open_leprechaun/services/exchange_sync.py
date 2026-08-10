@@ -147,7 +147,15 @@ def sync_connection(
     results = []
     for adapter in kinds:
         result = _sync_kind(engine, connection, adapter, credentials)
-        connections.record_result(engine, connection_id, adapter.kind, error=result.error)
+        connections.record_result(
+            engine,
+            connection_id,
+            adapter.kind,
+            error=result.error,
+            # The days the pull reached over — already None beside an error,
+            # so a failed kind claims no coverage (ticket 40).
+            covered_lookback_days=result.covered_days,
+        )
         results.append(result)
     return tuple(results)
 

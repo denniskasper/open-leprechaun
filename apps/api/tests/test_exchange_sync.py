@@ -68,15 +68,19 @@ def connect(client: TestClient, platform_id: int, **overrides) -> int:
     return client.post("/api/connections", json=request).json()["id"]
 
 
-def test_the_venue_registry_names_its_adapter_kinds(client):
-    """The UI offers pairing per kind before anything has synced — the
-    registry says which kinds a venue serves, empty until its adapters
+def test_the_venue_registry_names_its_adapter_kinds_and_their_lookback(client):
+    """The UI offers pairing per kind before anything has synced, and states
+    per kind how far back the venue actually reaches (ADR-0008, ticket 40) —
+    the registry says which kinds a venue serves, empty until its adapters
     ship."""
     venues = {venue["venue"]: venue for venue in client.get("/api/connections/venues").json()}
 
-    assert venues["pionex"]["adapter_kinds"] == ["futures"]
-    assert venues["okx"]["adapter_kinds"] == ["spot", "futures"]
-    assert venues["coinbase"]["adapter_kinds"] == []
+    assert venues["pionex"]["adapters"] == [{"kind": "futures", "lookback_days": 90}]
+    assert venues["okx"]["adapters"] == [
+        {"kind": "spot", "lookback_days": 90},
+        {"kind": "futures", "lookback_days": 90},
+    ]
+    assert venues["coinbase"]["adapters"] == []
 
 
 # --- Account pairing: which Account each kind writes into (ADR-0004) ---

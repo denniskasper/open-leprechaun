@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { CoverageWarning } from "@/api/connections";
 import type { Position } from "@/api/holdings";
 import {
   counts,
   custodyOf,
+  describeCoverageWarning,
   displayMoney,
   exclusionLine,
   groupHoldings,
@@ -151,5 +153,24 @@ describe("displayMoney", () => {
 
   it("falls back to EUR while no rate is served", () => {
     expect(displayMoney("1000.00", "USD", null, "en-US")).toBe("€1,000.00");
+  });
+});
+
+describe("describeCoverageWarning", () => {
+  const warning: CoverageWarning = {
+    connection_id: 1,
+    connection_label: "Main account",
+    venue: "okx",
+    platform_name: "OKX",
+    account_id: 3,
+    account_name: "Trading",
+    coverage_starts_at: "2026-05-12T09:15:00Z",
+    earliest_elsewhere_at: "2024-01-03T12:00:00Z",
+  };
+
+  it("names the venue and states both instants as dates", () => {
+    expect(describeCoverageWarning(warning, "en-US")).toBe(
+      "OKX · Trading: coverage starts May 12, 2026, but activity elsewhere starts Jan 3, 2024 — older history at this venue cannot arrive by sync.",
+    );
   });
 });
