@@ -20,6 +20,8 @@ class Refusal(Enum):
 
     no_such_platform = "no_such_platform"
     label_taken = "label_taken"
+    no_such_connection = "no_such_connection"
+    no_such_account = "no_such_account"
 
 
 def create_connection(
@@ -62,6 +64,93 @@ def list_connections(engine: Engine) -> list[Row]:
                 text(
                     "SELECT id, platform_id, venue, label, fingerprint, last_used_at"
                     " FROM connection ORDER BY platform_id, label, id"
+                )
+            ).all()
+        )
+
+
+def connection_row(engine: Engine, connection_id: int) -> Row | None:
+    """One Connection's non-secret columns — what the sync path needs to know
+    which venue it speaks to."""
+    with engine.connect() as connection:
+        return connection.execute(
+            text("SELECT id, platform_id, venue, label FROM connection WHERE id = :id"),
+            {"id": connection_id},
+        ).one_or_none()
+
+
+def account_platform(engine: Engine, account_id: int) -> int | None:
+    """Which Platform an Account sits under — None when there is no such
+    Account. The pairing rule needs exactly this and nothing more."""
+    with engine.connect() as connection:
+        return connection.execute(
+            text("SELECT platform_id FROM account WHERE id = :id"), {"id": account_id}
+        ).scalar_one_or_none()
+
+
+def pair_account(
+    engine: Engine, connection_id: int, adapter_kind: str, account_id: int
+) -> Refusal | None:
+    """Upsert the one Account this kind writes into — pairing again moves the
+    kind. Existence was judged by the service; a row vanishing between that
+    judgement and this write trips the foreign keys, and which one failed is
+    read from the constraint's name."""
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO connection_account (connection_id, adapter_kind, account_id)"
+                    " VALUES (:connection_id, :adapter_kind, :account_id)"
+                    " ON CONFLICT (connection_id, adapter_kind)"
+                    " DO UPDATE SET account_id = EXCLUDED.account_id"
+                ),
+                {
+                    "connection_id": connection_id,
+                    "adapter_kind": adapter_kind,
+                    "account_id": account_id,
+                },
+            )
+    except IntegrityError as refused:
+        constraint = getattr(getattr(refused.orig, "diag", None), "constraint_name", None)
+        if constraint == "connection_account_connection_id_fkey":
+            return Refusal.no_such_connection
+        if constraint == "connection_account_account_id_fkey":
+            return Refusal.no_such_account
+        raise
+    return None
+
+
+def unpair_account(engine: Engine, connection_id: int, adapter_kind: str) -> bool:
+    """False when the kind was not paired — nothing to release."""
+    with engine.begin() as connection:
+        released = connection.execute(
+            text(
+                "DELETE FROM connection_account"
+                " WHERE connection_id = :connection_id AND adapter_kind = :adapter_kind"
+            ),
+            {"connection_id": connection_id, "adapter_kind": adapter_kind},
+        )
+    return released.rowcount == 1
+
+
+def paired_account(engine: Engine, connection_id: int, adapter_kind: str) -> int | None:
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                "SELECT account_id FROM connection_account"
+                " WHERE connection_id = :connection_id AND adapter_kind = :adapter_kind"
+            ),
+            {"connection_id": connection_id, "adapter_kind": adapter_kind},
+        ).scalar_one_or_none()
+
+
+def list_pairings(engine: Engine) -> list[Row]:
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT connection_id, adapter_kind, account_id"
+                    " FROM connection_account ORDER BY connection_id, adapter_kind"
                 )
             ).all()
         )

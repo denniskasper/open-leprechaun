@@ -36,13 +36,17 @@ _KEY_CONTEXT = b"open-leprechaun venue credentials v1"
 
 
 class Refusal(Enum):
-    """Why a Connection was not made, each a distinct answer to the Admin."""
+    """Why a Connection was not made or a pairing not stored, each a distinct
+    answer to the Admin."""
 
     no_such_platform = "no_such_platform"
     label_taken = "label_taken"
     unknown_venue = "unknown_venue"
     secret_missing = "secret_missing"
     passphrase_missing = "passphrase_missing"
+    no_such_connection = "no_such_connection"
+    no_such_account = "no_such_account"
+    foreign_platform = "foreign_platform"
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,15 @@ class AdapterStatus:
 
 
 @dataclass(frozen=True)
+class AccountPairing:
+    """Which Account one adapter kind writes into (ADR-0004) —
+    configuration, kept apart from the kind's recorded results."""
+
+    adapter_kind: str
+    account_id: int
+
+
+@dataclass(frozen=True)
 class ConnectionOverview:
     id: int
     platform_id: int
@@ -77,6 +90,7 @@ class ConnectionOverview:
     fingerprint: str
     last_used_at: datetime | None
     statuses: tuple[AdapterStatus, ...]
+    pairings: tuple[AccountPairing, ...]
 
 
 def register(
@@ -129,6 +143,11 @@ def overview(engine: Engine) -> list[ConnectionOverview]:
                 last_error=row.last_error,
             )
         )
+    pairings_of: dict[int, list[AccountPairing]] = {}
+    for row in repository.list_pairings(engine):
+        pairings_of.setdefault(row.connection_id, []).append(
+            AccountPairing(adapter_kind=row.adapter_kind, account_id=row.account_id)
+        )
     return [
         ConnectionOverview(
             id=row.id,
@@ -138,9 +157,34 @@ def overview(engine: Engine) -> list[ConnectionOverview]:
             fingerprint=row.fingerprint,
             last_used_at=row.last_used_at,
             statuses=tuple(statuses_of.get(row.id, [])),
+            pairings=tuple(pairings_of.get(row.id, [])),
         )
         for row in repository.list_connections(engine)
     ]
+
+
+def pair(engine: Engine, connection_id: int, adapter_kind: str, account_id: int) -> Refusal | None:
+    """Point one adapter kind at the Account it writes into. The Account must
+    sit under the Connection's own Platform — a venue's data landing under a
+    different Platform would be a mispairing, not a choice."""
+    connection = repository.connection_row(engine, connection_id)
+    if connection is None:
+        return Refusal.no_such_connection
+    platform_id = repository.account_platform(engine, account_id)
+    if platform_id is None:
+        return Refusal.no_such_account
+    if platform_id != connection.platform_id:
+        return Refusal.foreign_platform
+    refused = repository.pair_account(engine, connection_id, adapter_kind, account_id)
+    if refused is repository.Refusal.no_such_connection:
+        return Refusal.no_such_connection
+    if refused is repository.Refusal.no_such_account:
+        return Refusal.no_such_account
+    return None
+
+
+def unpair(engine: Engine, connection_id: int, adapter_kind: str) -> bool:
+    return repository.unpair_account(engine, connection_id, adapter_kind)
 
 
 def credentials_of(engine: Engine, settings: Settings, connection_id: int) -> Credentials | None:

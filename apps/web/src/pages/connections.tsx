@@ -1,23 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fingerprint, KeyRound, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { Fingerprint, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2, Zap } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import {
   fetchConnections,
   fetchVenues,
+  pairAccount,
   registerConnection,
   removeConnection,
+  syncConnection,
+  testConnection,
   type AdapterStatus,
   type Connection,
+  type KindSyncResult,
+  type KindTestResult,
   type Venue,
 } from "@/api/connections";
-import { fetchPlatforms, type Platform } from "@/api/platforms";
+import { fetchPlatforms, type Account, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatTimestamp } from "@/lib/format";
+import { formatNumber, formatTimestamp } from "@/lib/format";
 
 /**
  * The standing rule, stated wherever a credential is entered: every scope in
@@ -59,6 +64,58 @@ export function describeLastUse(lastUsedAt: string | null, locale?: string): str
 /** A kind that has failed since it last worked wears the alarm colour. */
 export function statusTone(status: AdapterStatus): "signal" | "alarm" {
   return status.last_error === null ? "signal" : "alarm";
+}
+
+/**
+ * Every adapter kind a Connection shows a line for: the kinds the venue's
+ * adapters serve, then any further kind a recorded status or pairing already
+ * names — nothing recorded is ever hidden, even for a kind that no longer
+ * ships.
+ */
+export function kindsOf(connection: Connection, venue: Venue | undefined): string[] {
+  const kinds = [...(venue?.adapter_kinds ?? [])];
+  for (const named of [
+    ...connection.statuses.map((status) => status.adapter_kind),
+    ...connection.pairings.map((pairing) => pairing.adapter_kind),
+  ]) {
+    if (!kinds.includes(named)) kinds.push(named);
+  }
+  return kinds;
+}
+
+function count(quantity: number, noun: string, locale?: string): string {
+  return `${formatNumber(quantity, locale)} ${quantity === 1 ? noun : `${noun}s`}`;
+}
+
+/** One kind's test outcome as the line under the kind states it. */
+export function describeTestResult(result: KindTestResult): string {
+  return result.error ?? result.detail ?? "Tested.";
+}
+
+/**
+ * One kind's sync outcome in words: what was new, what was already known —
+ * and beside an error, whatever still landed before the refusal.
+ */
+export function describeSyncResult(result: KindSyncResult, locale?: string): string {
+  const parts: string[] = [];
+  if (result.futures) {
+    parts.push(count(result.futures.new_fills, "new fill", locale));
+    parts.push(count(result.futures.new_funding, "new funding payment", locale));
+  }
+  if (result.imported) {
+    parts.push(count(result.imported.created, "row", locale) + " imported");
+    if (result.imported.duplicates > 0) {
+      parts.push(`${formatNumber(result.imported.duplicates, locale)} already known`);
+    }
+    if (result.imported.skipped > 0) {
+      parts.push(`${formatNumber(result.imported.skipped, locale)} skipped`);
+    }
+  }
+  const landed = parts.join(" · ");
+  if (result.error) {
+    return landed ? `${result.error} (${landed} before the refusal)` : result.error;
+  }
+  return landed || "Nothing to pull for this kind.";
 }
 
 export function ConnectionsPage() {
@@ -118,10 +175,15 @@ export function ConnectionsPage() {
             </Button>
           }
         />
-      ) : connections.data && platforms.data ? (
+      ) : connections.data && platforms.data && venues.data ? (
         <div className="space-y-12">
           {groupByPlatform(connections.data, platforms.data).map((group, index) => (
-            <PlatformSection key={group.platform.id} group={group} index={index} />
+            <PlatformSection
+              key={group.platform.id}
+              group={group}
+              venues={venues.data}
+              index={index}
+            />
           ))}
         </div>
       ) : null}
@@ -129,7 +191,15 @@ export function ConnectionsPage() {
   );
 }
 
-function PlatformSection({ group, index }: { group: PlatformGroup; index: number }) {
+function PlatformSection({
+  group,
+  venues,
+  index,
+}: {
+  group: PlatformGroup;
+  venues: Venue[];
+  index: number;
+}) {
   return (
     <section
       className="rise"
@@ -144,21 +214,64 @@ function PlatformSection({ group, index }: { group: PlatformGroup; index: number
       </div>
       <div className="divide-y divide-border">
         {group.connections.map((connection) => (
-          <ConnectionRow key={connection.id} connection={connection} />
+          <ConnectionRow
+            key={connection.id}
+            connection={connection}
+            accounts={group.platform.accounts}
+            venue={venues.find((venue) => venue.venue === connection.venue)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function ConnectionRow({ connection }: { connection: Connection }) {
+function ConnectionRow({
+  connection,
+  accounts,
+  venue,
+}: {
+  connection: Connection;
+  accounts: Account[];
+  venue: Venue | undefined;
+}) {
   const [confirming, setConfirming] = useState(false);
+  const [outcomes, setOutcomes] = useState<Record<string, { ok: boolean; text: string }>>({});
   const queryClient = useQueryClient();
+  const kinds = kindsOf(connection, venue);
 
   const remove = useMutation({
     mutationFn: () => removeConnection(connection.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["connections"] }),
   });
+
+  function recordOutcomes<Result extends { adapter_kind: string; ok: boolean }>(
+    describe: (result: Result) => string,
+  ) {
+    return (results: Result[]) => {
+      setOutcomes(
+        Object.fromEntries(
+          results.map((result) => [
+            result.adapter_kind,
+            { ok: result.ok, text: describe(result) },
+          ]),
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["connections"] });
+    };
+  }
+
+  const test = useMutation({
+    mutationFn: () => testConnection(connection.id),
+    onSuccess: recordOutcomes(describeTestResult),
+  });
+
+  const sync = useMutation({
+    mutationFn: () => syncConnection(connection.id),
+    onSuccess: recordOutcomes((result: KindSyncResult) => describeSyncResult(result)),
+  });
+
+  const busy = test.isPending || sync.isPending;
 
   return (
     <article className="py-4" aria-label={connection.label}>
@@ -173,6 +286,30 @@ function ConnectionRow({ connection }: { connection: Connection }) {
         </span>
         <span className="text-xs text-muted-foreground">{describeLastUse(connection.last_used_at)}</span>
         <span className="ml-auto flex gap-2">
+          {kinds.length > 0 && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={busy}
+                onClick={() => test.mutate()}
+              >
+                <Zap aria-hidden />
+                {test.isPending ? "Testing…" : "Test"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={busy}
+                onClick={() => sync.mutate()}
+              >
+                <RefreshCw aria-hidden className={sync.isPending ? "animate-spin" : undefined} />
+                {sync.isPending ? "Syncing…" : "Sync"}
+              </Button>
+            </>
+          )}
           {confirming ? (
             <>
               <Button
@@ -202,47 +339,106 @@ function ConnectionRow({ connection }: { connection: Connection }) {
         </span>
       </div>
 
-      {connection.statuses.length > 0 ? (
-        <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-          {connection.statuses.map((status) => (
-            <StatusLine key={status.adapter_kind} status={status} />
+      {kinds.length > 0 ? (
+        <ul className="mt-3 space-y-1.5">
+          {kinds.map((kind) => (
+            <KindLine
+              key={kind}
+              kind={kind}
+              connection={connection}
+              accounts={accounts}
+              outcome={outcomes[kind]}
+            />
           ))}
         </ul>
       ) : (
         <p className="mt-1 text-xs text-muted-foreground">
-          Not tested yet — nothing has synced through this Connection.
+          No adapter ships for this venue yet — testing and syncing arrive with it.
         </p>
       )}
-      {remove.isError && (
+      {(remove.error || test.error || sync.error) && (
         <p role="alert" className="mt-2 text-sm text-alarm">
-          {remove.error.message}
+          {(remove.error ?? test.error ?? sync.error)?.message}
         </p>
       )}
     </article>
   );
 }
 
-function StatusLine({ status }: { status: AdapterStatus }) {
-  const tone = statusTone(status);
+/**
+ * One adapter kind: its tone dot, the Account it writes into, and its latest
+ * outcome — the just-answered test or sync where there is one, the recorded
+ * status otherwise.
+ */
+function KindLine({
+  kind,
+  connection,
+  accounts,
+  outcome,
+}: {
+  kind: string;
+  connection: Connection;
+  accounts: Account[];
+  outcome: { ok: boolean; text: string } | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const status = connection.statuses.find((entry) => entry.adapter_kind === kind);
+  const pairing = connection.pairings.find((entry) => entry.adapter_kind === kind);
+
+  const pair = useMutation({
+    mutationFn: (accountId: number) => pairAccount(connection.id, kind, accountId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["connections"] }),
+  });
+
+  const tone = outcome ? (outcome.ok ? "signal" : "alarm") : status ? statusTone(status) : null;
 
   return (
-    <li className="flex items-baseline gap-1.5 font-mono text-xs">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs">
       <span
         aria-hidden
-        className={`size-1.5 self-center rounded-full ${
-          tone === "signal" ? "bg-signal" : "bg-alarm"
+        className={`size-1.5 rounded-full ${
+          tone === "signal" ? "bg-signal" : tone === "alarm" ? "bg-alarm" : "bg-border"
         }`}
       />
-      <span>{status.adapter_kind}</span>
-      {tone === "alarm" ? (
-        <span className="text-alarm">{status.last_error}</span>
+      <span className="w-16">{kind}</span>
+      {accounts.length > 0 ? (
+        <NativeSelect
+          aria-label={`Account for ${kind}`}
+          className="h-7 w-auto min-w-36 text-xs"
+          value={pairing?.account_id ?? ""}
+          disabled={pair.isPending}
+          onChange={(event) => pair.mutate(Number(event.target.value))}
+        >
+          <option value="" disabled className="bg-background text-foreground">
+            Pair an Account…
+          </option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id} className="bg-background text-foreground">
+              {account.name}
+            </option>
+          ))}
+        </NativeSelect>
       ) : (
-        status.last_success_at && (
-          <span className="text-muted-foreground">
-            {formatTimestamp(Date.parse(status.last_success_at))}
-          </span>
-        )
+        <span className="text-muted-foreground">Add an Account to this Platform first.</span>
       )}
+      {pair.error && (
+        <span role="alert" className="text-alarm">
+          {pair.error.message}
+        </span>
+      )}
+      {outcome ? (
+        <span className={outcome.ok ? "text-muted-foreground" : "text-alarm"}>{outcome.text}</span>
+      ) : status ? (
+        statusTone(status) === "alarm" ? (
+          <span className="text-alarm">{status.last_error}</span>
+        ) : (
+          status.last_success_at && (
+            <span className="text-muted-foreground">
+              {formatTimestamp(Date.parse(status.last_success_at))}
+            </span>
+          )
+        )
+      ) : null}
     </li>
   );
 }

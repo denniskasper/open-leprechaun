@@ -110,6 +110,22 @@ def create_cash(engine: Engine, *, symbol: str, name: str) -> int | None:
         return None
 
 
+def wearing_symbol(engine: Engine, symbol: str, *, families: tuple[str, ...]) -> list[int]:
+    """Every Instrument id wearing this symbol within the given families —
+    the resolution-hint lookup a venue's bare symbol permits (ADR-0010). What
+    more than one match means is the caller's judgement, never a pick."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT id FROM instrument"
+                    " WHERE symbol = :symbol AND family = ANY(:families) ORDER BY id"
+                ),
+                {"symbol": symbol, "families": list(families)},
+            ).scalars()
+        )
+
+
 def get(engine: Engine, instrument_id: int) -> Row | None:
     with engine.connect() as connection:
         return connection.execute(

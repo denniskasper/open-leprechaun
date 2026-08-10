@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const CONNECTIONS_URL = "/api/connections";
@@ -14,6 +14,8 @@ export const venueSchema = z.object({
   required_scope: z.string(),
   requires_secret: z.boolean(),
   requires_passphrase: z.boolean(),
+  /** The kinds this venue's adapters serve — empty until its adapters ship. */
+  adapter_kinds: z.array(z.string()),
 });
 
 export const adapterStatusSchema = z.object({
@@ -23,10 +25,16 @@ export const adapterStatusSchema = z.object({
   last_error: z.string().nullable(),
 });
 
+/** Which Account one adapter kind writes into. */
+export const accountPairingSchema = z.object({
+  adapter_kind: z.string(),
+  account_id: z.number(),
+});
+
 /**
  * Everything the API ever returns of a Connection: a label, a fingerprint, a
- * last-used timestamp and per-kind results — never secret material, in any
- * form.
+ * last-used timestamp, per-kind results and per-kind Account pairings —
+ * never secret material, in any form.
  */
 export const connectionSchema = z.object({
   id: z.number(),
@@ -36,11 +44,39 @@ export const connectionSchema = z.object({
   fingerprint: z.string(),
   last_used_at: z.string().nullable(),
   statuses: z.array(adapterStatusSchema),
+  pairings: z.array(accountPairingSchema),
+});
+
+/** One adapter kind's test outcome — the venue's sentence or the failure's. */
+export const kindTestResultSchema = z.object({
+  adapter_kind: z.string(),
+  ok: z.boolean(),
+  detail: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+/** One adapter kind's sync outcome; what landed stays reported beside an error. */
+export const kindSyncResultSchema = z.object({
+  adapter_kind: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+  futures: z.object({ new_fills: z.number(), new_funding: z.number() }).nullable(),
+  imported: z
+    .object({
+      batch_id: z.number().nullable(),
+      created: z.number(),
+      duplicates: z.number(),
+      skipped: z.number(),
+    })
+    .nullable(),
 });
 
 export type Venue = z.infer<typeof venueSchema>;
 export type AdapterStatus = z.infer<typeof adapterStatusSchema>;
+export type AccountPairing = z.infer<typeof accountPairingSchema>;
 export type Connection = z.infer<typeof connectionSchema>;
+export type KindTestResult = z.infer<typeof kindTestResultSchema>;
+export type KindSyncResult = z.infer<typeof kindSyncResultSchema>;
 
 export interface NewConnection {
   platform_id: number;
@@ -78,5 +114,34 @@ export async function removeConnection(connectionId: number): Promise<void> {
   const response = await fetch(`${CONNECTIONS_URL}/${connectionId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Connection could not be removed.");
+  }
+}
+
+export async function testConnection(connectionId: number): Promise<KindTestResult[]> {
+  const response = await postJson(`${CONNECTIONS_URL}/${connectionId}/test`, {});
+  if (!response.ok) {
+    throw await refusal(response, "The Connection could not be tested.");
+  }
+  return z.array(kindTestResultSchema).parse(await response.json());
+}
+
+export async function syncConnection(connectionId: number): Promise<KindSyncResult[]> {
+  const response = await postJson(`${CONNECTIONS_URL}/${connectionId}/sync`, {});
+  if (!response.ok) {
+    throw await refusal(response, "The Connection could not be synced.");
+  }
+  return z.array(kindSyncResultSchema).parse(await response.json());
+}
+
+export async function pairAccount(
+  connectionId: number,
+  adapterKind: string,
+  accountId: number,
+): Promise<void> {
+  const response = await putJson(`${CONNECTIONS_URL}/${connectionId}/pairings/${adapterKind}`, {
+    account_id: accountId,
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The Account could not be paired.");
   }
 }

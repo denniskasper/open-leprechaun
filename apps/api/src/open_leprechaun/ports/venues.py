@@ -11,11 +11,15 @@ more.
 
 from dataclasses import dataclass
 
+from open_leprechaun.ports.exchange import ExchangeAdapter
+from open_leprechaun.ports.pionex import PionexFuturesAdapter
+
 
 @dataclass(frozen=True)
 class Venue:
     """What the UI and the Connection service need to know before any adapter
-    exists: how this venue's credential is shaped and what to ask it for."""
+    exists — how this venue's credential is shaped and what to ask it for —
+    plus the adapter instances the venue ships, one per kind it serves."""
 
     venue: str
     name: str
@@ -27,6 +31,9 @@ class Venue:
     requires_secret: bool
     # A third factor some venues attach to the key itself.
     requires_passphrase: bool
+    # Empty until the venue's adapters ship (tickets 35-37, 48-49) —
+    # registration works ahead of them; testing and syncing answer nothing.
+    adapters: tuple[ExchangeAdapter, ...] = ()
 
 
 # Keyed by the registry string a Connection stores. Adding a venue is adding
@@ -35,6 +42,16 @@ class Venue:
 VENUES: dict[str, Venue] = {
     entry.venue: entry
     for entry in (
+        Venue(
+            venue="pionex",
+            name="Pionex",
+            required_scope=(
+                "Create the API key with the Read Data permission only — no Trade, no Withdraw."
+            ),
+            requires_secret=True,
+            requires_passphrase=False,
+            adapters=(PionexFuturesAdapter(),),
+        ),
         Venue(
             venue="okx",
             name="OKX",
