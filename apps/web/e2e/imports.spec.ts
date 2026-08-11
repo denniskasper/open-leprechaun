@@ -155,3 +155,90 @@ test("an import lands as a reversible batch whose rows wear their provenance", a
   await survivor.getByRole("button", { name: "Confirm removal" }).click();
   await expect(page.getByRole("row").filter({ hasText: `e2e-csv-${run}` })).toHaveCount(0);
 });
+
+test("an unsupported venue's file is mapped by hand, watched live, saved and committed", async ({
+  page,
+  request,
+}) => {
+  // The mapped file names EUR — the seeded numéraire — so the journey needs
+  // no instrument arrangement of its own.
+  const run = Date.now();
+  await arrangeAccount(request, `Mapped ${run}`);
+
+  // An invented venue's export: semicolon-separated, German decimal commas,
+  // local timestamps without offset, and a type vocabulary of its own.
+  const exported = [
+    "Datum;Art;Betrag;Referenz",
+    `01.07.2026 10:00;Zufluss;25,50;r-${run}-1`,
+    `02.07.2026 11:00;Kosten;0,10;r-${run}-2`,
+    "",
+  ].join("\n");
+
+  await page.goto("/imports");
+  await page.getByRole("button", { name: "Map a file" }).click();
+  const panel = page.getByRole("region", { name: "Map a file" });
+  await panel.getByLabel("Into Account").selectOption({ label: `Mapped ${run}` });
+  await panel.getByLabel("Exported file").setInputFiles({
+    name: `venue-${run}.csv`,
+    mimeType: "text/csv",
+    buffer: Buffer.from(exported),
+  });
+
+  // The file's own conventions are declared, never sniffed.
+  await panel.getByLabel("Cells are separated by").selectOption({ label: "Semicolon (;)" });
+  await panel.getByLabel("Amounts write the decimal as").selectOption({ label: "Comma — 1.234,56" });
+
+  // Assign the columns; the required fields are named until declared.
+  await expect(panel.getByText("No column is assigned to the timestamp.")).toBeVisible();
+  await panel.getByLabel("Timestamp", { exact: true }).selectOption("Datum");
+  await panel.getByLabel("Datetime format").fill("%d.%m.%Y %H:%M");
+  await panel.getByLabel("Timezone of bare timestamps").selectOption("Europe/Berlin");
+  await panel.getByLabel("Quantity").selectOption("Betrag");
+  await panel.getByLabel("Symbol").selectOption({ label: "One symbol for the whole file…" });
+  await panel.getByLabel("Fixed symbol").fill("EUR");
+  await panel.getByLabel("Type", { exact: true }).selectOption("Art");
+  await panel.getByLabel("Identifier").selectOption("Referenz");
+
+  // The file's own type values appear as translation rows; each is mapped
+  // explicitly — an unmapped one is a stated problem, never a guess.
+  await expect(panel.getByText("The type value 'Zufluss' is not mapped", { exact: false }))
+    .toBeVisible();
+  await panel.getByLabel("Type for Zufluss").selectOption({ label: "Transfer in" });
+  await panel.getByLabel("Type for Kosten").selectOption({ label: "Fee" });
+
+  // The live preview shows the rows as the import would read them.
+  await expect(panel.getByText("2 rows in the file")).toBeVisible();
+  await expect(panel.getByRole("cell", { name: "25.5" })).toBeVisible();
+
+  // Saved under a name, the mapping is reusable against a later file.
+  await panel.getByLabel("Save this mapping as").fill(`Venue ${run}`);
+  await panel.getByRole("button", { name: "Save mapping" }).click();
+  await expect(panel.getByText("Saved — a later file reuses it from the picker.")).toBeVisible();
+
+  // The same preview → commit machinery as any connector import.
+  await panel.getByRole("button", { name: "Preview import" }).click();
+  await expect(panel.getByText("2 rows to create")).toBeVisible();
+  await panel.getByRole("button", { name: "Commit import" }).click();
+  await expect(panel.getByText("2 rows created")).toBeVisible();
+  await panel.getByRole("button", { name: "Done" }).click();
+
+  const batch = page.getByRole("row").filter({ hasText: `venue-${run}.csv` });
+  await expect(batch.getByText(/^mapping:\d+$/)).toBeVisible();
+
+  // The saved mapping answers from the picker on a fresh visit.
+  await page.getByRole("button", { name: "Map a file" }).click();
+  const again = page.getByRole("region", { name: "Map a file" });
+  await again.getByLabel("Exported file").setInputFiles({
+    name: `venue-later-${run}.csv`,
+    mimeType: "text/csv",
+    buffer: Buffer.from(exported),
+  });
+  await again.getByLabel("Saved mapping").selectOption({ label: `Venue ${run}` });
+  await expect(again.getByLabel("Datetime format")).toHaveValue("%d.%m.%Y %H:%M");
+  await again.getByRole("button", { name: "Cancel" }).click();
+
+  // Leave the ledger as found: reversal removes the batch as a unit.
+  await batch.getByRole("button", { name: "Reverse" }).click();
+  await batch.getByRole("button", { name: "Confirm reversal" }).click();
+  await expect(page.getByRole("row").filter({ hasText: `venue-${run}.csv` })).toHaveCount(0);
+});

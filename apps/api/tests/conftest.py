@@ -74,6 +74,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # only permits as an overridden tombstone.
         connection.execute(text("DELETE FROM imported_row"))
         connection.execute(text("DELETE FROM import_batch"))
+        # Saved column mappings reference nothing and nothing references
+        # them; a name saved by one test must not answer another's list.
+        connection.execute(text("DELETE FROM column_mapping"))
         connection.execute(text("DELETE FROM transaction"))
         # Aggregates after their member transactions; the SET NULL release
         # makes either order work, this one just deletes nothing twice.

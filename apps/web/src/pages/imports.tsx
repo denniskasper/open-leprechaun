@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileUp, Undo2 } from "lucide-react";
+import { Download, FileUp, Table2, Undo2 } from "lucide-react";
 import { useId, useState, type ChangeEvent } from "react";
 import {
   commitCsvImport,
@@ -14,6 +14,7 @@ import {
 } from "@/api/imports";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
+import { MappingPanel } from "@/pages/imports-mapping";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,10 @@ export function committedWords(committed: CommittedImport, locale?: string): str
 }
 
 export function ImportsPage() {
-  const [importing, setImporting] = useState(false);
+  // Which flow is open: a shipped connector's file, or the Admin's own
+  // column mapping for a venue nothing ships a connector for.
+  const [flow, setFlow] = useState<"connector" | "mapping" | null>(null);
+  const importing = flow !== null;
   const batches = useQuery({ queryKey: ["import-batches"], queryFn: fetchImportBatches });
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: fetchPlatforms });
   const connectors = useQuery({ queryKey: ["csv-connectors"], queryFn: fetchCsvConnectors });
@@ -74,20 +78,29 @@ export function ImportsPage() {
         description="Every import, recorded as a batch and reversible as a unit. An import previews before it writes, commits as a separate act, and re-importing the same file changes nothing."
         actions={
           !importing && (
-            <Button variant="outline" onClick={() => setImporting(true)}>
-              <FileUp aria-hidden />
-              Import a file
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setFlow("connector")}>
+                <FileUp aria-hidden />
+                Import a file
+              </Button>
+              <Button variant="outline" onClick={() => setFlow("mapping")}>
+                <Table2 aria-hidden />
+                Map a file
+              </Button>
+            </>
           )
         }
       />
 
-      {importing && loaded && (
+      {flow === "connector" && loaded && (
         <FileImportPanel
           connectors={connectors.data}
           platforms={platforms.data}
-          onDone={() => setImporting(false)}
+          onDone={() => setFlow(null)}
         />
+      )}
+      {flow === "mapping" && loaded && (
+        <MappingPanel platforms={platforms.data} onDone={() => setFlow(null)} />
       )}
 
       {failed ? (
@@ -104,9 +117,9 @@ export function ImportsPage() {
         <EmptyState
           icon={Download}
           title="No imports yet"
-          description="Nothing has been imported. Choose a wallet's exported file, see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
+          description="Nothing has been imported. Choose a wallet's exported file — or map an unsupported venue's columns yourself — see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
           action={
-            <Button variant="outline" onClick={() => setImporting(true)}>
+            <Button variant="outline" onClick={() => setFlow("connector")}>
               <FileUp aria-hidden />
               Import the first file
             </Button>
@@ -217,13 +230,7 @@ function FileImportPanel({
           <label htmlFor={`${fieldId}-file`} className="microlabel text-muted-foreground">
             Exported file
           </label>
-          <input
-            id={`${fieldId}-file`}
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => void choose(event)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1.5 font-mono text-xs file:mr-3 file:border-0 file:bg-transparent file:p-0 file:font-mono file:text-xs file:font-medium"
-          />
+          <FileInput id={`${fieldId}-file`} onChange={(event) => void choose(event)} />
         </div>
       </div>
 
@@ -287,12 +294,31 @@ function FileImportPanel({
   );
 }
 
+/** The one way a file is chosen, shared with the mapping flow. */
+export function FileInput({
+  id,
+  onChange,
+}: {
+  id: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <input
+      id={id}
+      type="file"
+      accept=".csv,text/csv,text/plain"
+      onChange={onChange}
+      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1.5 font-mono text-xs file:mr-3 file:border-0 file:bg-transparent file:p-0 file:font-mono file:text-xs file:font-medium"
+    />
+  );
+}
+
 /**
  * What the commit would do, before anything is written: every row to create,
  * every duplicate, every skip with its reason, every Instrument that would
  * have to exist first — the promise the commit then keeps.
  */
-function PreviewReport({ preview }: { preview: ImportPreview }) {
+export function PreviewReport({ preview }: { preview: ImportPreview }) {
   const shown = preview.to_create.slice(0, 8);
   return (
     <div className="space-y-4" aria-label="Import preview">

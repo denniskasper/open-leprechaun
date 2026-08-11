@@ -49,17 +49,29 @@ def preview(
     engine: Engine, connectors: Connectors, *, connector: str, account_id: int, content: str
 ) -> Preview | FileRefused | None:
     """What committing this file would do, without writing anything. None
-    when no connector wears the name; the connector's own warnings lead the
-    framework's, because what the file could not yield is judged first."""
+    when no connector wears the name."""
     chosen = connectors.get(connector)
     if chosen is None:
         return None
-    rows = _rows(engine, chosen, content)
+    return preview_of(engine, chosen, account_id=account_id, content=content)
+
+
+def preview_of(
+    engine: Engine, connector: CsvConnector, *, account_id: int, content: str
+) -> Preview | FileRefused:
+    """The preview under one connector object — the seam the column-mapping
+    flow (ticket 33) shares, its connector built per request rather than
+    registered. The connector's own warnings lead the framework's, because
+    what the file could not yield is judged first."""
+    rows = _rows(engine, connector, content)
     if isinstance(rows, FileRefused):
         return rows
     parsed_warnings, import_rows = rows
     evaluated = imports.evaluate(
-        engine, source=source_of(connector, account_id), account_id=account_id, rows=import_rows
+        engine,
+        source=source_of(connector.connector, account_id),
+        account_id=account_id,
+        rows=import_rows,
     )
     return replace(evaluated, warnings=parsed_warnings + evaluated.warnings)
 
@@ -78,13 +90,19 @@ def commit(
     chosen = connectors.get(connector)
     if chosen is None:
         return None
-    rows = _rows(engine, chosen, content)
+    return commit_of(engine, chosen, account_id=account_id, content=content, label=label)
+
+
+def commit_of(
+    engine: Engine, connector: CsvConnector, *, account_id: int, content: str, label: str
+) -> Committed | CommitRefused | FileRefused:
+    rows = _rows(engine, connector, content)
     if isinstance(rows, FileRefused):
         return rows
     _, import_rows = rows
     return imports.commit(
         engine,
-        source=source_of(connector, account_id),
+        source=source_of(connector.connector, account_id),
         label=label,
         account_id=account_id,
         rows=import_rows,
