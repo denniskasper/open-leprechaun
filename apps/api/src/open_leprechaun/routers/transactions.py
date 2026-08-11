@@ -15,6 +15,7 @@ from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories import transactions
 from open_leprechaun.repositories.transactions import Leg, Refusal
+from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services.transactions import (
     TransactionOverview,
     declaration_defect,
@@ -52,20 +53,11 @@ LegRole = Literal["in", "out", "fee"]
 Reconstructed = Literal["basis", "basis_and_date"]
 
 
-def _decimal_text_only(value: object) -> object:
-    """Refuse a JSON number where a quantity belongs: it has been through —
-    or is one parse away from — a binary float, so only a string states the
-    digits exactly. Decimals pass untouched; responses are built from them."""
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        raise ValueError("a quantity crosses JSON as a fixed-point decimal string, not a number")
-    return value
-
-
 # Fixed-point end to end, including in JSON: a quantity is parsed exactly from
 # a decimal string and answered as one, never a float in either direction.
 Quantity = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(gt=0, allow_inf_nan=False),
     PlainSerializer(lambda quantity: format(quantity, "f"), return_type=str),
 ]
@@ -74,7 +66,7 @@ Quantity = Annotated[
 # conservative estimate there is — but never negative.
 EstimatedBasis = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(ge=0, allow_inf_nan=False),
     PlainSerializer(lambda basis: format(basis, "f"), return_type=str),
 ]
@@ -193,7 +185,7 @@ def record_transaction(
         estimated_basis_eur=request.estimated_basis_eur,
     )
     if isinstance(created, Refusal):
-        raise HTTPException(status_code=404, detail=_MISSING[created])
+        raise _refused(created)
     return RegisteredResponse(id=created)
 
 
@@ -217,7 +209,7 @@ def revise_transaction(
         estimated_basis_eur=request.estimated_basis_eur,
     )
     if refused is not None:
-        raise HTTPException(status_code=404, detail=_MISSING[refused])
+        raise _refused(refused)
 
 
 @router.delete(
@@ -253,7 +245,7 @@ def bulk_reassignment(request: BulkReassignmentRequest, admin: AdminDep, engine:
         engine, request.transaction_ids, account_id=request.account_id
     )
     if refused is not None:
-        raise HTTPException(status_code=404, detail=_MISSING[refused])
+        raise _refused(refused)
 
 
 @router.post(
@@ -269,7 +261,7 @@ def bulk_retyping(request: BulkRetypingRequest, admin: AdminDep, engine: EngineD
     if isinstance(refused, str):
         raise HTTPException(status_code=422, detail=refused)
     if refused is not None:
-        raise HTTPException(status_code=404, detail=_MISSING[refused])
+        raise _refused(refused)
 
 
 _MISSING = {
@@ -277,6 +269,21 @@ _MISSING = {
     Refusal.no_such_account: "No such Account.",
     Refusal.no_such_instrument: "No such Instrument.",
 }
+
+
+def _refused(refusal: Refusal) -> HTTPException:
+    """A missing foundation is 404; a Depot whose withholding behaviour is
+    unset (ticket 43) is a conflict with the Platform's present state, and
+    the sentence names the repair."""
+    if refusal is Refusal.withholding_unset:
+        return HTTPException(
+            status_code=409,
+            detail=(
+                "The Depot's withholding behaviour is not set — record it on"
+                " the broker Platform before the Depot holds a position."
+            ),
+        )
+    return HTTPException(status_code=404, detail=_MISSING[refusal])
 
 
 def _balanced(request: RecordTransactionRequest) -> list[Leg]:

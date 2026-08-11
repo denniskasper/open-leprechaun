@@ -13,6 +13,7 @@ from pydantic import (
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.routers.futures import PositionResponse
 from open_leprechaun.routers.transactions import TransactionResponse
 from open_leprechaun.services import aggregates
@@ -33,20 +34,11 @@ PositionSide = Literal["long", "short"]
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
-def _decimal_text_only(value: object) -> object:
-    """Refuse a JSON number where an amount belongs: it has been through —
-    or is one parse away from — a binary float, so only a string states the
-    digits exactly. Decimals pass untouched; responses are built from them."""
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        raise ValueError("an amount crosses JSON as a fixed-point decimal string, not a number")
-    return value
-
-
 # Fixed-point end to end, as everywhere: answered as decimal strings, never
 # a float in either direction.
 Amount = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(allow_inf_nan=False),
     PlainSerializer(lambda amount: format(amount, "f"), return_type=str),
 ]

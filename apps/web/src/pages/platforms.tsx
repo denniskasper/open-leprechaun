@@ -13,9 +13,12 @@ import {
   addAccount,
   fetchPlatforms,
   registerPlatform,
+  setWithholding,
+  setWithholdingOverride,
   type Account,
   type Platform,
   type PlatformKind,
+  type Withholding,
 } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -23,6 +26,7 @@ import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { formatMoneyExact } from "@/lib/format";
 
 interface Vocabulary {
   /** The heading a group of these places wears. */
@@ -56,6 +60,21 @@ const KIND_ORDER = Object.keys(KIND_VOCABULARY) as PlatformKind[];
 export function accountCount(kind: PlatformKind, held: number): string {
   const noun = KIND_VOCABULARY[kind].account;
   return `${held} ${noun}${held === 1 ? "" : "s"}`;
+}
+
+/** The two behaviours a broker can have, in the Admin's words. */
+export const WITHHOLDING_LABEL: Record<Withholding, string> = {
+  at_source: "Withholds at source",
+  none: "No withholding at source",
+};
+
+/**
+ * What actually applies to one Depot: the Account's own override first, the
+ * Platform's word second — null while nothing has been declared, which is
+ * the state in which the Depot may hold no position.
+ */
+export function effectiveWithholding(platform: Platform, account: Account): Withholding | null {
+  return account.withholding_override ?? platform.withholding;
 }
 
 export interface KindGroup {
@@ -266,10 +285,12 @@ function PlatformRow({ platform }: { platform: Platform }) {
         </Button>
       </div>
 
+      {platform.kind === "broker" && <WithholdingLine platform={platform} />}
+
       {platform.accounts.length > 0 && (
         <ul className="mt-3 space-y-2">
           {platform.accounts.map((account) => (
-            <AccountLine key={account.id} account={account} />
+            <AccountLine key={account.id} account={account} platform={platform} />
           ))}
         </ul>
       )}
@@ -284,7 +305,131 @@ function PlatformRow({ platform }: { platform: Platform }) {
   );
 }
 
-function AccountLine({ account }: { account: Account }) {
+function WithholdingLine({ platform }: { platform: Platform }) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+        {platform.withholding ? (
+          <>
+            <span className="text-muted-foreground">
+              {WITHHOLDING_LABEL[platform.withholding]}
+            </span>
+            {platform.exemption_order_eur !== null && (
+              <span
+                className="font-mono text-xs tabular-nums text-muted-foreground"
+                title="Exemption order (Freistellungsauftrag) lodged with this broker — income passes untaxed until this slice of the saver's allowance is used up."
+              >
+                {formatMoneyExact(platform.exemption_order_eur, "EUR")} exemption order
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-caution">
+            Withholding not set — its Depots cannot hold positions until it is.
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => setEditing((open) => !open)}
+        >
+          {platform.withholding ? "Edit withholding" : "Set withholding"}
+        </Button>
+      </div>
+      {editing && <WithholdingForm platform={platform} onDone={() => setEditing(false)} />}
+    </div>
+  );
+}
+
+function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+  const [behaviour, setBehaviour] = useState<Withholding>(platform.withholding ?? "at_source");
+  const [order, setOrder] = useState(platform.exemption_order_eur ?? "");
+  const behaviourId = useId();
+  const orderId = useId();
+  const queryClient = useQueryClient();
+
+  const record = useMutation({
+    mutationFn: () =>
+      setWithholding(platform.id, {
+        behaviour,
+        exemption_order_eur: behaviour === "at_source" && order.trim() ? order.trim() : null,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["platforms"] });
+      onDone();
+    },
+  });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    record.mutate();
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 rounded-xl border border-border p-4"
+      aria-label={`Set withholding for ${platform.name}`}
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-2">
+          <label htmlFor={behaviourId} className="microlabel block text-muted-foreground">
+            Behaviour
+          </label>
+          <NativeSelect
+            id={behaviourId}
+            value={behaviour}
+            onChange={(event) => setBehaviour(event.target.value as Withholding)}
+          >
+            {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
+              <option key={value} value={value} className="bg-background text-foreground">
+                {WITHHOLDING_LABEL[value]}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        {behaviour === "at_source" && (
+          <div className="space-y-2">
+            <label htmlFor={orderId} className="microlabel block text-muted-foreground">
+              Exemption order (EUR)
+            </label>
+            <Input
+              id={orderId}
+              value={order}
+              onChange={(event) => setOrder(event.target.value)}
+              inputMode="decimal"
+              pattern="[0-9]+([.][0-9]+)?"
+              placeholder="1000"
+              className="w-36 font-mono tabular-nums"
+              aria-describedby={`${orderId}-hint`}
+            />
+          </div>
+        )}
+        <Button type="submit" size="sm" disabled={record.isPending}>
+          {record.isPending ? "Recording…" : "Record"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+      {behaviour === "at_source" && (
+        <p id={`${orderId}-hint`} className="mt-2 text-xs text-muted-foreground">
+          The Freistellungsauftrag lodged with this broker — leave empty for none.
+        </p>
+      )}
+      {record.isError && (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          {record.error.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function AccountLine({ account, platform }: { account: Account; platform: Platform }) {
   return (
     <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 pl-4 text-sm">
       <span className="font-medium">{account.name}</span>
@@ -302,7 +447,53 @@ function AccountLine({ account }: { account: Account }) {
       {account.access_software && (
         <span className="text-xs text-muted-foreground">via {account.access_software}</span>
       )}
+      {account.base_currency && (
+        <span
+          className="font-mono text-xs text-muted-foreground"
+          title="The currency this Depot keeps its cash reporting in."
+        >
+          {account.base_currency}
+        </span>
+      )}
+      {platform.kind === "broker" && <OverrideSelect account={account} />}
     </li>
+  );
+}
+
+function OverrideSelect({ account }: { account: Account }) {
+  const queryClient = useQueryClient();
+
+  const record = useMutation({
+    mutationFn: (behaviour: Withholding | null) => setWithholdingOverride(account.id, behaviour),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platforms"] }),
+  });
+
+  return (
+    <span className="ml-auto flex items-center gap-2">
+      {record.isError && (
+        <span role="alert" className="text-xs text-alarm">
+          {record.error.message}
+        </span>
+      )}
+      <NativeSelect
+        className="h-7 px-2 text-xs"
+        value={account.withholding_override ?? ""}
+        onChange={(event) =>
+          record.mutate(event.target.value === "" ? null : (event.target.value as Withholding))
+        }
+        aria-label={`Withholding override for ${account.name}`}
+        title="This one Depot's exception — for a brand operating through several entities with different tax status."
+      >
+        <option value="" className="bg-background text-foreground">
+          Broker&apos;s withholding
+        </option>
+        {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
+          <option key={value} value={value} className="bg-background text-foreground">
+            Override: {WITHHOLDING_LABEL[value]}
+          </option>
+        ))}
+      </NativeSelect>
+    </span>
   );
 }
 
@@ -312,6 +503,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
   const [chain, setChain] = useState("");
   const [reference, setReference] = useState("");
   const [software, setSoftware] = useState("");
+  const [baseCurrency, setBaseCurrency] = useState("");
   const id = useId();
   const queryClient = useQueryClient();
 
@@ -322,6 +514,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
         chain: chain.trim() || null,
         external_reference: reference.trim() || null,
         access_software: software.trim() || null,
+        base_currency: baseCurrency.trim() || null,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["platforms"] });
@@ -374,6 +567,19 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
       onChange: setSoftware,
       placeholder: "BitBoxApp, chipTAN app…",
     },
+    // A Depot records its base currency (ticket 43); other kinds have none.
+    ...(platform.kind === "broker"
+      ? [
+          {
+            key: "base-currency",
+            label: "Base currency",
+            value: baseCurrency,
+            onChange: (value: string) => setBaseCurrency(value.toUpperCase()),
+            placeholder: "EUR",
+            hint: "The currency this Depot keeps its cash reporting in.",
+          },
+        ]
+      : []),
   ];
 
   return (

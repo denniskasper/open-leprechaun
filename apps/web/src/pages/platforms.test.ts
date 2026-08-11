@@ -1,13 +1,34 @@
 import { describe, expect, it } from "vitest";
-import type { Platform } from "@/api/platforms";
-import { accountCount, groupByKind, KIND_VOCABULARY } from "./platforms";
+import type { Account, Platform } from "@/api/platforms";
+import {
+  accountCount,
+  effectiveWithholding,
+  groupByKind,
+  KIND_VOCABULARY,
+  WITHHOLDING_LABEL,
+} from "./platforms";
 
 function platform(overrides: Partial<Platform>): Platform {
   return {
     id: 1,
     name: "Kraken",
     kind: "exchange",
+    withholding: null,
+    exemption_order_eur: null,
     accounts: [],
+    ...overrides,
+  };
+}
+
+function account(overrides: Partial<Account>): Account {
+  return {
+    id: 1,
+    name: "Depot",
+    chain: null,
+    external_reference: null,
+    access_software: null,
+    withholding_override: null,
+    base_currency: null,
     ...overrides,
   };
 }
@@ -71,5 +92,33 @@ describe("accountCount", () => {
   it("counts a broker's holdings as Depots", () => {
     expect(accountCount("broker", 1)).toBe("1 Depot");
     expect(accountCount("broker", 3)).toBe("3 Depots");
+  });
+});
+
+describe("effectiveWithholding", () => {
+  it("lets the Platform's word stand where the Account states no exception", () => {
+    expect(
+      effectiveWithholding(platform({ kind: "broker", withholding: "at_source" }), account({})),
+    ).toBe("at_source");
+  });
+
+  it("prefers the Account's own override", () => {
+    expect(
+      effectiveWithholding(
+        platform({ kind: "broker", withholding: "at_source" }),
+        account({ withholding_override: "none" }),
+      ),
+    ).toBe("none");
+  });
+
+  it("answers null while nothing has been declared", () => {
+    expect(effectiveWithholding(platform({ kind: "broker" }), account({}))).toBeNull();
+  });
+});
+
+describe("WITHHOLDING_LABEL", () => {
+  it("names both behaviours without the word Depot leaking into other kinds", () => {
+    expect(WITHHOLDING_LABEL.at_source).toBe("Withholds at source");
+    expect(WITHHOLDING_LABEL.none).toBe("No withholding at source");
   });
 });

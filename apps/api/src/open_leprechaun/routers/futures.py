@@ -14,6 +14,7 @@ from pydantic import (
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories.futures import FuturesPosition, Refusal
+from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services import futures
 from open_leprechaun.services.futures import (
     FundingOverview,
@@ -31,20 +32,11 @@ PositionSide = Literal["long", "short"]
 Origin = Literal["manual", "derived"]
 
 
-def _decimal_text_only(value: object) -> object:
-    """Refuse a JSON number where an amount belongs: it has been through —
-    or is one parse away from — a binary float, so only a string states the
-    digits exactly. Decimals pass untouched; responses are built from them."""
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        raise ValueError("an amount crosses JSON as a fixed-point decimal string, not a number")
-    return value
-
-
 # Fixed-point end to end, as in the transaction ledger: parsed exactly from a
 # decimal string, answered as one, never a float in either direction.
 Quantity = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(gt=0, allow_inf_nan=False),
     PlainSerializer(lambda quantity: format(quantity, "f"), return_type=str),
 ]
@@ -54,7 +46,7 @@ Quantity = Annotated[
 # received.
 SignedAmount = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(allow_inf_nan=False),
     PlainSerializer(lambda amount: format(amount, "f"), return_type=str),
 ]

@@ -172,6 +172,16 @@ def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[Imp
     account = imports.account_source(engine, account_id)
     if account is None:
         refusal = CommitRefused(Refusal.no_such_account, "No such Account.")
+    elif account.kind == "broker" and account.withholding is None:
+        # A Depot may not hold a position before its withholding behaviour is
+        # set (ticket 43) — income there would be classified against an
+        # unknown, so the preview names the repair and the commit refuses.
+        sentence = (
+            "The Depot's withholding behaviour is not set — record it on the"
+            " broker Platform before importing into this Depot."
+        )
+        refusal = CommitRefused(Refusal.withholding_unset, sentence)
+        warnings.append(sentence)
     elif account.authoritative_source not in (None, source):
         sentence = _not_authoritative(account.authoritative_source, source)
         refusal = CommitRefused(Refusal.not_authoritative, sentence)

@@ -34,6 +34,9 @@ class Refusal(Enum):
     no_such_transaction = "no_such_transaction"
     no_such_account = "no_such_account"
     no_such_instrument = "no_such_instrument"
+    # A leg would land in a Depot whose withholding behaviour nothing has set
+    # (ticket 43) — income there would be classified against an unknown.
+    withholding_unset = "withholding_unset"
 
 
 _TRANSACTION_COLUMNS = (
@@ -56,6 +59,8 @@ def create_transaction(
 ) -> int | Refusal:
     try:
         with engine.begin() as connection:
+            if _any_unset_depot(connection, [leg.account_id for leg in legs]):
+                return Refusal.withholding_unset
             return insert_transaction(
                 connection,
                 type=type,
@@ -115,6 +120,10 @@ def replace_transaction(
     the given set in one transaction. None means it was replaced."""
     try:
         with engine.begin() as connection:
+            # Judged before anything is touched: a refusal returned from
+            # inside this block would still commit whatever came before it.
+            if _any_unset_depot(connection, [leg.account_id for leg in legs]):
+                return Refusal.withholding_unset
             revised = connection.execute(
                 text(
                     "UPDATE transaction SET type = :type, occurred_at = :occurred_at,"
@@ -168,6 +177,8 @@ def reassign_account(engine: Engine, transaction_ids: list[int], account_id: int
             missing = _any_missing(connection, transaction_ids)
             if missing is not None:
                 return missing
+            if _any_unset_depot(connection, [account_id]):
+                return Refusal.withholding_unset
             connection.execute(
                 text(
                     "UPDATE transaction_leg SET account_id = :account_id"
@@ -194,6 +205,23 @@ def retype(engine: Engine, transaction_ids: list[int], *, type: str) -> Refusal 
         )
         _mark_overridden(connection, transaction_ids)
         return None
+
+
+def _any_unset_depot(connection: Connection, account_ids: list[int]) -> bool:
+    """Whether any of these Accounts sits under a broker with no effective
+    withholding behaviour — the Account's own override first, the Platform's
+    word second (ticket 43). Such a Depot may not hold a position, because
+    income there would be classified against an unknown."""
+    return connection.execute(
+        text(
+            "SELECT EXISTS ("
+            " SELECT 1 FROM account"
+            " JOIN platform ON platform.id = account.platform_id"
+            " WHERE account.id = ANY(:ids) AND platform.kind = 'broker'"
+            " AND COALESCE(account.withholding_override, platform.withholding) IS NULL)"
+        ),
+        {"ids": sorted(set(account_ids))},
+    ).scalar_one()
 
 
 def _any_missing(connection: Connection, transaction_ids: list[int]) -> Refusal | None:

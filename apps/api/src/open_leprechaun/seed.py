@@ -159,38 +159,59 @@ def _platforms(connection: Connection) -> None:
     including two Accounts on one device and chain — the evidence-scoped FIFO
     boundary the model must permit. Names are unique per Platform and
     Platforms per name, so ON CONFLICT DO NOTHING keeps this idempotent."""
+    # The broker arrives with its Depot semantics declared (ticket 43):
+    # withholding at source with a demonstration exemption order lodged, so a
+    # Depot can hold positions from day one and the settings screen has the
+    # declared state to show.
     platform_rows = [
-        ("Kraken", "exchange"),
-        ("BitBox02", "cold_storage"),
-        ("Phantom", "software_wallet"),
-        ("Scalable Capital", "broker"),
-        ("Sparkasse", "bank"),
+        ("Kraken", "exchange", None, None),
+        ("BitBox02", "cold_storage", None, None),
+        ("Phantom", "software_wallet", None, None),
+        ("Scalable Capital", "broker", "at_source", "1000"),
+        ("Sparkasse", "bank", None, None),
     ]
-    for name, kind in platform_rows:
+    for name, kind, withholding, exemption_order_eur in platform_rows:
         connection.execute(
-            text("INSERT INTO platform (name, kind) VALUES (:name, :kind) ON CONFLICT DO NOTHING"),
-            {"name": name, "kind": kind},
+            text(
+                "INSERT INTO platform (name, kind, withholding, exemption_order_eur)"
+                " VALUES (:name, :kind, :withholding, :exemption_order_eur)"
+                " ON CONFLICT DO NOTHING"
+            ),
+            {
+                "name": name,
+                "kind": kind,
+                "withholding": withholding,
+                "exemption_order_eur": exemption_order_eur,
+            },
         )
     account_rows = [
-        ("Kraken", "Main", None, None, None),
-        ("BitBox02", "Savings", "bitcoin", None, "BitBoxApp"),
-        ("BitBox02", "Spending", "bitcoin", None, "BitBoxApp"),
+        ("Kraken", "Main", None, None, None, None),
+        ("BitBox02", "Savings", "bitcoin", None, "BitBoxApp", None),
+        ("BitBox02", "Spending", "bitcoin", None, "BitBoxApp", None),
         (
             "Phantom",
             "Hot wallet",
             "solana",
             "F1xt5reSo1anaAddressExamp1eOn1yNotRea1111111",
             None,
+            None,
         ),
-        ("Scalable Capital", "Depot", None, "1234567890", None),
-        ("Sparkasse", "Giro", None, "DE02120300000000202051", "chipTAN app"),
+        ("Scalable Capital", "Depot", None, "1234567890", None, "EUR"),
+        ("Sparkasse", "Giro", None, "DE02120300000000202051", "chipTAN app", None),
     ]
-    for platform_name, name, chain, external_reference, access_software in account_rows:
+    for (
+        platform_name,
+        name,
+        chain,
+        external_reference,
+        access_software,
+        base_currency,
+    ) in account_rows:
         connection.execute(
             text(
                 "INSERT INTO account"
-                " (platform_id, name, chain, external_reference, access_software)"
-                " SELECT id, :name, :chain, :external_reference, :access_software"
+                " (platform_id, name, chain, external_reference, access_software, base_currency)"
+                " SELECT id, :name, :chain, :external_reference, :access_software, :base_currency"
                 " FROM platform WHERE name = :platform_name"
                 " ON CONFLICT DO NOTHING"
             ),
@@ -200,6 +221,7 @@ def _platforms(connection: Connection) -> None:
                 "chain": chain,
                 "external_reference": external_reference,
                 "access_software": access_software,
+                "base_currency": base_currency,
             },
         )
 

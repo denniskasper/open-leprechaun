@@ -7,6 +7,7 @@ from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer, StringC
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories import statutory
+from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services.statutory import (
     KEYS,
     StatutoryOverview,
@@ -42,24 +43,12 @@ FilingStatus = Literal["single", "joint"]
 ChurchTax = Literal["none", "bavaria_bw", "other_laender"]
 
 
-def _decimal_text_only(value: object) -> object:
-    """Refuse a JSON number where a statutory value belongs: it has been
-    through — or is one parse away from — a binary float, so only a string
-    states the digits exactly. Decimals pass untouched; responses are built
-    from them."""
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        raise ValueError(
-            "a statutory value crosses JSON as a fixed-point decimal string, not a number"
-        )
-    return value
-
-
 # Fixed-point end to end, including in JSON — like every monetary value and
 # rate in this API. Non-negative; the unit-aware upper bound for rates is the
 # service's judgement.
 StatutoryDecimal = Annotated[
     Decimal,
-    BeforeValidator(_decimal_text_only),
+    BeforeValidator(decimal_text_only),
     Field(ge=0, allow_inf_nan=False),
     PlainSerializer(lambda value: format(value, "f"), return_type=str),
 ]

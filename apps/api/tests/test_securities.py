@@ -263,6 +263,9 @@ def test_retyping_a_reviewed_fund_to_a_share_wipes_its_classification(db):
 def _account(db):
     platform_id = platforms.create_platform(db, name="Broker", kind="broker")
     assert platform_id is not None
+    # A Depot may hold nothing before its withholding behaviour is set
+    # (ticket 43), so the fixture declares it the way the Admin would.
+    assert platforms.set_withholding(db, platform_id, behaviour="at_source") is None
     account = platforms.create_account(db, platform_id, name="Depot")
     assert isinstance(account, int)
     return account

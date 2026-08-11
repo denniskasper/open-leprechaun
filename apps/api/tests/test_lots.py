@@ -37,6 +37,10 @@ ARRIVED = datetime(2026, 3, 20, 12, 30, tzinfo=UTC)
 
 def _account(db, platform_name="Kraken", kind="exchange", name="Main"):
     platform_id = platforms.create_platform(db, name=platform_name, kind=kind)
+    if kind == "broker":
+        # A Depot may hold nothing before its withholding behaviour is set
+        # (ticket 43), so the fixture declares it the way the Admin would.
+        assert platforms.set_withholding(db, platform_id, behaviour="at_source") is None
     created = platforms.create_account(db, platform_id, name=name)
     assert isinstance(created, int)
     return created

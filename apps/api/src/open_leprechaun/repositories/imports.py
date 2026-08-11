@@ -22,6 +22,10 @@ class Refusal(Enum):
 
     no_such_account = "no_such_account"
     not_authoritative = "not_authoritative"
+    # The target is a Depot whose withholding behaviour nothing has set
+    # (ticket 43) — no import may put a position where income could not be
+    # classified.
+    withholding_unset = "withholding_unset"
 
 
 @dataclass(frozen=True)
@@ -62,11 +66,18 @@ def registered(engine: Engine, source: str) -> set[str]:
 
 
 def account_source(engine: Engine, account_id: int) -> Row | None:
-    """The Account's declared authoritative source; None when there is no such
-    Account, a row whose authoritative_source is NULL when none is declared."""
+    """The Account's declared authoritative source, alongside what decides
+    whether it may hold at all: its Platform's kind and its effective
+    withholding behaviour — the Account's own override first, the Platform's
+    word second (ticket 43). None when there is no such Account."""
     with engine.connect() as connection:
         return connection.execute(
-            text("SELECT authoritative_source FROM account WHERE id = :account_id"),
+            text(
+                "SELECT account.authoritative_source, platform.kind,"
+                " COALESCE(account.withholding_override, platform.withholding) AS withholding"
+                " FROM account JOIN platform ON platform.id = account.platform_id"
+                " WHERE account.id = :account_id"
+            ),
             {"account_id": account_id},
         ).one_or_none()
 

@@ -27,7 +27,15 @@ function connection(overrides: Partial<Connection>): Connection {
 }
 
 function platform(overrides: Partial<Platform>): Platform {
-  return { id: 1, name: "OKX", kind: "exchange", accounts: [], ...overrides };
+  return {
+    id: 1,
+    name: "OKX",
+    kind: "exchange",
+    withholding: null,
+    exemption_order_eur: null,
+    accounts: [],
+    ...overrides,
+  };
 }
 
 function status(overrides: Partial<AdapterStatus>): AdapterStatus {
