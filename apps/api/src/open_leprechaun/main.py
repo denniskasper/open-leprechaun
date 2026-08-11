@@ -7,6 +7,7 @@ from open_leprechaun.routers import (
     aggregates,
     auth,
     connections,
+    csv_imports,
     futures,
     health,
     holdings,
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(aggregates.router, prefix=API_PREFIX)
     app.include_router(connections.router, prefix=API_PREFIX)
+    app.include_router(csv_imports.router, prefix=API_PREFIX)
     app.include_router(futures.router, prefix=API_PREFIX)
     app.include_router(holdings.router, prefix=API_PREFIX)
     app.include_router(imports.router, prefix=API_PREFIX)

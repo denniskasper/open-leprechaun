@@ -28,6 +28,74 @@ async function arrangeAccount(request: APIRequestContext, name: string): Promise
   return ((await account.json()) as { id: number }).id;
 }
 
+test("a wallet's exported file previews before it writes and commits as one batch", async ({
+  page,
+  request,
+}) => {
+  // The BitBox connector reads the seeded BTC; without it the journey cannot
+  // resolve the file's symbol — consistent with how the transfers journey
+  // treats a missing seed.
+  const instruments = (await (await request.get("/api/instruments")).json()) as {
+    id: number;
+    symbol: string;
+    family: string;
+  }[];
+  test.skip(
+    !instruments.some((entry) => entry.symbol === "BTC" && entry.family === "crypto"),
+    "The seeded BTC Instrument is missing.",
+  );
+
+  const run = Date.now();
+  await arrangeAccount(request, `CSV ${run}`);
+
+  // A real BitBoxApp export: local-time timestamps without an offset,
+  // amounts in satoshi, one unconfirmed row the connector must name.
+  const exported = [
+    "Time,Type,Amount,Unit,Fee,Fee Unit,Address,Transaction ID,Note",
+    `7/26/25 21:51,received,2500000,satoshi,,,bc1qa,tx-${run}-a,First deposit`,
+    `7/27/25 09:10,received,1000000,satoshi,,,bc1qa,tx-${run}-b,`,
+    `,received,999,satoshi,,,bc1qa,tx-${run}-pending,`,
+    "",
+  ].join("\n");
+
+  await page.goto("/imports");
+  await page.getByRole("button", { name: "Import a file" }).click();
+  const panel = page.getByRole("region", { name: "Import a file" });
+  await panel.getByLabel("Connector").selectOption({ label: "BitBox" });
+  await panel.getByLabel("Into Account").selectOption({ label: `CSV ${run}` });
+
+  // The connector declares its file and its venue's clock before anything is parsed.
+  await expect(panel.getByText("BitBoxApp")).toBeVisible();
+  await expect(
+    panel.getByText("Bare timestamps are read as Europe/Berlin time and converted to UTC."),
+  ).toBeVisible();
+
+  await panel.getByLabel("Exported file").setInputFiles({
+    name: `bitbox-${run}.csv`,
+    mimeType: "text/csv",
+    buffer: Buffer.from(exported),
+  });
+
+  // The preview names what would land and what the connector left out —
+  // before any of it exists.
+  await panel.getByRole("button", { name: "Preview" }).click();
+  await expect(panel.getByText("2 rows to create")).toBeVisible();
+  await expect(panel.getByText("1 unconfirmed transaction left out — not facts yet.")).toBeVisible();
+
+  // Committing is its own act; the batch appears with the file's own name
+  // and its per-Account provenance.
+  await panel.getByRole("button", { name: "Commit import" }).click();
+  await expect(panel.getByText("2 rows created")).toBeVisible();
+  const batch = page.getByRole("row").filter({ hasText: `bitbox-${run}.csv` });
+  await expect(batch.getByText("2 rows")).toBeVisible();
+  await expect(batch.getByText(/^bitbox:\d+$/)).toBeVisible();
+
+  // Leave the ledger as found: reversal removes the batch as a unit.
+  await batch.getByRole("button", { name: "Reverse" }).click();
+  await batch.getByRole("button", { name: "Confirm reversal" }).click();
+  await expect(page.getByRole("row").filter({ hasText: `bitbox-${run}.csv` })).toHaveCount(0);
+});
+
 test("an import lands as a reversible batch whose rows wear their provenance", async ({
   page,
   request,
