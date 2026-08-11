@@ -18,6 +18,7 @@ from open_leprechaun.routers import (
     platforms,
     prices,
     reports,
+    securities,
     statutory,
     transactions,
     transfer_matches,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(platforms.router, prefix=API_PREFIX)
     app.include_router(prices.router, prefix=API_PREFIX)
     app.include_router(reports.router, prefix=API_PREFIX)
+    app.include_router(securities.router, prefix=API_PREFIX)
     app.include_router(statutory.router, prefix=API_PREFIX)
     app.include_router(transactions.router, prefix=API_PREFIX)
     app.include_router(transfer_matches.router, prefix=API_PREFIX)

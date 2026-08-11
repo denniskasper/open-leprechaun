@@ -40,6 +40,12 @@ class InstrumentResponse(BaseModel):
     contract_address: str | None
     isin: str | None
     is_numeraire: bool
+    # A fund's classification with its source shown, and the review flag an
+    # import-created security wears until the Admin settles it (ticket 44).
+    fund_category: str | None
+    fund_category_source: str | None
+    distribution_policy: str | None
+    needs_review: bool
     listings: list[ListingResponse]
     # An ignored or dangerous position stays visible with a clear warning
     # rather than being hidden — the stance ships with every overview row.
@@ -58,6 +64,10 @@ class InstrumentResponse(BaseModel):
             contract_address=instrument.contract_address,
             isin=instrument.isin,
             is_numeraire=instrument.is_numeraire,
+            fund_category=instrument.fund_category,
+            fund_category_source=instrument.fund_category_source,
+            distribution_policy=instrument.distribution_policy,
+            needs_review=instrument.needs_review,
             listings=[
                 ListingResponse(venue=listing.venue, quote_currency=listing.quote_currency)
                 for listing in instrument.listings

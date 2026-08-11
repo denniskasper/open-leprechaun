@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } from "./securities";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const INSTRUMENTS_URL = "/api/instruments";
@@ -24,6 +25,12 @@ export const instrumentSchema = z.object({
   contract_address: z.string().nullable(),
   isin: z.string().nullable(),
   is_numeraire: z.boolean(),
+  // A fund's Teilfreistellung classification with the source of the value
+  // shown, and the review flag an import-created security wears (ticket 44).
+  fund_category: fundCategorySchema.nullable(),
+  fund_category_source: categorySourceSchema.nullable(),
+  distribution_policy: distributionPolicySchema.nullable(),
+  needs_review: z.boolean(),
   listings: z.array(listingSchema),
   dangerous: z.boolean(),
   stances: z.array(accountStanceSchema),

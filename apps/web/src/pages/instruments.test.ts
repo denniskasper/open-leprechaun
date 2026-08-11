@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Instrument } from "@/api/instruments";
 import type { PricedInstrument } from "@/api/prices";
-import { conditionLine, identityOf, sharedSymbols, staleExplanation, stanceWarning } from "./instruments";
+import type { Candidate } from "@/api/securities";
+import {
+  classificationCell,
+  conditionLine,
+  identityOf,
+  securityPayload,
+  sharedSymbols,
+  staleExplanation,
+  stanceWarning,
+} from "./instruments";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
   return {
@@ -14,11 +23,27 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     contract_address: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
     isin: null,
     is_numeraire: false,
+    fund_category: null,
+    fund_category_source: null,
+    distribution_policy: null,
+    needs_review: false,
     listings: [],
     dangerous: false,
     stances: [],
     ...overrides,
   };
+}
+
+function security(overrides: Partial<Instrument>): Instrument {
+  return instrument({
+    family: "security",
+    type: "etf",
+    symbol: "EUNL",
+    chain: null,
+    contract_address: null,
+    isin: "IE00B4L5Y983",
+    ...overrides,
+  });
 }
 
 describe("identityOf", () => {
@@ -104,6 +129,94 @@ describe("stanceWarning", () => {
         instrument({ dangerous: true, stances: [{ account_id: 1, stance: "kept" }] }),
       ),
     ).toBe("dangerous");
+  });
+});
+
+describe("classificationCell", () => {
+  it("does not apply outside the security family, nor to a share", () => {
+    expect(classificationCell(instrument({}))).toEqual({ kind: "not_applicable" });
+    expect(classificationCell(security({ type: "share" }))).toEqual({ kind: "not_applicable" });
+  });
+
+  it("asks for review before anything else — the type is not yet settled", () => {
+    expect(classificationCell(security({ type: "unknown", needs_review: true }))).toEqual({
+      kind: "review",
+    });
+    // A review outranks a classification question even on a typed fund.
+    expect(classificationCell(security({ needs_review: true }))).toEqual({ kind: "review" });
+  });
+
+  it("names an unclassified fund — the state that blocks finalisation", () => {
+    expect(classificationCell(security({}))).toEqual({ kind: "unclassified" });
+    expect(classificationCell(security({ type: "fund" }))).toEqual({ kind: "unclassified" });
+  });
+
+  it("answers a classified fund with its category, source and policy", () => {
+    expect(
+      classificationCell(
+        security({
+          fund_category: "aktienfonds",
+          fund_category_source: "provider",
+          distribution_policy: "accumulating",
+        }),
+      ),
+    ).toEqual({
+      kind: "classified",
+      category: "aktienfonds",
+      source: "provider",
+      policy: "accumulating",
+    });
+  });
+});
+
+describe("securityPayload", () => {
+  const candidate: Candidate = {
+    isin: "IE00B4L5Y983",
+    wkn: "A0RPWH",
+    ticker: "EUNL",
+    name: "iShares Core MSCI World UCITS ETF USD Acc.",
+    type: "etf",
+    currency: "EUR",
+    venue: "gettex",
+    fund_category: "aktienfonds",
+    distribution_policy: "accumulating",
+    instrument_id: null,
+  };
+
+  it("carries identifiers, listing and the provider prefill with its source", () => {
+    expect(securityPayload(candidate)).toEqual({
+      isin: "IE00B4L5Y983",
+      name: "iShares Core MSCI World UCITS ETF USD Acc.",
+      symbol: "EUNL",
+      type: "etf",
+      wkn: "A0RPWH",
+      ticker: "EUNL",
+      venue: "gettex",
+      quote_currency: "EUR",
+      classification: {
+        fund_category: "aktienfonds",
+        fund_category_source: "provider",
+        distribution_policy: "accumulating",
+      },
+    });
+  });
+
+  it("falls back to WKN then ISIN for the display symbol", () => {
+    expect(securityPayload({ ...candidate, ticker: null }).symbol).toBe("A0RPWH");
+    expect(securityPayload({ ...candidate, ticker: null, wkn: null }).symbol).toBe(
+      "IE00B4L5Y983",
+    );
+  });
+
+  it("sends the listing only when venue and currency arrive together", () => {
+    const half = securityPayload({ ...candidate, venue: null });
+
+    expect(half.venue).toBeNull();
+    expect(half.quote_currency).toBeNull();
+  });
+
+  it("sends no classification when the provider stated none", () => {
+    expect(securityPayload({ ...candidate, fund_category: null }).classification).toBeNull();
   });
 });
 

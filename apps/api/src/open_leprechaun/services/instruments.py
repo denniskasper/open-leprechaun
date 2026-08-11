@@ -54,6 +54,15 @@ class InstrumentOverview:
     contract_address: str | None
     isin: str | None
     is_numeraire: bool
+    # A fund's Teilfreistellung category with the source of the value shown —
+    # provider prefill or the Admin's own hand — and its distribution policy
+    # (ticket 44). None means unclassified, which blocks report finalisation.
+    fund_category: str | None
+    fund_category_source: str | None
+    distribution_policy: str | None
+    # An Instrument an import auto-created for an unknown identifier waits
+    # flagged until the Admin settles what it is.
+    needs_review: bool
     listings: tuple[Listing, ...]
     # An ignored or dangerous position stays visible with a clear warning
     # rather than being hidden, so the stance travels with the overview.
@@ -87,6 +96,10 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
             contract_address=row.contract_address,
             isin=row.isin,
             is_numeraire=row.is_numeraire,
+            fund_category=row.fund_category,
+            fund_category_source=row.fund_category_source,
+            distribution_policy=row.distribution_policy,
+            needs_review=row.needs_review,
             listings=tuple(listings_of.get(row.id, [])),
             dangerous=row.id in dangerous,
             stances=tuple(stances_of.get(row.id, [])),

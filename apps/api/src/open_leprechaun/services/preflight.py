@@ -18,6 +18,7 @@ from sqlalchemy import Engine
 
 from open_leprechaun.repositories import crypto_prices
 from open_leprechaun.repositories import futures as futures_repository
+from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
 from open_leprechaun.services import fx, lots, section23, statutory, transfer_matches
@@ -196,6 +197,30 @@ def _futures_derivation_issues(engine: Engine, year: int) -> Blocker | None:
     )
 
 
+def _unclassified_funds(engine: Engine, year: int) -> Blocker | None:
+    """Funds in the ledger up to the end of the report's year whose
+    Teilfreistellung category nothing has stated — and securities still typed
+    `unknown`, which cannot yet say whether they are funds. Bounded by
+    holding, not in-year trading: a fund merely held still accrues
+    Vorabpauschale. A figure over either would have to assume an exemption,
+    and the app refuses to assume (ticket 44); the direct action is
+    classifying them on the Instruments screen."""
+    unclassified = instruments_repository.unclassified_funds(engine, through_year=year)
+    if not unclassified:
+        return None
+    symbols = ", ".join(fund.symbol for fund in unclassified)
+    return Blocker(
+        kind="unclassified_funds",
+        detail=(
+            f"{_count(len(unclassified), 'fund')} in the ledger up to the end of {year}"
+            f" {'carries' if len(unclassified) == 1 else 'carry'} no Teilfreistellung"
+            f" classification: {symbols}."
+        ),
+        resolve_path="/instruments",
+        count=len(unclassified),
+    )
+
+
 def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
@@ -205,6 +230,7 @@ Check = Callable[[Engine, int], Blocker | None]
 CHECKS: tuple[Check, ...] = (
     _unmatched_transfers,
     _unpriced_instruments,
+    _unclassified_funds,
     _lot_shortfalls,
     _unacknowledged_instruments,
     _unattributable_funding,

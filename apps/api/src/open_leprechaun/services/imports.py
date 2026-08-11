@@ -53,8 +53,8 @@ class InstrumentSpec:
             return "A token is identified by its chain and contract address."
         if self.kind == "native" and not self.chain:
             return "A native coin names its chain."
-        if self.kind == "security" and not (self.isin and self.security_type):
-            return "A security is identified by its ISIN and its type."
+        if self.kind == "security" and not self.isin:
+            return "A security is identified by its ISIN."
         return None
 
     def identity(self) -> tuple[str, ...]:
@@ -328,8 +328,16 @@ def _create_instrument(engine: Engine, spec: InstrumentSpec) -> tuple[int, int]:
             engine, symbol=spec.symbol, name=spec.name, chain=spec.chain
         )
     elif spec.kind == "security":
+        # An identifier the ledger did not know arrived by import: the row is
+        # never dropped — the Instrument is minted flagged for review, typed
+        # `unknown` where the source named no type (ticket 44).
         created = instruments.create_security(
-            engine, symbol=spec.symbol, name=spec.name, type=spec.security_type, isin=spec.isin
+            engine,
+            symbol=spec.symbol,
+            name=spec.name,
+            type=spec.security_type or "unknown",
+            isin=spec.isin,
+            needs_review=True,
         )
     else:
         created = instruments.create_cash(engine, symbol=spec.symbol, name=spec.name)

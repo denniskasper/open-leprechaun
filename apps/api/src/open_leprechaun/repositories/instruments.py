@@ -8,6 +8,10 @@ cleanly. Decisions live in the service.
 from sqlalchemy import Connection, Engine, Row, text
 from sqlalchemy.exc import IntegrityError
 
+# The security types that are investment funds under §20 InvStG — the ones a
+# Teilfreistellung classification belongs to.
+FUND_TYPES = ("etf", "fund")
+
 # The one shape an Instrument row is read in, wherever it is read.
 _COLUMN_NAMES = (
     "id",
@@ -20,6 +24,10 @@ _COLUMN_NAMES = (
     "isin",
     "is_numeraire",
     "pegged_currency",
+    "fund_category",
+    "fund_category_source",
+    "distribution_policy",
+    "needs_review",
 )
 _COLUMNS = ", ".join(_COLUMN_NAMES)
 _PREFIXED_COLUMNS = ", ".join(f"i.{name}" for name in _COLUMN_NAMES)
@@ -76,21 +84,187 @@ def create_native_coin(engine: Engine, *, symbol: str, name: str, chain: str) ->
         return None
 
 
-def create_security(engine: Engine, *, symbol: str, name: str, type: str, isin: str) -> int | None:
+def create_security(
+    engine: Engine,
+    *,
+    symbol: str,
+    name: str,
+    type: str,
+    isin: str,
+    wkn: str | None = None,
+    ticker: str | None = None,
+    venue: str | None = None,
+    quote_currency: str | None = None,
+    fund_category: str | None = None,
+    fund_category_source: str | None = None,
+    distribution_policy: str | None = None,
+    needs_review: bool = False,
+) -> int | None:
     """A share, ETF, fund, bond or certificate, keyed on ISIN.
 
     The ISIN also opens the identifier history, in the same transaction, so
-    every identifier a security ever had is findable in one place.
+    every identifier a security ever had is findable in one place. Everything
+    a picked search candidate carries lands in the same stroke: WKN and
+    ticker as lookup aliases, the primary listing, and — for a fund — the
+    classification with its source. An import that met an unknown identifier
+    creates flagged `needs_review`, which is the only state the schema admits
+    type `unknown` in.
     """
+    if (venue is None) != (quote_currency is None):
+        raise ValueError("A Listing names its venue and quote currency together.")
     try:
         with engine.begin() as connection:
-            instrument_id = _insert_instrument(
-                connection, family="security", type=type, symbol=symbol, name=name, isin=isin
-            )
+            instrument_id = connection.execute(
+                text(
+                    "INSERT INTO instrument (family, type, symbol, name, isin, fund_category,"
+                    " fund_category_source, distribution_policy, needs_review)"
+                    " VALUES ('security', :type, :symbol, :name, :isin, :fund_category,"
+                    " :fund_category_source, :distribution_policy, :needs_review)"
+                    " RETURNING id"
+                ),
+                {
+                    "type": type,
+                    "symbol": symbol,
+                    "name": name,
+                    "isin": isin,
+                    "fund_category": fund_category,
+                    "fund_category_source": fund_category_source,
+                    "distribution_policy": distribution_policy,
+                    "needs_review": needs_review,
+                },
+            ).scalar_one()
             _insert_identifier(connection, instrument_id, kind="isin", value=isin)
+            if wkn is not None:
+                _insert_identifier(connection, instrument_id, kind="wkn", value=wkn)
+            if ticker is not None:
+                _insert_identifier(connection, instrument_id, kind="ticker", value=ticker)
+            if venue is not None and quote_currency is not None:
+                connection.execute(
+                    text(
+                        "INSERT INTO listing (instrument_id, venue, quote_currency)"
+                        " VALUES (:instrument_id, :venue, :quote_currency)"
+                    ),
+                    {
+                        "instrument_id": instrument_id,
+                        "venue": venue,
+                        "quote_currency": quote_currency,
+                    },
+                )
             return instrument_id
     except IntegrityError:
         return None
+
+
+def classify_fund(
+    engine: Engine,
+    instrument_id: int,
+    *,
+    category: str,
+    source: str,
+    distribution_policy: str | None,
+) -> bool:
+    """Record a fund's Teilfreistellung category with the source of the value
+    — provider prefill or the Admin's own hand — and its distribution policy.
+
+    False when the Instrument is missing or not a fund: the schema holds that
+    classification belongs to funds alone, and this merely reports it.
+    """
+    try:
+        with engine.begin() as connection:
+            classified = connection.execute(
+                text(
+                    "UPDATE instrument SET fund_category = :category,"
+                    " fund_category_source = :source, distribution_policy = :distribution_policy"
+                    " WHERE id = :instrument_id AND family = 'security'"
+                ),
+                {
+                    "instrument_id": instrument_id,
+                    "category": category,
+                    "source": source,
+                    "distribution_policy": distribution_policy,
+                },
+            )
+            return classified.rowcount == 1
+    except IntegrityError:
+        return False
+
+
+def resolve_review(
+    engine: Engine,
+    instrument_id: int,
+    *,
+    type: str,
+    symbol: str,
+    name: str,
+    fund_category: str | None = None,
+    fund_category_source: str | None = None,
+    distribution_policy: str | None = None,
+) -> bool:
+    """Settle an auto-created security: the Admin chooses its real type and
+    display metadata — and, where the type makes it a fund, may classify it in
+    the same act — and the review flag clears. Only a flagged security may be
+    settled: this is the review's own act, never a general edit. A type that
+    is not a fund's wipes any classification in the same stroke — a share
+    carries none, and keeping a stale one would misstate its taxation.
+
+    False when no flagged security carries the id, or the chosen type would
+    leave it unsettled — the schema refuses `unknown` without the flag.
+    """
+    fund = type in FUND_TYPES
+    try:
+        with engine.begin() as connection:
+            reviewed = connection.execute(
+                text(
+                    "UPDATE instrument SET type = :type, symbol = :symbol, name = :name,"
+                    " needs_review = false,"
+                    " fund_category = CASE WHEN :fund THEN"
+                    "  COALESCE(:category, fund_category) ELSE NULL END,"
+                    " fund_category_source = CASE WHEN :fund THEN"
+                    "  COALESCE(:source, fund_category_source) ELSE NULL END,"
+                    " distribution_policy = CASE WHEN :fund AND :category IS NOT NULL THEN"
+                    "  :distribution_policy WHEN :fund THEN distribution_policy ELSE NULL END"
+                    " WHERE id = :instrument_id AND family = 'security' AND needs_review"
+                ),
+                {
+                    "instrument_id": instrument_id,
+                    "type": type,
+                    "symbol": symbol,
+                    "name": name,
+                    "fund": fund,
+                    "category": fund_category,
+                    "source": fund_category_source,
+                    "distribution_policy": distribution_policy,
+                },
+            )
+            return reviewed.rowcount == 1
+    except IntegrityError:
+        return False
+
+
+def unclassified_funds(engine: Engine, *, through_year: int) -> list[Row]:
+    """Every fund in the ledger up to the end of the Tax Year whose
+    Teilfreistellung category nothing has stated, and every such security
+    still typed `unknown` — which cannot yet say whether it is a fund, so
+    nothing can say its exemption either. Bounded by holding, not by in-year
+    trading: a fund bought earlier and merely held still accrues
+    Vorabpauschale, so its missing classification still moves the year."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT DISTINCT i.id, i.symbol, i.name, i.type FROM instrument i"
+                    " WHERE i.family = 'security' AND (i.type = 'unknown'"
+                    "  OR (i.type IN ('etf', 'fund') AND i.fund_category IS NULL))"
+                    " AND EXISTS (SELECT 1 FROM transaction_leg l"
+                    "  JOIN transaction t ON t.id = l.transaction_id"
+                    "  WHERE l.instrument_id = i.id"
+                    "  AND extract(year FROM t.occurred_at AT TIME ZONE 'Europe/Berlin')"
+                    "   <= :through_year)"
+                    " ORDER BY i.symbol, i.id"
+                ),
+                {"through_year": through_year},
+            ).all()
+        )
 
 
 def create_cash(engine: Engine, *, symbol: str, name: str) -> int | None:
