@@ -37,7 +37,7 @@ from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import statutory as statutory_repository
-from open_leprechaun.services import futures, fx, lots
+from open_leprechaun.services import futures, fx, lots, security_disposals
 from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.statutory import (
@@ -428,9 +428,10 @@ class Section20Year:
 _CATEGORY_OF = {"dividend": "sonstige", "distribution": "sonstige", "interest": "sonstige"}
 """Which pot each §20-typed transaction feeds — all three in the general
 pot, because the aktien pot holds share *sales* alone (§20 Abs. 6 Satz 4
-EStG) and Termingeschäfte their own. Futures positions (ticket 28) emit
-into theirs below; share disposals (ticket 46) will too. The emitters know
-what they are, never how the pots treat them (ADR-0013)."""
+EStG) and Termingeschäfte their own. Futures positions (ticket 28) and
+securities disposals (ticket 46) emit below, each disposal wearing the
+category its producer stated. The emitters know what they are, never how
+the pots treat them (ADR-0013)."""
 
 FUTURES_CATEGORY = "termingeschaefte"
 """Where every futures close lands (§20 Abs. 2 Satz 1 Nr. 3 EStG): its own
@@ -446,10 +447,11 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     own configured caps, so the target year opens with exactly what its
     predecessors left. The allowance and the rates are the target year's,
     selected by the Admin's election; what a Freistellungsauftrag consumed at
-    source stays zero until ticket 43 states it. Teilfreistellung stays zero
-    here because no fund Instrument exists yet (ticket 44); once one does, a
-    fund with no classification must block finalisation rather than silently
-    assume a zero rate (CONTEXT.md, tickets 46/47)."""
+    source stays zero until ticket 43 states it. Securities disposals join as
+    events through their producer (ticket 46,
+    services/security_disposals) — each wearing its category and its fund's
+    Teilfreistellung rate; a fund with no classification refuses there by
+    name rather than silently assuming a zero rate (CONTEXT.md, ticket 44)."""
     election = statutory_repository.election(engine)
     allowance = required_value(
         engine,
@@ -576,6 +578,29 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
                 german_withholding=NO_GERMAN_WITHHOLDING,
                 foreign_withholding=None,
                 source=f"futures_position:{position.id}",
+            )
+        )
+
+    # Securities disposals (ticket 46): each share or fund sale is one event
+    # carrying the category and Teilfreistellung rate its producer stated —
+    # the gross is the gain, proceeds less basis less costs, each component
+    # in EUR at its own event date's rate. A disposal whose gain awaits a
+    # valuation blocks the year exactly as an unvalued income leg does; an
+    # unclassified fund or unknown-typed security refuses inside the
+    # producer, by name, rather than assuming a pot or a zero rate.
+    for disposal in security_disposals.disposals_through(engine, source, through_year=year):
+        if disposal.gain_eur is None:
+            awaiting.append(f"leg:{disposal.leg_id}")
+            continue
+        events.append(
+            Section20Event(
+                date=fx.event_date(disposal.disposed_at),
+                category=disposal.category,
+                gross_eur=disposal.gain_eur,
+                exemption_rate=disposal.exemption_rate,
+                german_withholding=NO_GERMAN_WITHHOLDING,
+                foreign_withholding=None,
+                source=f"leg:{disposal.leg_id}",
             )
         )
 

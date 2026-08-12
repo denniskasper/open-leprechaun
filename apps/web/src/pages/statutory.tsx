@@ -98,6 +98,26 @@ export const KEY_WORDS: Record<
     gloss: "Futures loss carried into this year from an assessment predating the ledger",
     absent: "not set — none carried",
   },
+  partial_exemption_aktienfonds: {
+    label: "Teilfreistellung — Aktienfonds",
+    gloss: "Share of an equity fund's gains and distributions exempted",
+  },
+  partial_exemption_mischfonds: {
+    label: "Teilfreistellung — Mischfonds",
+    gloss: "Share of a mixed fund's gains and distributions exempted",
+  },
+  partial_exemption_immobilienfonds: {
+    label: "Teilfreistellung — Immobilienfonds",
+    gloss: "Share of a real-estate fund's gains and distributions exempted",
+  },
+  partial_exemption_auslands_immobilienfonds: {
+    label: "Teilfreistellung — Auslands-Immobilienfonds",
+    gloss: "Share of a foreign-real-estate fund's gains and distributions exempted",
+  },
+  partial_exemption_sonstige: {
+    label: "Teilfreistellung — sonstige Fonds",
+    gloss: "Share exempted for funds outside the named categories — the statute says none",
+  },
 };
 
 export const FILING_WORDS: Record<FilingStatus, string> = {

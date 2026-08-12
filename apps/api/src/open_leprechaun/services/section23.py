@@ -39,7 +39,6 @@ A disposal exceeding the lots its Account holds is a hard error naming the
 shortfall — never a silent zero-basis fill.
 """
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -47,19 +46,14 @@ from decimal import Decimal
 from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
-from open_leprechaun.repositories import futures as futures_repository
-from open_leprechaun.repositories import lots as lots_repository
-from open_leprechaun.services import fx, lots
-from open_leprechaun.services.rounding import cents
-from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
+from open_leprechaun.services import disposals, fx, lots
+from open_leprechaun.services.disposals import LotShortfallError
 from open_leprechaun.services.statutory import StatutoryValueUnsetError, required_value
-from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Outflow
 
 __all__ = [
     "LotShortfallError",
     "StatutoryValueUnsetError",
     "counts",
-    "lot_shortfalls",
     "year_report",
 ]
 
@@ -69,12 +63,6 @@ EXEMPTION_LIMIT_KEY = "private_sale_exemption_limit"
 _PRIVATE_SALE_FAMILIES = ("crypto", "cash")
 """The families whose disposal is a private sale — securities are capital
 income (§20, ticket 46), and the numéraire never disposes at all."""
-
-
-class LotShortfallError(Exception):
-    """A disposal exceeded the lots its Account holds — the ledger is missing
-    an acquisition, and filling the gap with a zero basis would silently
-    overstate the gain."""
 
 
 @dataclass(frozen=True)
@@ -158,33 +146,33 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     limit = required_value(
         engine, year=year, key=EXEMPTION_LIMIT_KEY, statute="§23 Abs. 3 Satz 5 EStG"
     )
-    replay = _replay(engine)
-    instruments = replay.instruments
+    walked = disposals.replay(engine)
+    instruments = walked.instruments
 
-    disposals = []
-    for transaction, leg, consumed in _private_sales(replay):
-        siblings = replay.legs_of.get(transaction.id, [])
+    reported = []
+    for transaction, leg, consumed in disposals.sales(walked, families=_PRIVATE_SALE_FAMILIES):
+        siblings = walked.legs_of.get(transaction.id, [])
         # Whatever year the gap sits in: every later consumption's FIFO
         # position rests on it, so no year computes over it.
-        _refuse_shortfall(leg, consumed, transaction, instruments)
+        disposals.refuse_shortfall(leg, consumed, transaction, instruments)
         # Only the requested year is valued: another year's disposal must
         # not cost a rate lookup here — nor fail over one.
         if fx.event_date(transaction.occurred_at).year != year:
             continue
-        disposals.append(
+        reported.append(
             _disposal(engine, source, transaction, leg, siblings, consumed, instruments)
         )
 
     awaiting = tuple(
         disposal.leg_id
-        for disposal in disposals
+        for disposal in reported
         if any(_counts(piece) and piece.gain_eur is None for piece in disposal.consumptions)
     )
     total = (
         sum(
             (
                 piece.gain_eur
-                for disposal in disposals
+                for disposal in reported
                 for piece in disposal.consumptions
                 if _counts(piece) and piece.gain_eur is not None
             ),
@@ -195,108 +183,10 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     )
     return Section23Year(
         year=year,
-        disposals=tuple(disposals),
+        disposals=tuple(reported),
         total_gain_eur=total,
         awaiting_valuation=awaiting,
         freigrenze=_verdict(limit, total) if total is not None else None,
-    )
-
-
-def lot_shortfalls(engine: Engine, *, through_year: int) -> list[str]:
-    """One Instrument symbol per disposal up to the end of the Tax Year that
-    exceeds the lots its Account holds — the same judgement year_report
-    refuses over (LotShortfallError), enumerated in full so the pre-flight
-    (ticket 25) can name every gap instead of failing on the first."""
-    replay = _replay(engine)
-    return [
-        replay.instruments[leg.instrument_id].symbol
-        for transaction, leg, consumed in _private_sales(replay)
-        if fx.event_date(transaction.occurred_at).year <= through_year
-        and sum((piece.quantity for piece in consumed), Decimal(0)) < leg.quantity
-    ]
-
-
-@dataclass(frozen=True)
-class _Replay:
-    """One full replay of the ledger with the indexes the disposal walks
-    need, so year_report and lot_shortfalls judge the very same pairing."""
-
-    transaction_rows: list[Row]
-    legs_of: dict[int, list[Row]]
-    instruments: dict[int, Row]
-    decisions_of: dict[int, list[Row]]
-    consumed: dict[int, list[lots.Slice]]
-
-
-def _replay(engine: Engine) -> _Replay:
-    with lots.snapshot(engine) as connection:
-        transaction_rows, leg_rows = lots_repository.ledger(connection)
-        numeraire = lots_repository.numeraire_instruments(connection)
-        stance_rows = lots_repository.stance_rows(connection)
-        match_rows = lots_repository.match_rows(connection)
-        instrument_rows = lots_repository.instrument_rows(connection)
-        futures_close_rows = futures_repository.closed_position_rows(connection)
-    derived = lots.derive(
-        transaction_rows,
-        leg_rows,
-        numeraire_instruments=numeraire,
-        stance_rows=stance_rows,
-        match_rows=match_rows,
-        futures_close_rows=futures_close_rows,
-    )
-    return _Replay(
-        transaction_rows=transaction_rows,
-        legs_of=lots.grouped(leg_rows, "transaction_id"),
-        instruments={row.id: row for row in instrument_rows},
-        decisions_of=lots.grouped(stance_rows, "instrument_id"),
-        consumed=derived.consumed,
-    )
-
-
-def _private_sales(replay: _Replay) -> Iterator[tuple[Row, Row, list[lots.Slice]]]:
-    """Every §23 disposal leg of the whole ledger with what it consumed —
-    (transaction, out-leg, consumed slices), in ledger order."""
-    for transaction in replay.transaction_rows:
-        if TAX_CONSEQUENCES[transaction.type].outflow is not Outflow.disposal:
-            continue
-        for leg in replay.legs_of.get(transaction.id, []):
-            if leg.role != "out" or not _is_private_sale(
-                leg, replay.instruments, replay.decisions_of
-            ):
-                continue
-            yield transaction, leg, replay.consumed.get(leg.id, [])
-
-
-def _is_private_sale(
-    leg: Row, instruments: dict[int, Row], decisions_of: dict[int, list[Row]]
-) -> bool:
-    """Whether this out-leg is a §23 event at all: a non-numéraire crypto or
-    cash Instrument not standing ignored or dangerous at this Account — the
-    same rule that blocks a mint (services/lots), because such a position
-    never entered the cost basis and stays a ledger entry, never quietly a
-    sale. An unacknowledged one participates: its Account may hold carried
-    lots (a confirmed transfer needs no separate keep), and where nothing
-    minted, the shortfall error asks for the classification loudly rather
-    than dropping a sale."""
-    instrument = instruments[leg.instrument_id]
-    if instrument.is_numeraire or instrument.family not in _PRIVATE_SALE_FAMILIES:
-        return False
-    stance = effective_stance(decisions_of.get(leg.instrument_id, ()), leg.account_id)
-    return not never_enters_cost_basis(stance)
-
-
-def _refuse_shortfall(
-    leg: Row, consumed: list[lots.Slice], transaction: Row, instruments: dict[int, Row]
-) -> None:
-    held = sum((piece.quantity for piece in consumed), Decimal(0))
-    if held >= leg.quantity:
-        return
-    symbol = instruments[leg.instrument_id].symbol
-    raise LotShortfallError(
-        f"The disposal of {leg.quantity} {symbol}"
-        f" on {transaction.occurred_at.astimezone(UTC).isoformat()}"
-        f" exceeds the lots its Account holds by {leg.quantity - held} {symbol} —"
-        " an acquisition is missing from the ledger."
     )
 
 
@@ -310,10 +200,10 @@ def _disposal(
     instruments: dict[int, Row],
 ) -> Disposal:
     at = transaction.occurred_at
-    proceeds = _proceeds(engine, source, transaction, leg, siblings, instruments)
-    costs = _costs(engine, source, leg, siblings, instruments, at)
-    proceeds_shares = _shares(proceeds, consumed, leg.quantity)
-    costs_shares = _shares(costs, consumed, leg.quantity)
+    proceeds = disposals.proceeds(engine, source, transaction, leg, siblings, instruments)
+    costs = disposals.costs(engine, source, leg, siblings, instruments, at)
+    proceeds_shares = disposals.prorated(proceeds, consumed, leg.quantity)
+    costs_shares = disposals.prorated(costs, consumed, leg.quantity)
     instrument = instruments[leg.instrument_id]
     consumptions = tuple(
         _consumption(
@@ -418,88 +308,6 @@ def _one_year_after(acquired_at: datetime) -> datetime:
         return at.replace(year=at.year + 1)
     except ValueError:
         return at.replace(year=at.year + 1, day=28)
-
-
-def _proceeds(
-    engine: Engine,
-    source: ReferenceRateSource,
-    transaction: Row,
-    leg: Row,
-    siblings: list[Row],
-    instruments: dict[int, Row],
-) -> Decimal | None:
-    """The Veräußerungspreis: the value of the consideration received. A
-    spend's consideration left the ledger, so what was given values it; a
-    trade's is what arrived. Splitting one consideration across several
-    out-legs needs their relative market values — None, never a guess."""
-    at = transaction.occurred_at
-    if transaction.type == "spend":
-        return fx.value_eur(
-            engine, source, instrument=instruments[leg.instrument_id], quantity=leg.quantity, at=at
-        )
-    if sum(sibling.role == "out" for sibling in siblings) > 1:
-        return None
-    total = Decimal(0)
-    for sibling in siblings:
-        if sibling.role != "in":
-            continue
-        value = fx.value_eur(
-            engine,
-            source,
-            instrument=instruments[sibling.instrument_id],
-            quantity=sibling.quantity,
-            at=at,
-        )
-        if value is None:
-            return None
-        total += value
-    return total
-
-
-def _costs(
-    engine: Engine,
-    source: ReferenceRateSource,
-    leg: Row,
-    siblings: list[Row],
-    instruments: dict[int, Row],
-    at: datetime,
-) -> Decimal | None:
-    """The disposal's own costs: the fees charged against this leg
-    (ADR-0011). A fee no rate can value leaves the costs None — awaiting
-    valuation, never omitted as if it were zero."""
-    total = Decimal(0)
-    for sibling in siblings:
-        if sibling.role != "fee" or sibling.charged_against_leg_id != leg.id:
-            continue
-        value = fx.value_eur(
-            engine,
-            source,
-            instrument=instruments[sibling.instrument_id],
-            quantity=sibling.quantity,
-            at=at,
-        )
-        if value is None:
-            return None
-        total += value
-    return total
-
-
-def _shares(
-    total: Decimal | None, consumed: list[lots.Slice], quantity: Decimal
-) -> list[Decimal | None]:
-    """One disposal-level amount pro-rated over its consumptions by quantity:
-    every share but the last stated in cents (services/rounding), the exact
-    remainder on the last — no cent invented or lost."""
-    if total is None or not consumed:
-        return [None] * len(consumed)
-    shares: list[Decimal | None] = []
-    allocated = Decimal(0)
-    for piece in consumed[:-1]:
-        share = cents(total * piece.quantity / quantity)
-        shares.append(share)
-        allocated += share
-    shares.append(total - allocated)
-    return shares
 
 
 def _verdict(limit: Decimal, total: Decimal) -> FreigrenzeVerdict:

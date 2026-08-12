@@ -21,7 +21,7 @@ from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
-from open_leprechaun.services import fx, lots, section23, statutory, transfer_matches
+from open_leprechaun.services import disposals, fx, lots, statutory, transfer_matches
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
 
 __all__ = ["CHECKS", "Blocker", "blockers"]
@@ -43,9 +43,10 @@ def _lot_shortfalls(engine: Engine, year: int) -> Blocker | None:
     """Disposals up to the end of the report's year that exceed the lots
     their Accounts hold — an acquisition is missing from the ledger, and
     every later consumption's FIFO position rests on the gap. The judgement
-    is the §23 engine's own (services/section23.lot_shortfalls), which
-    refuses over the first such gap; a pre-flight names them all."""
-    short = section23.lot_shortfalls(engine, through_year=year)
+    is the disposal walk's own (services/disposals.lot_shortfalls), covering
+    every lot-consuming family — the engines refuse over the first such gap;
+    a pre-flight names them all."""
+    short = disposals.lot_shortfalls(engine, through_year=year)
     if not short:
         return None
     symbols = ", ".join(sorted(set(short)))

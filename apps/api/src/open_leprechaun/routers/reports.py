@@ -10,6 +10,7 @@ from open_leprechaun.repositories.reports import Refusal
 from open_leprechaun.services import appendix, reports
 from open_leprechaun.services.fx import RateUnavailableError
 from open_leprechaun.services.section23 import LotShortfallError, StatutoryValueUnsetError
+from open_leprechaun.services.security_disposals import UnclassifiedSecurityError
 from open_leprechaun.services.statutory import FIRST_YEAR
 
 router = APIRouter(tags=["reports"])
@@ -143,6 +144,7 @@ def generate_report(
     except (
         StatutoryValueUnsetError,
         LotShortfallError,
+        UnclassifiedSecurityError,
         RateUnavailableError,
         reports.GenerationRacedError,
     ) as refusal:

@@ -22,6 +22,11 @@ export const statutoryKeySchema = z.enum([
   "opening_carryforward_aktien",
   "opening_carryforward_sonstige",
   "opening_carryforward_termingeschaefte",
+  "partial_exemption_aktienfonds",
+  "partial_exemption_mischfonds",
+  "partial_exemption_immobilienfonds",
+  "partial_exemption_auslands_immobilienfonds",
+  "partial_exemption_sonstige",
 ]);
 
 /** The elections that select which per-year values apply. */

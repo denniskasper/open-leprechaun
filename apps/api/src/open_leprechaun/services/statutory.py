@@ -72,6 +72,14 @@ KEYS: Mapping[str, KeyDefinition] = {
     "opening_carryforward_aktien": _OPTIONAL_OPENING,
     "opening_carryforward_sonstige": _OPTIONAL_OPENING,
     "opening_carryforward_termingeschaefte": _OPTIONAL_OPENING,
+    # The Teilfreistellung each fund category exempts of gains and
+    # distributions (§20 InvStG, ticket 46) — zero for `sonstige` is the
+    # statute's own answer, entered, never assumed.
+    "partial_exemption_aktienfonds": _RATE,
+    "partial_exemption_mischfonds": _RATE,
+    "partial_exemption_immobilienfonds": _RATE,
+    "partial_exemption_auslands_immobilienfonds": _RATE,
+    "partial_exemption_sonstige": _RATE,
 }
 
 

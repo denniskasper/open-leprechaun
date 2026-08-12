@@ -220,6 +220,11 @@ def test_the_vocabulary_covers_every_constant_the_tax_engines_will_need():
         "opening_carryforward_aktien",
         "opening_carryforward_sonstige",
         "opening_carryforward_termingeschaefte",
+        "partial_exemption_aktienfonds",
+        "partial_exemption_mischfonds",
+        "partial_exemption_immobilienfonds",
+        "partial_exemption_auslands_immobilienfonds",
+        "partial_exemption_sonstige",
     }
 
 
@@ -238,6 +243,11 @@ def test_every_key_knows_its_unit_and_whether_a_year_requires_it():
         "church_tax_rate_bavaria_bw",
         "church_tax_rate_other_laender",
         "advance_lump_sum_base_rate",
+        "partial_exemption_aktienfonds",
+        "partial_exemption_mischfonds",
+        "partial_exemption_immobilienfonds",
+        "partial_exemption_auslands_immobilienfonds",
+        "partial_exemption_sonstige",
     }
     assert optional == {
         "loss_cap_aktien",

@@ -70,6 +70,12 @@ from open_leprechaun.services.tax_treatment import TAX_CONSEQUENCES, Inflow
 SUBJECT = "tax_lots"
 """The materialisation's name in the input_fingerprint table."""
 
+COST = "cost"
+"""The basis_source of a purchase's lot. The derivation states the basis
+where the ledger alone can (a numéraire consideration); one paid in anything
+else stores None, and a disposal engine states it at report time from the
+purchase's own legs — reached through the slice's minting leg (ticket 46)."""
+
 ESTIMATE = "estimate"
 """The basis_source of an Opening Balance lot — the disposal engine (21)
 flags every disposal consuming one as resting on an estimate."""
@@ -86,7 +92,7 @@ rate tickets (17, 18) extend it; the disposal engine (21) states the value by
 the same rule at report time."""
 
 _BASIS_SOURCES = {
-    Inflow.mints_lot_at_cost: "cost",
+    Inflow.mints_lot_at_cost: COST,
     Inflow.income_at_market_value: MARKET_VALUE,
     Inflow.mints_estimated_lot: ESTIMATE,
     Inflow.no_acquisition: WITHOUT_CONSIDERATION,
@@ -111,12 +117,17 @@ def grouped(rows: list[Row], attribute: str) -> dict[int, list[Row]]:
 class Slice:
     """A run of quantity in one Account's FIFO queue, wearing the acquisition
     it descends from — the unit a transfer carries across whole, and the unit
-    a consuming leg is recorded as having consumed."""
+    a consuming leg is recorded as having consumed. `minted_by_leg_id` names
+    the in-leg of that original acquisition, kept across transfers and splits,
+    so a report-time engine can still reach the purchase that states a basis
+    the derivation could not (ticket 46); None where no leg minted it — a
+    futures settlement."""
 
     acquired_at: datetime
     quantity: Decimal
     basis_eur: Decimal | None
     basis_source: str
+    minted_by_leg_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -228,7 +239,15 @@ def derive(
             )
             _enqueue(
                 queue,
-                [Slice(transaction.occurred_at, leg.quantity, basis, _BASIS_SOURCES[inflow])],
+                [
+                    Slice(
+                        transaction.occurred_at,
+                        leg.quantity,
+                        basis,
+                        _BASIS_SOURCES[inflow],
+                        minted_by_leg_id=leg.id,
+                    )
+                ],
             )
     settle_through(None)
     return Derivation(lots=minted, consumed=consumed_by_leg, remaining=queues)
@@ -449,8 +468,20 @@ def _split(piece: Slice, first_quantity: Decimal) -> tuple[Slice, Slice]:
         first_basis = cents(piece.basis_eur * first_quantity / piece.quantity)
         rest_basis = piece.basis_eur - first_basis
     return (
-        Slice(piece.acquired_at, first_quantity, first_basis, piece.basis_source),
-        Slice(piece.acquired_at, piece.quantity - first_quantity, rest_basis, piece.basis_source),
+        Slice(
+            piece.acquired_at,
+            first_quantity,
+            first_basis,
+            piece.basis_source,
+            minted_by_leg_id=piece.minted_by_leg_id,
+        ),
+        Slice(
+            piece.acquired_at,
+            piece.quantity - first_quantity,
+            rest_basis,
+            piece.basis_source,
+            minted_by_leg_id=piece.minted_by_leg_id,
+        ),
     )
 
 

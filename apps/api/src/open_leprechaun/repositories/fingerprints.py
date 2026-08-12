@@ -64,9 +64,12 @@ INPUT_CLASSES: Mapping[str, str | None] = {
         + " AS line FROM transaction_leg"
     ),
     # The classification, not the display label: family and type decide a tax
-    # regime, the numéraire designation decides what mints at all.
+    # regime, the numéraire designation decides what mints at all, and the
+    # fund category which Teilfreistellung a securities disposal carries
+    # (ticket 46) — reclassifying a fund must mark dependent reports stale.
     "instruments": (
-        f"SELECT {_line('id', 'family', 'type', 'is_numeraire')} AS line FROM instrument"
+        f"SELECT {_line('id', 'family', 'type', 'is_numeraire', 'fund_category')}"
+        " AS line FROM instrument"
     ),
     "stances": (
         f"SELECT {_line('instrument_id', 'account_id', 'stance')} AS line FROM instrument_stance"

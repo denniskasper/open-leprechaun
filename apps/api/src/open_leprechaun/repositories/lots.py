@@ -94,14 +94,15 @@ def match_rows(connection: Connection) -> list[Row]:
 def instrument_rows(connection: Connection) -> list[Row]:
     """Each Instrument's tax-relevant classification — the family decides the
     regime a disposal falls under (§23 or §20), the numéraire designation what
-    disposes at all, and the peg how a stablecoin values (ADR-0017) — plus the
-    identity attributes the holdings view (ticket 20) shows. Read on the
-    caller's snapshot, like every other derivation input."""
+    disposes at all, the peg how a stablecoin values (ADR-0017), and the fund
+    category which Teilfreistellung a securities disposal carries (ticket 46)
+    — plus the identity attributes the holdings view (ticket 20) shows. Read
+    on the caller's snapshot, like every other derivation input."""
     return list(
         connection.execute(
             text(
                 "SELECT id, family, type, symbol, name, chain, contract_address, isin,"
-                " is_numeraire, pegged_currency FROM instrument"
+                " is_numeraire, pegged_currency, fund_category FROM instrument"
             )
         ).all()
     )
