@@ -13,6 +13,20 @@ from enum import Enum
 from sqlalchemy import Engine, Row, text
 from sqlalchemy.exc import IntegrityError
 
+# The one statement of "may this Instrument acquire a price" over an
+# instrument aliased `i` (ADR-0012): a dangerous Instrument — the one global
+# stance — and one ignored without being kept anywhere are barred. Shared by
+# the crypto (ticket 18) and security (ticket 45) price repositories so the
+# statutory rule cannot drift between them.
+UNBARRED_FROM_PRICING_SQL = (
+    " AND NOT EXISTS (SELECT 1 FROM instrument_stance s"
+    "  WHERE s.instrument_id = i.id AND s.account_id IS NULL)"
+    " AND (NOT EXISTS (SELECT 1 FROM instrument_stance s"
+    "   WHERE s.instrument_id = i.id AND s.stance = 'ignored')"
+    "  OR EXISTS (SELECT 1 FROM instrument_stance s"
+    "   WHERE s.instrument_id = i.id AND s.stance = 'kept'))"
+)
+
 
 class Refusal(Enum):
     """Why a classification did not happen, in the caller's terms."""

@@ -13,6 +13,8 @@ from decimal import Decimal
 
 from sqlalchemy import Engine, Row, text
 
+from open_leprechaun.repositories.stances import UNBARRED_FROM_PRICING_SQL
+
 
 def priceable_instruments(engine: Engine) -> list[Row]:
     """Every crypto Instrument the provider chain prices. Excluded, each for
@@ -26,12 +28,7 @@ def priceable_instruments(engine: Engine) -> list[Row]:
                 text(
                     "SELECT id, type, symbol, name, chain, contract_address FROM instrument i"
                     " WHERE family = 'crypto' AND pegged_currency IS NULL"
-                    " AND NOT EXISTS (SELECT 1 FROM instrument_stance s"
-                    "  WHERE s.instrument_id = i.id AND s.account_id IS NULL)"
-                    " AND (NOT EXISTS (SELECT 1 FROM instrument_stance s"
-                    "   WHERE s.instrument_id = i.id AND s.stance = 'ignored')"
-                    "  OR EXISTS (SELECT 1 FROM instrument_stance s"
-                    "   WHERE s.instrument_id = i.id AND s.stance = 'kept'))"
+                    f"{UNBARRED_FROM_PRICING_SQL}"
                     " ORDER BY symbol, id"
                 )
             ).all()

@@ -21,8 +21,11 @@ Quantity = Annotated[
 
 
 class ListingResponse(BaseModel):
+    id: int
     venue: str
     quote_currency: str
+    # Whether this Listing's market prices the Instrument (ticket 45).
+    price_source: bool
 
 
 class AccountStanceResponse(BaseModel):
@@ -69,7 +72,12 @@ class InstrumentResponse(BaseModel):
             distribution_policy=instrument.distribution_policy,
             needs_review=instrument.needs_review,
             listings=[
-                ListingResponse(venue=listing.venue, quote_currency=listing.quote_currency)
+                ListingResponse(
+                    id=listing.id,
+                    venue=listing.venue,
+                    quote_currency=listing.quote_currency,
+                    price_source=listing.price_source,
+                )
                 for listing in instrument.listings
             ],
             dangerous=instrument.dangerous,

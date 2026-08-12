@@ -31,8 +31,11 @@ def movement_is_disposal(instrument: CarriesNumeraireFlag) -> bool:
 
 @dataclass(frozen=True)
 class Listing:
+    id: int
     venue: str
     quote_currency: str
+    # Whether this Listing's market prices the Instrument (ticket 45).
+    price_source: bool
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,12 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
     listings_of: dict[int, list[Listing]] = {}
     for row in instruments.list_listings(engine):
         listings_of.setdefault(row.instrument_id, []).append(
-            Listing(venue=row.venue, quote_currency=row.quote_currency)
+            Listing(
+                id=row.id,
+                venue=row.venue,
+                quote_currency=row.quote_currency,
+                price_source=row.price_source,
+            )
         )
     dangerous: set[int] = set()
     stances_of: dict[int, list[AccountStance]] = {}

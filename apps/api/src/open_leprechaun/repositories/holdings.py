@@ -1,6 +1,6 @@
 """Reads the holdings view (ticket 20) needs beyond the derivation's own
-inputs: where each Account sits, and what the provider chain last knew each
-crypto Instrument to be worth.
+inputs: where each Account sits, and what the providers last knew each
+crypto Instrument (ticket 18) and security (ticket 45) to be worth.
 
 Every function takes the service's Connection rather than the Engine, like
 repositories/lots — the portfolio is assembled on one snapshot, so a position
@@ -25,11 +25,16 @@ def account_rows(connection: Connection) -> list[Row]:
 
 
 def price_rows(connection: Connection) -> list[Row]:
-    """The last known price per crypto Instrument, with its source and age —
-    the request path values from the store alone; refreshing the store is the
-    price chain's own endpoint (ticket 18)."""
+    """The last known price per crypto Instrument and security, with its
+    source and age — one store row per Instrument either way, so the union
+    cannot collide. The request path values from the store alone; refreshing
+    a store is its own endpoint (tickets 18, 45)."""
     return list(
         connection.execute(
-            text("SELECT instrument_id, price_eur, source, as_of FROM crypto_price")
+            text(
+                "SELECT instrument_id, price_eur, source, as_of FROM crypto_price"
+                " UNION ALL"
+                " SELECT instrument_id, price_eur, source, as_of FROM security_price"
+            )
         ).all()
     )

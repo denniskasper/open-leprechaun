@@ -34,7 +34,7 @@ const fund = {
   fund_category_source: "provider",
   distribution_policy: "accumulating",
   needs_review: false,
-  listings: [{ venue: "XETRA", quote_currency: "EUR" }],
+  listings: [{ id: 4, venue: "XETRA", quote_currency: "EUR", price_source: true }],
   dangerous: false,
   stances: [{ account_id: 5, stance: "kept" }],
 };

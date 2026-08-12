@@ -21,6 +21,7 @@ from open_leprechaun.repositories import (
     stances,
     transactions,
 )
+from open_leprechaun.repositories import security_prices as security_prices_repo
 from open_leprechaun.repositories.transactions import Leg
 from open_leprechaun.services import futures as futures_service
 from open_leprechaun.services import fx, holdings
@@ -275,6 +276,60 @@ def test_a_stablecoin_is_valued_by_its_peg_never_a_crypto_price(db):
 
     assert position.value_eur == Decimal("500.00")
     assert position.price_source == "reference_rate"
+
+
+def _depot(db):
+    """A broker Account with withholding settled — ticket 43's precondition
+    for holding a security position."""
+    platform_id = platforms.create_platform(db, name="Comdirect", kind="broker")
+    platforms.set_withholding(db, platform_id, behaviour="at_source")
+    created = platforms.create_account(db, platform_id, name="Depot", access_software=None)
+    assert isinstance(created, int)
+    return created
+
+
+def test_a_security_position_is_valued_from_the_stored_price(db):
+    """Ticket 45: a Depot position is valued by the last stored security
+    price, its source and age on display — the same store-only request path
+    every other family follows."""
+    account, eur = _depot(db), _eur(db)
+    share = instruments.create_security(
+        db, symbol="ALV", name="Allianz", type="share", isin="DE0008404005"
+    )
+    _keep(db, share, account)
+    _buy(db, account, share, eur, quantity="10", cost="2400")
+    security_prices_repo.store_quote(
+        db,
+        instrument_id=share,
+        price_eur=Decimal("250"),
+        quote_currency="EUR",
+        venue="gettex",
+        source="onvista",
+        as_of=QUOTED,
+    )
+
+    position = _position(holdings.portfolio(db), share, account)
+
+    assert position.marker is None
+    assert position.value_eur == Decimal("2500.00")
+    assert position.unrealised_eur == Decimal("100.00")
+    assert position.price_source == "onvista"
+    assert position.price_as_of == QUOTED
+
+
+def test_a_security_nothing_stored_can_value_is_marked_unpriced_never_zero(db):
+    account, eur = _depot(db), _eur(db)
+    share = instruments.create_security(
+        db, symbol="ALV", name="Allianz", type="share", isin="DE0008404005"
+    )
+    _keep(db, share, account)
+    _buy(db, account, share, eur, quantity="10", cost="2400")
+
+    position = _position(holdings.portfolio(db), share, account)
+
+    assert position.marker == "unpriced"
+    assert position.value_eur is None
+    assert position.basis_eur == Decimal("2400")
 
 
 # --- Markers and exclusions --------------------------------------------------

@@ -223,9 +223,11 @@ def test_the_api_lists_instruments_with_identity_and_listings(client, db):
     assert by_name["Unicorn Farm"]["chain"] == "bsc"
     assert by_name["Unicorn Farm"]["contract_address"] == IMPOSTOR_CONTRACT
     assert by_name["iShares Core MSCI World"]["isin"] == "IE00B4L5Y983"
-    assert by_name["iShares Core MSCI World"]["listings"] == [
-        {"venue": "XETRA", "quote_currency": "EUR"}
-    ]
+    (listing,) = by_name["iShares Core MSCI World"]["listings"]
+    assert listing["venue"] == "XETRA"
+    assert listing["quote_currency"] == "EUR"
+    # A bare security's first Listing takes the price source (ticket 45).
+    assert listing["price_source"] is True
 
 
 def test_the_seed_demonstrates_a_shared_symbol(db):

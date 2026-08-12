@@ -521,7 +521,10 @@ def test_creating_a_security_from_a_picked_candidate(client, db):
     assert (row.fund_category, row.fund_category_source) == ("aktienfonds", "provider")
     listed = client.get("/api/instruments").json()
     (etf,) = [r for r in listed if r["id"] == created]
-    assert etf["listings"] == [{"venue": "gettex", "quote_currency": "EUR"}]
+    (listing,) = etf["listings"]
+    assert (listing["venue"], listing["quote_currency"]) == ("gettex", "EUR")
+    # The picked candidate's primary listing takes the price source (ticket 45).
+    assert listing["price_source"] is True
     assert etf["fund_category_source"] == "provider"
     assert not etf["needs_review"]
 

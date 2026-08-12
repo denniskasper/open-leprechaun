@@ -7,11 +7,13 @@ from pydantic import AwareDatetime, BaseModel, PlainSerializer
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.market_data import SecurityPricesDep
 from open_leprechaun.prices import CryptoPriceChainDep
 from open_leprechaun.rates import ReferenceRateSourceDep
 from open_leprechaun.repositories import crypto_prices as stored_prices
-from open_leprechaun.services import crypto_prices
-from open_leprechaun.services.crypto_prices import (
+from open_leprechaun.repositories import security_prices as stored_security_prices
+from open_leprechaun.services import crypto_prices, security_prices
+from open_leprechaun.services.price_reports import (
     BackfillReport,
     PricedInstrument,
     PriceReport,
@@ -156,4 +158,67 @@ def list_closes(
     return [
         DailyCloseResponse(close_date=row.close_date, price_eur=row.price_eur, source=row.source)
         for row in stored_prices.daily_closes(engine, instrument_id, start=start, end=end)
+    ]
+
+
+@router.get(
+    "/prices/securities",
+    summary="Price every security through its price-source Listing,"
+    " serving the stored price clearly labelled stale where the provider fails",
+    response_model=PriceReportResponse,
+)
+def security_prices_report(
+    admin: AdminDep,
+    engine: EngineDep,
+    provider: SecurityPricesDep,
+    rate_source: ReferenceRateSourceDep,
+) -> PriceReportResponse:
+    return PriceReportResponse.of(security_prices.refresh_prices(engine, provider, rate_source))
+
+
+@router.post(
+    "/prices/securities/{instrument_id}/closes/backfill",
+    summary="Populate a chosen range of daily closes through the price-source Listing",
+    response_model=BackfillResponse,
+)
+def backfill_security_closes(
+    instrument_id: int,
+    request: BackfillRequest,
+    admin: AdminDep,
+    engine: EngineDep,
+    provider: SecurityPricesDep,
+    rate_source: ReferenceRateSourceDep,
+) -> BackfillResponse:
+    if request.start > request.end:
+        raise HTTPException(status_code=422, detail="The range ends before it starts.")
+    report = security_prices.backfill_daily_closes(
+        engine,
+        provider,
+        rate_source,
+        instrument_id=instrument_id,
+        start=request.start,
+        end=request.end,
+    )
+    if report is None:
+        raise HTTPException(
+            status_code=404, detail="No priceable security names this Listing as its price source."
+        )
+    return BackfillResponse.of(report)
+
+
+@router.get(
+    "/prices/securities/{instrument_id}/closes",
+    summary="The stored daily closes for one security, with source attribution",
+    response_model=list[DailyCloseResponse],
+)
+def list_security_closes(
+    instrument_id: int,
+    start: date,
+    end: date,
+    admin: AdminDep,
+    engine: EngineDep,
+) -> list[DailyCloseResponse]:
+    return [
+        DailyCloseResponse(close_date=row.close_date, price_eur=row.price_eur, source=row.source)
+        for row in stored_security_prices.daily_closes(engine, instrument_id, start=start, end=end)
     ]

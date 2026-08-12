@@ -305,7 +305,7 @@ export function HoldingsPage() {
       <PageHeader
         eyebrow="Ledger"
         title="Holdings"
-        description="Everything held — crypto and cash — with its cost basis read from the Tax Lots, so the portfolio and the tax report cannot disagree."
+        description="Everything held — crypto, securities and cash — with its cost basis read from the Tax Lots, so the portfolio and the tax report cannot disagree."
         actions={
           <>
             <NativeSelect

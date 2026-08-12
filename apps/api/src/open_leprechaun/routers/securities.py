@@ -1,7 +1,9 @@
 """Adding and classifying security Instruments (ticket 44): search the
 provider, pick a candidate or create by hand, record a fund's
 Teilfreistellung classification with its source, and settle the review an
-imported unknown identifier opened."""
+imported unknown identifier opened. Listings (ticket 45) join here: resolve
+an identifier to the markets the provider knows, enter one by hand where no
+provider does, and choose which Listing is the price source."""
 
 from typing import Literal, Self
 
@@ -10,6 +12,7 @@ from pydantic import BaseModel, model_validator
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.market_data import SecurityResolutionDep
 from open_leprechaun.ports.crypto_prices import ProviderOutageError, RateLimitedError
 from open_leprechaun.repositories import instruments
 from open_leprechaun.security_search import SecuritySearchDep
@@ -193,6 +196,80 @@ def classify_fund(
         distribution_policy=request.distribution_policy,
     ):
         raise HTTPException(status_code=404, detail="No such Instrument.")
+
+
+class ResolvedListingResponse(BaseModel):
+    venue: str
+    quote_currency: str
+
+
+class CreateListingRequest(BaseModel):
+    venue: str
+    quote_currency: str
+    # Whether this Listing takes over as the price source, displacing the
+    # previous holder.
+    price_source: bool = False
+
+
+@router.get(
+    "/securities/listings/resolve",
+    summary="The Listings the provider knows for an identifier — empty where it knows none",
+    response_model=list[ResolvedListingResponse],
+)
+def resolve_listings(
+    admin: AdminDep,
+    provider: SecurityResolutionDep,
+    identifier: str = Query(min_length=2),
+) -> list[ResolvedListingResponse]:
+    try:
+        resolved = provider.listings(identifier)
+    except RateLimitedError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ProviderOutageError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return [
+        ResolvedListingResponse(venue=listing.venue, quote_currency=listing.quote_currency)
+        for listing in resolved
+    ]
+
+
+@router.post(
+    "/securities/{instrument_id}/listings",
+    status_code=201,
+    summary="Enter a Listing by hand where no provider resolves it",
+    response_model=CreatedResponse,
+)
+def create_listing(
+    instrument_id: int, request: CreateListingRequest, admin: AdminDep, engine: EngineDep
+) -> CreatedResponse:
+    instrument = instruments.get(engine, instrument_id)
+    if instrument is None or instrument.family != "security":
+        raise HTTPException(status_code=404, detail="No such security.")
+    created = instruments.add_listing(
+        engine,
+        instrument_id,
+        venue=request.venue,
+        quote_currency=request.quote_currency,
+        price_source=request.price_source,
+    )
+    if created is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The {request.venue} / {request.quote_currency} Listing already exists.",
+        )
+    return CreatedResponse(id=created)
+
+
+@router.put(
+    "/securities/{instrument_id}/listings/{listing_id}/price-source",
+    status_code=204,
+    summary="Choose which Listing's market prices the Instrument",
+)
+def choose_price_source(
+    instrument_id: int, listing_id: int, admin: AdminDep, engine: EngineDep
+) -> None:
+    if not instruments.set_price_source(engine, instrument_id, listing_id):
+        raise HTTPException(status_code=404, detail="No such Listing under this Instrument.")
 
 
 @router.put(

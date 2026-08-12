@@ -11,8 +11,9 @@ says so instead of summing what it knows as if the rest were zero.
 
 Values are stated only where the store can state them: the numéraire by
 identity, foreign cash and pegged stablecoins by the latest stored reference
-rate within the publication lookback (ADR-0017), crypto by the last known
-stored price with its source and age (ADR-0018). The request path performs no
+rate within the publication lookback (ADR-0017), crypto and securities by
+the last known stored price with its source and age (ADR-0018, ticket 45).
+The request path performs no
 outside I/O at all — no price provider and no rate fetch; conversions made
 elsewhere (the tax engines, the display-rate endpoint) keep the rate store
 warm — which is what keeps the view inside its one-second budget by
@@ -218,8 +219,8 @@ def _valuation(engine: Engine, instrument: Row, quantity: Decimal, price: Row | 
     store alone: the numéraire by identity, foreign cash and pegged
     stablecoins by the latest stored reference rate within the publication
     lookback — never a fetch, so a quiet morning or a source outage cannot
-    block the view — and crypto by the last known stored price. What nothing
-    stored can value stays None, never a guess."""
+    block the view — and crypto and securities by the last known stored
+    price. What nothing stored can value stays None, never a guess."""
     if instrument.is_numeraire:
         return _Valuation(cents(quantity), None, None, None)
     currency = fx.valuation_currency(instrument)
@@ -233,7 +234,7 @@ def _valuation(engine: Engine, instrument: Row, quantity: Decimal, price: Row | 
         if row is None:
             return _UNVALUED
         return _Valuation(cents(quantity / row.rate), "reference_rate", None, row.rate_date)
-    if instrument.family == "crypto" and price is not None:
+    if instrument.family in ("crypto", "security") and price is not None:
         return _Valuation(cents(quantity * price.price_eur), price.source, price.as_of, None)
     return _UNVALUED
 

@@ -19,12 +19,9 @@ storing, the same rule every other foreign-currency amount follows.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Literal, Protocol
 
-import httpx
 from sqlalchemy import Engine
 
 from open_leprechaun.ports.crypto_prices import (
@@ -36,50 +33,25 @@ from open_leprechaun.ports.crypto_prices import (
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import crypto_prices as stored_prices
 from open_leprechaun.services import fx
+from open_leprechaun.services.price_reports import (
+    BackfillReport,
+    NamedInstrument,
+    PricedInstrument,
+    PriceReport,
+    ProviderCondition,
+    in_eur,
+    served_from_store,
+)
 
-
-class NamedInstrument(Protocol):
-    """What serving an answer about an Instrument takes — a repository row or
-    anything shaped like one. Naming is the point: staleness is reported per
-    named Instrument, never as a blanket outage."""
-
-    @property
-    def id(self) -> int: ...
-
-    @property
-    def symbol(self) -> str: ...
-
-    @property
-    def name(self) -> str: ...
-
-
-@dataclass(frozen=True)
-class PricedInstrument:
-    """One Instrument's answer: a current price, a stored one labelled stale,
-    or the honest admission that nothing has ever priced it."""
-
-    instrument_id: int
-    symbol: str
-    name: str
-    status: Literal["fresh", "stale", "unpriced"]
-    price_eur: Decimal | None
-    source: str | None
-    as_of: datetime | None
-
-
-@dataclass(frozen=True)
-class ProviderCondition:
-    """What one provider's failure actually was — a rate limit is its own
-    condition, never reported as an outage."""
-
-    provider: str
-    condition: Literal["rate_limited", "outage"]
-
-
-@dataclass(frozen=True)
-class PriceReport:
-    prices: tuple[PricedInstrument, ...]
-    conditions: tuple[ProviderCondition, ...]
+__all__ = [
+    "BackfillReport",
+    "NamedInstrument",
+    "PriceReport",
+    "PricedInstrument",
+    "ProviderCondition",
+    "backfill_daily_closes",
+    "refresh_prices",
+]
 
 
 def refresh_prices(
@@ -107,7 +79,7 @@ def refresh_prices(
             instrument = remaining.get(quote.instrument_id)
             if instrument is None:
                 continue
-            price_eur = _in_eur(
+            price_eur = in_eur(
                 engine, rate_source, price=quote.price, currency=quote.currency, at=quote.as_of
             )
             if price_eur is None:
@@ -132,20 +104,11 @@ def refresh_prices(
                 as_of=quote.as_of,
             )
     entries = list(fresh.values()) + [
-        _from_store(engine, instrument) for instrument in remaining.values()
+        served_from_store(instrument, stored_prices.last_known(engine, instrument.id))
+        for instrument in remaining.values()
     ]
     entries.sort(key=lambda entry: (entry.symbol, entry.instrument_id))
     return PriceReport(prices=tuple(entries), conditions=tuple(conditions))
-
-
-@dataclass(frozen=True)
-class BackfillReport:
-    """What one backfill actually did: how many closes it added, which
-    provider answered, and what any failing provider's failure was."""
-
-    stored: int
-    source: str | None
-    conditions: tuple[ProviderCondition, ...]
 
 
 def backfill_daily_closes(
@@ -183,7 +146,7 @@ def backfill_daily_closes(
         # dates that follow instead of fetching one window per day. A close
         # that is no answer — non-positive, or unconvertible just now — is
         # skipped rather than stored wrong or allowed to fail the backfill.
-        in_eur = (
+        converted = (
             (close.close_date, _close_in_eur(engine, rate_source, close))
             for close in sorted(closes, key=lambda close: close.close_date, reverse=True)
         )
@@ -191,7 +154,7 @@ def backfill_daily_closes(
             engine,
             instrument.id,
             source=provider.name,
-            closes=[(close_date, price) for close_date, price in in_eur if price is not None],
+            closes=[(close_date, price) for close_date, price in converted if price is not None],
         )
         return BackfillReport(stored=stored, source=provider.name, conditions=tuple(conditions))
     return BackfillReport(stored=0, source=None, conditions=tuple(conditions))
@@ -200,60 +163,10 @@ def backfill_daily_closes(
 def _close_in_eur(
     engine: Engine, rate_source: ReferenceRateSource, close: DailyClose
 ) -> Decimal | None:
-    return _in_eur(
+    return in_eur(
         engine,
         rate_source,
         price=close.price,
         currency=close.currency,
         at=datetime.combine(close.close_date, time(12, 0), tzinfo=fx.BERLIN),
     )
-
-
-def _from_store(engine: Engine, instrument: NamedInstrument) -> PricedInstrument:
-    """What remains when every provider has failed or passed over an
-    Instrument: the last known price, clearly labelled stale — or the named
-    admission that nothing has ever priced it."""
-    stored = stored_prices.last_known(engine, instrument.id)
-    if stored is None:
-        return PricedInstrument(
-            instrument_id=instrument.id,
-            symbol=instrument.symbol,
-            name=instrument.name,
-            status="unpriced",
-            price_eur=None,
-            source=None,
-            as_of=None,
-        )
-    return PricedInstrument(
-        instrument_id=instrument.id,
-        symbol=instrument.symbol,
-        name=instrument.name,
-        status="stale",
-        price_eur=stored.price_eur,
-        source=stored.source,
-        as_of=stored.as_of,
-    )
-
-
-def _in_eur(
-    engine: Engine,
-    rate_source: ReferenceRateSource,
-    *,
-    price: Decimal,
-    currency: str,
-    at: datetime,
-) -> Decimal | None:
-    """A provider's figure expressed in EUR by the reference-rate rule of its
-    event date (ADR-0017) — or None when the figure is no answer at all: a
-    non-positive price (some providers answer 0 for a dead token, and zero is
-    a statement about value the chain must never make), or a quote the
-    reference-rate universe cannot state in EUR just now. None never fails
-    the report; the store speaks for the Instrument instead."""
-    if price <= 0:
-        return None
-    if currency == "EUR":
-        return price
-    try:
-        return fx.convert(engine, rate_source, amount=price, currency=currency, at=at).amount_eur
-    except fx.RateUnavailableError, httpx.HTTPError:
-        return None

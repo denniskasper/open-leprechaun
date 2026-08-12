@@ -106,3 +106,52 @@ export async function reviewSecurity(instrumentId: number, review: Review): Prom
     throw await refusal(response, `The API answered ${response.status} instead of settling.`);
   }
 }
+
+/** One market the resolution provider knows a security to trade on (ticket 45). */
+export const resolvedListingSchema = z.object({
+  venue: z.string(),
+  quote_currency: z.string(),
+});
+
+export type ResolvedListing = z.infer<typeof resolvedListingSchema>;
+
+export interface NewListing {
+  venue: string;
+  quote_currency: string;
+  // Whether this Listing takes over as the price source.
+  price_source: boolean;
+}
+
+export async function resolveListings(identifier: string): Promise<ResolvedListing[]> {
+  const response = await fetch(
+    `/api/securities/listings/resolve?identifier=${encodeURIComponent(identifier)}`,
+  );
+  if (!response.ok) {
+    throw await refusal(response, `The API answered ${response.status} instead of resolving.`);
+  }
+  return z.array(resolvedListingSchema).parse(await response.json());
+}
+
+export async function createListing(instrumentId: number, listing: NewListing): Promise<number> {
+  const response = await postJson(`/api/securities/${instrumentId}/listings`, listing);
+  if (!response.ok) {
+    throw await refusal(
+      response,
+      `The API answered ${response.status} instead of creating the Listing.`,
+    );
+  }
+  return z.object({ id: z.number() }).parse(await response.json()).id;
+}
+
+export async function choosePriceSource(instrumentId: number, listingId: number): Promise<void> {
+  const response = await fetch(
+    `/api/securities/${instrumentId}/listings/${listingId}/price-source`,
+    { method: "PUT" },
+  );
+  if (!response.ok) {
+    throw await refusal(
+      response,
+      `The API answered ${response.status} instead of moving the price source.`,
+    );
+  }
+}

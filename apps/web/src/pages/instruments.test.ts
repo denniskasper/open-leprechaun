@@ -10,6 +10,7 @@ import {
   sharedSymbols,
   staleExplanation,
   stanceWarning,
+  unheldListings,
 } from "./instruments";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
@@ -252,5 +253,36 @@ describe("staleExplanation", () => {
     expect(explanation).toContain("last known price");
     expect(explanation).toContain("defillama");
     expect(explanation).toContain("2026");
+  });
+});
+
+
+describe("unheldListings", () => {
+  const held = [
+    { id: 1, venue: "Xetra", quote_currency: "EUR", price_source: true },
+    { id: 2, venue: "London Stock Exchange", quote_currency: "USD", price_source: false },
+  ];
+
+  it("offers only the markets not already held, compared as venue and currency together", () => {
+    const resolved = [
+      { venue: "Xetra", quote_currency: "EUR" },
+      { venue: "London Stock Exchange", quote_currency: "GBP" },
+      { venue: "gettex", quote_currency: "EUR" },
+    ];
+
+    expect(unheldListings(resolved, held)).toEqual([
+      { venue: "London Stock Exchange", quote_currency: "GBP" },
+      { venue: "gettex", quote_currency: "EUR" },
+    ]);
+  });
+
+  it("offers nothing when every resolved market is held", () => {
+    expect(unheldListings([{ venue: "Xetra", quote_currency: "EUR" }], held)).toEqual([]);
+  });
+
+  it("treats a venue casing difference as held, matching the provider's own rule", () => {
+    const holder = [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }];
+
+    expect(unheldListings([{ venue: "Xetra", quote_currency: "EUR" }], holder)).toEqual([]);
   });
 });

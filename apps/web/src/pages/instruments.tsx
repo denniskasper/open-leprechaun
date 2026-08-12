@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Shapes } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
-import { fetchInstruments, type Instrument } from "@/api/instruments";
+import { fetchInstruments, type Instrument, type Listing } from "@/api/instruments";
 import {
   fetchCryptoPrices,
+  fetchSecurityPrices,
   type PricedInstrument,
   type ProviderCondition,
 } from "@/api/prices";
 import {
+  choosePriceSource,
   classifyFund,
+  createListing,
   createSecurity,
+  resolveListings,
   reviewSecurity,
   searchSecurities,
   type AdminClassification,
@@ -18,6 +22,7 @@ import {
   type DistributionPolicy,
   type FundCategory,
   type NewSecurity,
+  type ResolvedListing,
 } from "@/api/securities";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
@@ -206,16 +211,36 @@ export function staleExplanation(entry: PricedInstrument, locale?: string): stri
   return `Every provider failed just now — this is the last known price, from ${entry.source} at ${age}.`;
 }
 
+/**
+ * The resolved markets not already held as Listings — venue and currency
+ * compared as a pair, so a second currency on a known venue still offers
+ * itself. The venue compares case-insensitively, matching the pricing
+ * provider's own rule (ADR-0021): a holder of "XETRA" must not be offered
+ * "Xetra" as a near-duplicate.
+ */
+export function unheldListings(resolved: ResolvedListing[], held: Listing[]): ResolvedListing[] {
+  const key = (venue: string, currency: string) => `${venue.toLowerCase()} ${currency}`;
+  const known = new Set(held.map((listing) => key(listing.venue, listing.quote_currency)));
+  return resolved.filter((listing) => !known.has(key(listing.venue, listing.quote_currency)));
+}
+
 export function InstrumentsPage() {
   const { data, error, refetch } = useQuery({
     queryKey: ["instruments"],
     queryFn: fetchInstruments,
   });
-  // Prices arrive separately: the provider chain may be slow or down, and the
-  // instrument list must not wait on it — a failed report leaves the table
+  // Prices arrive separately: the providers may be slow or down, and the
+  // instrument list must not wait on them — a failed report leaves the table
   // standing with its price column honestly empty.
   const prices = useQuery({ queryKey: ["crypto-prices"], queryFn: fetchCryptoPrices });
-  const conditions = conditionLine(prices.data?.conditions ?? []);
+  const securityPrices = useQuery({
+    queryKey: ["security-prices"],
+    queryFn: fetchSecurityPrices,
+  });
+  const conditions = conditionLine([
+    ...(prices.data?.conditions ?? []),
+    ...(securityPrices.data?.conditions ?? []),
+  ]);
   const [adding, setAdding] = useState(false);
 
   return (
@@ -261,12 +286,22 @@ export function InstrumentsPage() {
               onRetry={() => void prices.refetch()}
             />
           )}
+          {securityPrices.error != null && (
+            <ErrorState
+              title="The security price report could not be loaded"
+              detail="The API did not answer with security prices, so those rows show no price — not zero, and not a statement about value."
+              onRetry={() => void securityPrices.refetch()}
+            />
+          )}
           {conditions && (
             <p className="microlabel text-caution">
               price providers: {conditions} — stale prices below are last known, with their age
             </p>
           )}
-          <InstrumentTable instruments={data} prices={prices.data?.prices ?? []} />
+          <InstrumentTable
+            instruments={data}
+            prices={[...(prices.data?.prices ?? []), ...(securityPrices.data?.prices ?? [])]}
+          />
         </div>
       ) : null}
     </div>
@@ -554,6 +589,7 @@ function InstrumentTable({
   const shared = sharedSymbols(instruments);
   const priceOf = new Map(prices.map((entry) => [entry.instrument_id, entry]));
   const [editing, setEditing] = useState<number | null>(null);
+  const [managing, setManaging] = useState<number | null>(null);
 
   return (
     <table className="w-full border-collapse text-sm">
@@ -585,6 +621,8 @@ function InstrumentTable({
               index={index}
               editing={editing === instrument.id}
               onEdit={(open) => setEditing(open ? instrument.id : null)}
+              managing={managing === instrument.id}
+              onManage={(open) => setManaging(open ? instrument.id : null)}
             />
           );
         })}
@@ -601,6 +639,8 @@ function InstrumentRow({
   index,
   editing,
   onEdit,
+  managing,
+  onManage,
 }: {
   instrument: Instrument;
   warning: "dangerous" | "ignored" | null;
@@ -609,6 +649,8 @@ function InstrumentRow({
   index: number;
   editing: boolean;
   onEdit: (open: boolean) => void;
+  managing: boolean;
+  onManage: (open: boolean) => void;
 }) {
   const cell = classificationCell(instrument);
   return (
@@ -665,14 +707,10 @@ function InstrumentRow({
           <ClassificationSummary cell={cell} editing={editing} onEdit={onEdit} />
         </td>
         <td className="py-3 pr-4 font-mono tabular-nums">
-          <PriceCell entry={entry} family={instrument.family} />
+          <PriceCell entry={entry} />
         </td>
         <td className="py-3 font-mono tabular-nums text-muted-foreground">
-          {instrument.listings.length === 0
-            ? "—"
-            : instrument.listings
-                .map((listing) => `${listing.venue} · ${listing.quote_currency}`)
-                .join(", ")}
+          <ListingsSummary instrument={instrument} managing={managing} onManage={onManage} />
         </td>
       </tr>
       {editing && cell.kind !== "not_applicable" && (
@@ -686,7 +724,226 @@ function InstrumentRow({
           </td>
         </tr>
       )}
+      {managing && instrument.family === "security" && (
+        <tr className="border-b border-border">
+          <td colSpan={7} className="py-4">
+            <ListingsEditor instrument={instrument} />
+          </td>
+        </tr>
+      )}
     </>
+  );
+}
+
+/**
+ * The Listings cell: each market with the price source marked, opening the
+ * editor for a security — a crypto or cash Instrument has no Listings to
+ * manage, and stays a quiet dash.
+ */
+function ListingsSummary({
+  instrument,
+  managing,
+  onManage,
+}: {
+  instrument: Instrument;
+  managing: boolean;
+  onManage: (open: boolean) => void;
+}) {
+  if (instrument.family !== "security") {
+    return <>—</>;
+  }
+  if (managing) {
+    return (
+      <Button variant="ghost" size="sm" onClick={() => onManage(false)}>
+        Close
+      </Button>
+    );
+  }
+  if (instrument.listings.length === 0) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onManage(true)}
+        title="Without a Listing nothing can vouch for a price — the security stays unpriced, never zero."
+      >
+        <span className="text-caution">Add listing</span>
+      </Button>
+    );
+  }
+  return (
+    <button type="button" className="group text-left" onClick={() => onManage(true)}>
+      {instrument.listings.map((listing, index) => (
+        <span key={listing.id}>
+          {index > 0 && ", "}
+          {listing.venue} · {listing.quote_currency}
+          {listing.price_source && (
+            <span
+              className="microlabel ml-1.5 text-signal"
+              title="This Listing's market prices the Instrument — quotes and daily closes come from here."
+            >
+              prices
+            </span>
+          )}
+        </span>
+      ))}
+    </button>
+  );
+}
+
+/**
+ * The inline Listings editor (ticket 45): the held markets with the price
+ * source movable among them, the provider's resolved markets one click from
+ * held, and a by-hand form for what no provider resolves.
+ */
+function ListingsEditor({ instrument }: { instrument: Instrument }) {
+  const id = useId();
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["instruments"] });
+    void queryClient.invalidateQueries({ queryKey: ["security-prices"] });
+  };
+  const [venue, setVenue] = useState("");
+  const [currency, setCurrency] = useState("");
+  const resolve = useMutation({
+    mutationFn: () => resolveListings(instrument.isin ?? instrument.symbol),
+  });
+  const move = useMutation({
+    mutationFn: (listingId: number) => choosePriceSource(instrument.id, listingId),
+    onSuccess: refresh,
+  });
+  const add = useMutation({
+    // The server gives a bare security's first Listing the price source, so
+    // one market needs no second click to become priceable.
+    mutationFn: (listing: { venue: string; quote_currency: string }) =>
+      createListing(instrument.id, { ...listing, price_source: false }),
+    onSuccess: refresh,
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    add.mutate(
+      { venue: venue.trim(), quote_currency: currency.trim().toUpperCase() },
+      {
+        onSuccess: () => {
+          setVenue("");
+          setCurrency("");
+        },
+      },
+    );
+  };
+  const unheld = unheldListings(resolve.data ?? [], instrument.listings);
+
+  return (
+    <div className="space-y-4" aria-label={`Listings of ${instrument.symbol}`}>
+      {instrument.listings.length > 0 && (
+        <ul className="space-y-1">
+          {instrument.listings.map((listing) => (
+            <li key={listing.id} className="flex items-center gap-3">
+              <span className="font-mono text-sm tabular-nums">
+                {listing.venue} · {listing.quote_currency}
+              </span>
+              {listing.price_source ? (
+                <span
+                  className="microlabel text-signal"
+                  title="This Listing's market prices the Instrument — quotes and daily closes come from here."
+                >
+                  price source
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => move.mutate(listing.id)}
+                  disabled={move.isPending}
+                >
+                  Use for pricing
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {move.error != null && <p className="text-sm text-alarm">{move.error.message}</p>}
+
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1.5">
+          <label htmlFor={`${id}-venue`} className="microlabel block text-muted-foreground">
+            Venue
+          </label>
+          <Input
+            id={`${id}-venue`}
+            value={venue}
+            onChange={(event) => setVenue(event.target.value)}
+            className="w-44"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor={`${id}-currency`} className="microlabel block text-muted-foreground">
+            Currency
+          </label>
+          <Input
+            id={`${id}-currency`}
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+            className="w-20 font-mono"
+          />
+        </div>
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={add.isPending || venue.trim() === "" || currency.trim() === ""}
+        >
+          <Plus aria-hidden />
+          Add by hand
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => resolve.mutate()}
+          disabled={resolve.isPending}
+          title="Ask the resolution provider which markets it knows for this identifier."
+        >
+          <Search aria-hidden />
+          Fetch markets from provider
+        </Button>
+      </form>
+      {add.error != null && <p className="text-sm text-alarm">{add.error.message}</p>}
+      {resolve.error != null && <p className="text-sm text-alarm">{resolve.error.message}</p>}
+
+      {resolve.data && resolve.data.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          The provider knows no markets for this identifier — enter the Listing by hand.
+        </p>
+      )}
+      {resolve.data && resolve.data.length > 0 && unheld.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Every market the provider knows is already held.
+        </p>
+      )}
+      {unheld.length > 0 && (
+        <ul className="divide-y divide-border border-t border-border">
+          {unheld.map((listing) => (
+            <li
+              key={`${listing.venue} ${listing.quote_currency}`}
+              className="flex items-center gap-4 py-2"
+            >
+              <span className="min-w-40 font-mono text-sm tabular-nums">
+                {listing.venue} · {listing.quote_currency}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => add.mutate(listing)}
+                disabled={add.isPending}
+              >
+                Add
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -929,31 +1186,14 @@ function ClassificationSelects({
 }
 
 /**
- * The EUR price the chain answered (ticket 18). A stale figure wears its
- * label and explains its source and age; an Instrument nothing has ever
- * priced says "unpriced" — never a zero. A security says so too: no source
- * prices securities yet (ticket 45), and a value nothing can vouch for is an
- * unknown, not zero. Cash and stablecoins (valued by reference rate) stay a
- * quiet dash.
+ * The EUR price the providers answered (tickets 18 and 45). A stale figure
+ * wears its label and explains its source and age; an Instrument nothing has
+ * ever priced says "unpriced" — never a zero. Cash and stablecoins (valued
+ * by reference rate) stay a quiet dash, as does a row whose report has not
+ * arrived.
  */
-function PriceCell({
-  entry,
-  family,
-}: {
-  entry: PricedInstrument | undefined;
-  family: Instrument["family"];
-}) {
+function PriceCell({ entry }: { entry: PricedInstrument | undefined }) {
   if (!entry) {
-    if (family === "security") {
-      return (
-        <span
-          className="microlabel text-caution"
-          title="Nothing prices this security yet — an unknown value, never zero."
-        >
-          unpriced
-        </span>
-      );
-    }
     return <span className="text-muted-foreground">—</span>;
   }
   if (entry.status === "unpriced") {

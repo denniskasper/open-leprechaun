@@ -5,8 +5,11 @@ import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } fr
 export const INSTRUMENTS_URL = "/api/instruments";
 
 export const listingSchema = z.object({
+  id: z.number(),
   venue: z.string(),
   quote_currency: z.string(),
+  // Whether this Listing's market prices the Instrument (ticket 45).
+  price_source: z.boolean(),
 });
 
 /** A per-Account decision — kept or ignored; dangerous is global (ADR-0012). */

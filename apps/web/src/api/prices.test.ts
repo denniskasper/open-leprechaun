@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchCryptoPrices } from "./prices";
+import { fetchCryptoPrices, fetchSecurityPrices } from "./prices";
 
 const report = {
   prices: [
@@ -64,5 +64,15 @@ describe("fetchCryptoPrices", () => {
     respondWith(500, { detail: "boom" });
 
     await expect(fetchCryptoPrices()).rejects.toThrow("500");
+  });
+});
+
+describe("fetchSecurityPrices", () => {
+  it("reads the securities report in the same vocabulary", async () => {
+    respondWith(200, report);
+
+    await expect(fetchSecurityPrices()).resolves.toEqual(report);
+
+    expect(fetch).toHaveBeenCalledWith("/api/prices/securities");
   });
 });

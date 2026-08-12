@@ -139,10 +139,12 @@ def create_security(
             if ticker is not None:
                 _insert_identifier(connection, instrument_id, kind="ticker", value=ticker)
             if venue is not None and quote_currency is not None:
+                # The picked candidate's primary listing is the market the
+                # picker vouched for — it becomes the price source (ticket 45).
                 connection.execute(
                     text(
-                        "INSERT INTO listing (instrument_id, venue, quote_currency)"
-                        " VALUES (:instrument_id, :venue, :quote_currency)"
+                        "INSERT INTO listing (instrument_id, venue, quote_currency, price_source)"
+                        " VALUES (:instrument_id, :venue, :quote_currency, true)"
                     ),
                     {
                         "instrument_id": instrument_id,
@@ -345,20 +347,71 @@ def designate_numeraire(engine: Engine, instrument_id: int) -> bool:
 
 
 def add_listing(
-    engine: Engine, instrument_id: int, *, venue: str, quote_currency: str
+    engine: Engine,
+    instrument_id: int,
+    *,
+    venue: str,
+    quote_currency: str,
+    price_source: bool = False,
 ) -> int | None:
-    """One market an Instrument trades on; what a price source points at."""
+    """One market an Instrument trades on; what a price source points at.
+
+    A listing arriving as the price source displaces the previous holder in
+    the same transaction, so no moment holds two for the schema to refuse.
+    The first Listing an Instrument gains takes the price source regardless —
+    the rule is this repository's, not a client courtesy, so a bare security
+    becomes priceable whoever the caller is (ADR-0021).
+    """
     try:
         with engine.begin() as connection:
+            if price_source:
+                _clear_price_source(connection, instrument_id)
             return connection.execute(
                 text(
-                    "INSERT INTO listing (instrument_id, venue, quote_currency)"
-                    " VALUES (:instrument_id, :venue, :quote_currency) RETURNING id"
+                    "INSERT INTO listing (instrument_id, venue, quote_currency, price_source)"
+                    " VALUES (:instrument_id, :venue, :quote_currency, :price_source"
+                    "  OR NOT EXISTS (SELECT 1 FROM listing"
+                    "   WHERE instrument_id = :instrument_id))"
+                    " RETURNING id"
                 ),
-                {"instrument_id": instrument_id, "venue": venue, "quote_currency": quote_currency},
+                {
+                    "instrument_id": instrument_id,
+                    "venue": venue,
+                    "quote_currency": quote_currency,
+                    "price_source": price_source,
+                },
             ).scalar_one()
     except IntegrityError:
         return None
+
+
+def set_price_source(engine: Engine, instrument_id: int, listing_id: int) -> bool:
+    """Move the price source to a chosen Listing of the same Instrument.
+
+    In one transaction the current holder loses the flag and the target takes
+    it. False when the Listing is missing or belongs to another Instrument,
+    changing nothing.
+    """
+    with engine.begin() as connection:
+        owned = connection.execute(
+            text("SELECT 1 FROM listing WHERE id = :listing_id AND instrument_id = :instrument_id"),
+            {"listing_id": listing_id, "instrument_id": instrument_id},
+        ).scalar_one_or_none()
+        if owned is None:
+            return False
+        _clear_price_source(connection, instrument_id)
+        connection.execute(
+            text("UPDATE listing SET price_source = true WHERE id = :listing_id"),
+            {"listing_id": listing_id},
+        )
+    return True
+
+
+def _clear_price_source(connection: Connection, instrument_id: int) -> None:
+    connection.execute(
+        text("UPDATE listing SET price_source = false WHERE instrument_id = :instrument_id"),
+        {"instrument_id": instrument_id},
+    )
 
 
 def list_listings(engine: Engine) -> list[Row]:
@@ -366,7 +419,7 @@ def list_listings(engine: Engine) -> list[Row]:
         return list(
             connection.execute(
                 text(
-                    "SELECT id, instrument_id, venue, quote_currency"
+                    "SELECT id, instrument_id, venue, quote_currency, price_source"
                     " FROM listing ORDER BY instrument_id, venue, quote_currency"
                 )
             ).all()

@@ -55,6 +55,20 @@ class Settings(BaseSettings):
         default=__version__,
         description="Version shown outside development, where a deployment sets it",
     )
+    security_resolution_provider: str = Field(
+        default="onvista",
+        description=(
+            "Which provider resolves a security identifier to its Listings "
+            "(ticket 45). The default works without a paid plan."
+        ),
+    )
+    security_price_provider: str = Field(
+        default="onvista",
+        description=(
+            "Which provider quotes and backfills security prices per Listing "
+            "(ticket 45). The default works without a paid plan."
+        ),
+    )
     session_ttl_hours: int = Field(
         default=720,
         gt=0,
