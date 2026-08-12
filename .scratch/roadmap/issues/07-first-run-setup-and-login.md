@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 04
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] With no admin present outside development, every route redirects to the setup screen
 - [x] Setup can run only once; a second attempt with an admin present is refused

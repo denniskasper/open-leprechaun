@@ -4,7 +4,7 @@
 
 **Blocked by:** 13
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] An Opening Balance behaves like an inbound transfer but marks its minted lot as estimated
 - [x] The two cases are distinct: acquisition date known with basis estimated, and both reconstructed

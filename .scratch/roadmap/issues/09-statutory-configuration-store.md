@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Per-year rows cover: the private-sale exemption limit, the other-income exemption limit, the saver's allowance, the flat rate and solidarity surcharge, church-tax rates, per-category loss caps, and the annual base rate for advance lump sums
 - [x] Each value records the source it came from, shown in the UI

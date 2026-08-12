@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `pnpm` scripts at the repository root are the single documented entry point; there is no Makefile
 - [x] Postgres runs in Docker Compose; API and web dev servers run on the host so a debugger can attach

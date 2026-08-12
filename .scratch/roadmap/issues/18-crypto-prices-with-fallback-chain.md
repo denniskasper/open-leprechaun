@@ -4,7 +4,7 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A price provider port with at least two implementations and a fake, tried in documented order
 - [x] No provider-specific identifier being absent may exclude an Instrument from pricing

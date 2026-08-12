@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `family` distinguishes crypto, security and cash; `type` refines it
 - [x] A crypto Instrument with a contract is keyed on chain and contract address; native coins key on symbol

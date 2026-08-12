@@ -6,7 +6,7 @@ After this ticket the engine is complete, and every later producer of capital in
 
 **Blocked by:** 26
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Each category maintains a running carryforward across years; a year's calculation consumes it before the allowance is applied
 - [x] Carryforwards never cross categories

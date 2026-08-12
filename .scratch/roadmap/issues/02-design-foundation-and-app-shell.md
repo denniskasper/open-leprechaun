@@ -6,7 +6,7 @@ Establish this once so no later ticket invents its own look.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Begin by invoking the `/frontend-design` skill, per AGENTS.md
 - [x] Design tokens — type scale, spacing, radii, elevation, colour — defined once and consumed by components

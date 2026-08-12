@@ -4,7 +4,7 @@
 
 **Blocked by:** 35
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Each adapter declares its maximum lookback, shown per Connection in plain language
 - [x] After a sync, the result states the period actually covered

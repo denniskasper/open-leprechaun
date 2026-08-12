@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 07, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Platform kinds cover exchange, cold storage, software wallet, broker and bank
 - [x] Every Account belongs to exactly one Platform; none is locationless

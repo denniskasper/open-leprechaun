@@ -4,7 +4,7 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Search accepts ISIN, WKN, ticker or name and returns candidates with identifier, name, type, currency and primary listing
 - [x] Selecting a candidate creates the Instrument with its identifiers and links its price source to a Listing

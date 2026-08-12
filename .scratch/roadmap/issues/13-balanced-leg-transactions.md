@@ -4,7 +4,7 @@
 
 **Blocked by:** 10, 12
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A Transaction is a set of legs that balance; a buy records both the asset acquired and the cash spent
 - [x] A fee is its own leg and is never double-counted

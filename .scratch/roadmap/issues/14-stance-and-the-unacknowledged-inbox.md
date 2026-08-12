@@ -4,7 +4,7 @@
 
 **Blocked by:** 13
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A new Instrument carries a **Stance** of `unacknowledged` by default
 - [x] An inflow of an unacknowledged Instrument is recorded as a transaction but mints no lot

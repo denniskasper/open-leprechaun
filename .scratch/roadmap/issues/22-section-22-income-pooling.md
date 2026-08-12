@@ -4,7 +4,7 @@
 
 **Blocked by:** 21
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Income is valued at market value on receipt and simultaneously mints a lot at that basis
 - [x] All qualifying income pools under a single annual limit read from configuration

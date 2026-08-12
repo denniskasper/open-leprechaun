@@ -4,7 +4,7 @@
 
 **Blocked by:** 28, 19
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A coin-margined close emits a Section 20 Event for the result, converted at the rate of the close
 - [x] The same close mints a Tax Lot for the settlement asset at its EUR value at close time

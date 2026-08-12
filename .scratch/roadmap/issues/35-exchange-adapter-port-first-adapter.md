@@ -4,7 +4,7 @@
 
 **Blocked by:** 34, 31
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] An adapter translates a venue's API into canonical normalized records — trade, transfer, fill, funding, cash movement, position
 - [x] Adapters never touch the database, never convert to EUR and never compute tax

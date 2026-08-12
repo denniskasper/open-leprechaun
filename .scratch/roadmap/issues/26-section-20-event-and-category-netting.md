@@ -8,7 +8,7 @@ The report gains a section showing each category's balance for the year. The all
 
 **Blocked by:** 09, 23
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A Section 20 Event carries: date, category (`aktien` | `sonstige` | `termingeschaefte`), gross amount, partial-exemption rate, German tax withheld at source split into its components, foreign withholding with source country, and a reference to the producing record
 - [x] The three categories are tracked separately at every stage; a loss in one never offsets a gain in another

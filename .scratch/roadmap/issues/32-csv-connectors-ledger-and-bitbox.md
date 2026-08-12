@@ -4,7 +4,7 @@
 
 **Blocked by:** 31
 
-**Status:** implemented
+**Status:** done
 
 - [x] A connector port with a fake, plus a registry so adding one touches no service, router or screen
 - [x] Two hardware-wallet connectors ship and work end to end through preview and commit

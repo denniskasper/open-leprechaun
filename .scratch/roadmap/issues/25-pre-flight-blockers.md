@@ -4,7 +4,7 @@
 
 **Blocked by:** 23
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Blockers include unmatched transfers, unpriced Instruments with activity in the year, lots with unresolved shortfalls, unacknowledged Instruments with activity, and missing statutory configuration for the year
 - [x] Later tickets can register further blockers without changing the finalisation flow

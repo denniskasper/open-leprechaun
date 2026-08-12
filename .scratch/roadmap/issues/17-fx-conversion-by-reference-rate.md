@@ -4,7 +4,7 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] The euro reference rate for the relevant date is the canonical source, behind a port with a fake
 - [x] Conversion uses the rate of the event date, never of report time

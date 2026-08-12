@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Migrations are linear with no branching heads; one command is the only upgrade path
 - [x] Every migration is tested up and down against a seeded database in CI

@@ -4,7 +4,7 @@
 
 **Blocked by:** 31
 
-**Status:** implemented
+**Status:** done
 
 - [x] The mapping UI shows a live preview of the first rows as they would be interpreted
 - [x] Required fields are enforced before the import can proceed

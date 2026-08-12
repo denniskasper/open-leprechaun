@@ -4,7 +4,7 @@
 
 **Blocked by:** 13
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Candidates are proposed by Instrument, quantity within a fee tolerance, and time window
 - [x] The Admin confirms or rejects each proposal; nothing links itself

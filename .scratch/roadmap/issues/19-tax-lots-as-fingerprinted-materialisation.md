@@ -4,7 +4,7 @@
 
 **Blocked by:** 13, 14, 15
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Every acquisition mints a lot; the ledger is the only source of truth
 - [x] Lots are derived in full from the beginning of time, never incrementally patched

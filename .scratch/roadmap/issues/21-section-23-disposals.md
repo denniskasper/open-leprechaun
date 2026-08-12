@@ -4,7 +4,7 @@
 
 **Blocked by:** 19, 09
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Disposals consume lots FIFO within the same Account and Instrument
 - [x] Each consumption records quantity, basis, proceeds, holding period in days and a long-term flag

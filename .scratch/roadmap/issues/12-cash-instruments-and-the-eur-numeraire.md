@@ -4,7 +4,7 @@
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Cash is an Instrument family, held per Account like any other holding
 - [x] EUR is marked as the numéraire, and its movement creates no taxable event

@@ -8,7 +8,7 @@ framed by hairline left/right borders — no texture at all.
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Remove the grid, glow and grain from the app background in both themes
 - [x] Content reads as a clean sheet on a slightly darker canvas, edged by hairline borders

@@ -4,7 +4,7 @@
 
 **Blocked by:** 10, 03
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A Connection holds one key and secret, plus a passphrase where a venue requires it, and a free-text label
 - [x] Several Connections to the same Platform are allowed

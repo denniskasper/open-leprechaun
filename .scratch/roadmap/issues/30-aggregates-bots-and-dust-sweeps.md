@@ -4,7 +4,7 @@
 
 **Blocked by:** 28
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A bot's activity is summarised as an aggregate with its constituent fills retrievable
 - [x] The capital-income figure from an aggregate equals the sum over its constituents

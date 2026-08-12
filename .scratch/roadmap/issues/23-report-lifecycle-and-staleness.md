@@ -4,7 +4,7 @@
 
 **Blocked by:** 21, 22
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Generating a report stores the computed figures and a fingerprint of the inputs
 - [x] A report moves draft → final; a final report is immutable

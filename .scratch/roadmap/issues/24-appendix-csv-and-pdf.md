@@ -4,7 +4,7 @@
 
 **Blocked by:** 23
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Each disposal line shows acquisition and disposal dates, quantity, basis, proceeds, fees, holding period, exempt or taxable, category, and the lots consumed
 - [x] Lines resting on an estimated basis are marked, and the total exposed to estimation is stated

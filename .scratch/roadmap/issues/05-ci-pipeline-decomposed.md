@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] An orchestrating workflow calls reusable workflows for API checks, web checks and end-to-end tests
 - [x] Toolchain setup for each side exists once as a composite action, not repeated per job

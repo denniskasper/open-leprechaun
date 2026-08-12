@@ -4,7 +4,7 @@
 
 **Blocked by:** 13
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Preview lists rows to be created, rows skipped with reasons, Instruments to be auto-created, and warnings — before any write
 - [x] Nothing is written during preview; confirmation is a separate call

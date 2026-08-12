@@ -4,7 +4,7 @@
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A single variable selects the environment; nothing else differs between them
 - [x] Development skips authentication entirely — no setup, no login

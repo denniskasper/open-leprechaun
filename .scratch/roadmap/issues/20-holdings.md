@@ -4,7 +4,7 @@
 
 **Blocked by:** 19, 17, 18
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Every position shows Instrument, family, quantity, average cost, current value, unrealised result and location
 - [x] Cost basis is read from Tax Lots, never summed from inflows

@@ -4,7 +4,7 @@
 
 **Blocked by:** 27
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Fills are stored as received and deduped on source and external identifier
 - [x] Positions are derived from the ordered fill sequence per symbol and rebuilt idempotently per source

@@ -4,7 +4,7 @@
 
 **Blocked by:** 35
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Spot trades, transfers, futures fills, funding and cash movements are imported as normalized records
 - [x] The adapter proves the port needs no change to accommodate a second venue
