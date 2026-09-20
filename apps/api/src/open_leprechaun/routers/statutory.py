@@ -167,11 +167,12 @@ def choose_election(request: ElectionRequest, admin: AdminDep, engine: EngineDep
 # ISO 3166-1 alpha-2, the shape the schema holds a source country to.
 Country = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]
 
-# A treaty limit is a rate: a fraction of one, never a percentage.
+# A treaty limit is a rate: a fraction of one, never a percentage — the upper
+# bound is judged in the route, so the Admin reads a sentence, not a schema.
 TreatyRate = Annotated[
     Decimal,
     BeforeValidator(decimal_text_only),
-    Field(ge=0, le=1, allow_inf_nan=False),
+    Field(ge=0, allow_inf_nan=False),
     PlainSerializer(lambda value: format(value, "f"), return_type=str),
 ]
 
@@ -212,6 +213,10 @@ def list_treaty_limits(admin: AdminDep, engine: EngineDep) -> list[TreatyLimitRe
 def put_treaty_limit(
     country: Country, request: TreatyLimitRequest, admin: AdminDep, engine: EngineDep
 ) -> None:
+    if request.rate > 1:
+        raise HTTPException(
+            status_code=422, detail="A rate is a fraction of one — 15 % is entered as 0.15."
+        )
     capital_income.upsert_treaty_limit(
         engine, country=country, rate=request.rate, source=request.source
     )

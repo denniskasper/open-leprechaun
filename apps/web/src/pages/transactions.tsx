@@ -1000,8 +1000,11 @@ function TransactionForm({
               value={withheld.foreignWithholding}
               onChange={(foreignWithholding) => declare({ foreignWithholding })}
             />
-            <div className="w-24 space-y-2">
-              <label htmlFor={`${id}-country`} className="microlabel block text-muted-foreground">
+            <div className="space-y-2">
+              <label
+                htmlFor={`${id}-country`}
+                className="microlabel block whitespace-nowrap text-muted-foreground"
+              >
                 Source country
               </label>
               <Input
@@ -1011,7 +1014,7 @@ function TransactionForm({
                 maxLength={2}
                 placeholder="US"
                 title="The two-letter code of the country that withheld — creditability depends on it."
-                className="font-mono uppercase"
+                className="w-24 font-mono uppercase"
               />
             </div>
           </div>
@@ -1095,8 +1098,11 @@ function WithheldAmount({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="w-44 space-y-2">
-      <label htmlFor={id} className="microlabel block text-muted-foreground">
+    // No fixed width on the column: the letter-spaced caption of a long German
+    // term is wider than its input, and must push its neighbour rather than
+    // run into it.
+    <div className="space-y-2">
+      <label htmlFor={id} className="microlabel block whitespace-nowrap text-muted-foreground">
         {label}
       </label>
       <Input
@@ -1106,7 +1112,7 @@ function WithheldAmount({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="0.00"
-        className="font-mono tabular-nums"
+        className="w-44 font-mono tabular-nums"
       />
     </div>
   );

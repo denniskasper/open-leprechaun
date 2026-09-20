@@ -78,5 +78,8 @@ Decisions worth recording:
   the web form; the ledger row states withheld amounts beside their currency
   (docs/agents/design.md); the treaty-limit panel uses `ErrorState`; one query, not two, reads
   the declarations; `Receipts.received` became `counted`.
-- The web form and the treaty-limit panel were verified by typecheck and unit tests only — no
-  browser was available in the implementing environment, so neither was looked at rendered.
+- Rendered check, once a browser was available: the form and the treaty-limit panel were driven
+  end to end in Chromium, in both themes — record, revise, remove; enter, refuse, remove. Two
+  defects surfaced and were fixed: the letter-spaced captions of the German tax fields ran into
+  each other in fixed-width columns, and a treaty rate entered as a percentage was refused with a
+  generic sentence instead of the statutory store's own ("a rate is a fraction of one").

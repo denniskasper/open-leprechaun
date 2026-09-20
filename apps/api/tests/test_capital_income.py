@@ -603,6 +603,7 @@ def test_treaty_limits_are_entered_with_a_cited_source_listed_and_removed(db, cl
 
     assert entered.status_code == 204
     assert as_percentage.status_code == 422
+    assert "fraction of one" in as_percentage.json()["detail"]
     assert malformed.status_code == 422
     assert client.get("/api/treaty-limits").json() == [
         {"country": "US", "rate": "0.15", "source": "Art. 10 Abs. 2 DBA-USA"}
