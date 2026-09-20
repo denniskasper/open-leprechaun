@@ -49,6 +49,7 @@ __all__ = [
     "SecurityDisposal",
     "UnclassifiedSecurityError",
     "disposals_through",
+    "partial_exemption_rate",
 ]
 
 SHARE_CATEGORY = "aktien"
@@ -176,7 +177,7 @@ def disposals_through(
                 costs_eur=costs,
                 rests_on_estimate=any(piece.basis_source == lots.ESTIMATE for piece in consumed),
                 category=category,
-                exemption_rate=_exemption_rate(engine, instrument, year=tax_year),
+                exemption_rate=partial_exemption_rate(engine, instrument, year=tax_year),
                 gain_eur=None
                 if awaiting
                 else sum((piece.gain_eur for piece in consumptions), Decimal(0)),
@@ -200,7 +201,7 @@ def _category(instrument: Row) -> str:
     return _CATEGORY_OF_TYPE[instrument.type]
 
 
-def _exemption_rate(engine: Engine, instrument: Row, *, year: int) -> Decimal:
+def partial_exemption_rate(engine: Engine, instrument: Row, *, year: int) -> Decimal:
     """The Teilfreistellung the disposal's year grants this instrument: the
     fund category's configured rate (§20 InvStG) — a year whose rate is unset
     refuses by name — and zero, structurally, for everything not a fund."""

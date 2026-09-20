@@ -118,3 +118,44 @@ export async function chooseElection(election: Election): Promise<void> {
     throw await refusal(response, "The election could not be changed.");
   }
 }
+
+/** Relative, because the dev server proxies /api to the API on the same origin. */
+export const TREATY_LIMITS_URL = "/api/treaty-limits";
+
+/**
+ * The share of a gross dividend a double-taxation treaty lets the source
+ * country keep: foreign withholding tax is creditable up to it, reclaimable
+ * from that country beyond it. A rate — a fraction of one, a decimal string.
+ */
+export const treatyLimitSchema = z.object({
+  country: z.string().regex(/^[A-Z]{2}$/),
+  rate: z.string().regex(DECIMAL_PATTERN),
+  source: z.string(),
+});
+
+export type TreatyLimit = z.infer<typeof treatyLimitSchema>;
+
+export async function fetchTreatyLimits(): Promise<TreatyLimit[]> {
+  const response = await fetch(TREATY_LIMITS_URL);
+  if (!response.ok) {
+    throw new Error(`The API answered ${response.status} instead of the treaty limits.`);
+  }
+  return z.array(treatyLimitSchema).parse(await response.json());
+}
+
+export async function enterTreatyLimit(limit: TreatyLimit): Promise<void> {
+  const response = await putJson(`${TREATY_LIMITS_URL}/${limit.country}`, {
+    rate: limit.rate,
+    source: limit.source,
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The treaty limit could not be stored.");
+  }
+}
+
+export async function removeTreatyLimit(country: string): Promise<void> {
+  const response = await fetch(`${TREATY_LIMITS_URL}/${country}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw await refusal(response, "The treaty limit could not be removed.");
+  }
+}

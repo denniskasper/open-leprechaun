@@ -28,25 +28,25 @@ paragraph and failing alone.
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import Engine
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
+from open_leprechaun.repositories import capital_income as capital_income_repository
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import statutory as statutory_repository
-from open_leprechaun.services import futures, fx, lots, security_disposals
+from open_leprechaun.services import capital_income, futures, fx, lots, security_disposals
+from open_leprechaun.services.capital_income import ExcludedEvent, IncomeReceipt
 from open_leprechaun.services.rounding import cents
-from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.statutory import (
     church_tax_rate_key,
     optional_values,
     required_value,
     saver_allowance_key,
 )
-from open_leprechaun.services.tax_treatment import SECTION_20, TAX_CONSEQUENCES
 
 __all__ = [
     "CATEGORIES",
@@ -60,15 +60,19 @@ __all__ = [
     "CategoryBalance",
     "CategoryEntry",
     "ExcludedEvent",
+    "ForeignCredit",
     "ForeignWithholding",
     "GermanWithholding",
     "Section20Assessment",
     "Section20Event",
     "Section20Year",
     "TaxDue",
+    "TreatyLimitUnsetError",
+    "WithholdingStatement",
     "assess",
     "carry",
     "net",
+    "withholding_statement",
     "year_report",
 ]
 
@@ -391,20 +395,81 @@ def assess(
     )
 
 
-@dataclass(frozen=True)
-class ExcludedEvent:
-    """One §20-typed receipt the year refused, named so the balances beside
-    it can never silently hide it: the position's stance keeps the income
-    out exactly as it keeps the lot unminted (services/stances). An
-    unacknowledged one waits in the inbox on the Admin's decision; an
-    ignored or dangerous one never enters."""
+class TreatyLimitUnsetError(Exception):
+    """A source country withheld Quellensteuer and no treaty limit is entered
+    for it — creditability depends on which country withheld, so the engine
+    refuses rather than crediting everything or nothing."""
 
-    leg_id: int
-    type: str
-    account_id: int
-    instrument_id: int
-    received_at: datetime
-    stance: str
+
+@dataclass(frozen=True)
+class ForeignCredit:
+    """One source country's Quellensteuer for the year: what it withheld,
+    what of that is creditable against German tax — each dividend limited on
+    its own gross by the treaty rate — and the excess, reclaimable from that
+    country. The report states it; the application never pursues it."""
+
+    country: str
+    treaty_rate: Decimal
+    withheld_eur: Decimal
+    creditable_eur: Decimal
+    reclaimable_eur: Decimal
+
+
+@dataclass(frozen=True)
+class WithholdingStatement:
+    """What the year's events had taken out of them before they arrived: the
+    German tax at source summed per component, and each source country's
+    Quellensteuer split into creditable and reclaimable."""
+
+    german: GermanWithholding
+    foreign: tuple[ForeignCredit, ...]
+
+
+def withholding_statement(
+    events: Iterable[Section20Event], *, year: int, treaty_limits: Mapping[str, Decimal]
+) -> WithholdingStatement:
+    """State the year's withholding, pure: the German components summed, and
+    each event's Quellensteuer judged against its own treaty ceiling — the
+    treaty rate on that event's gross (§32d Abs. 5 EStG; the treaty's
+    dividend article) — so one dividend's unused room never shelters
+    another's excess. What exceeds the ceiling is the source country's to
+    refund and is reported as reclaimable there, never credited here. A
+    country with no limit entered refuses by name."""
+    kapitalertragsteuer = solidarity_surcharge = church_tax = Decimal(0)
+    per_country: dict[str, list[Decimal]] = {}
+    for event in events:
+        if event.date.year != year:
+            continue
+        kapitalertragsteuer += event.german_withholding.kapitalertragsteuer_eur
+        solidarity_surcharge += event.german_withholding.solidarity_surcharge_eur
+        church_tax += event.german_withholding.church_tax_eur
+        foreign = event.foreign_withholding
+        if foreign is None:
+            continue
+        if foreign.country not in treaty_limits:
+            raise TreatyLimitUnsetError(
+                f"No treaty limit is entered for {foreign.country} — enter the rate its"
+                " double-taxation treaty allows before its Quellensteuer can be judged"
+                " creditable."
+            )
+        ceiling = cents(event.gross_eur * treaty_limits[foreign.country])
+        creditable = min(foreign.amount_eur, ceiling)
+        sums = per_country.setdefault(foreign.country, [Decimal(0), Decimal(0)])
+        sums[0] += foreign.amount_eur
+        sums[1] += creditable
+    return WithholdingStatement(
+        german=GermanWithholding(kapitalertragsteuer, solidarity_surcharge, church_tax),
+        foreign=tuple(
+            ForeignCredit(
+                country=country,
+                treaty_rate=treaty_limits[country],
+                withheld_eur=withheld,
+                creditable_eur=creditable,
+                reclaimable_eur=withheld - creditable,
+            )
+            for country, (withheld, creditable) in sorted(per_country.items())
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -423,15 +488,19 @@ class Section20Year:
     assessment: Section20Assessment | None
     excluded: tuple[ExcludedEvent, ...]
     awaiting_valuation: tuple[str, ...]
+    # The year's dividends, distributions and interest as recorded (ticket
+    # 47): gross, both withholdings and net, each saying whether its Depot
+    # settled it at source.
+    receipts: tuple[IncomeReceipt, ...] = ()
+    # What was taken at source, and the Quellensteuer's creditability — None
+    # while the year awaits a valuation, like every figure beside it.
+    withholding: WithholdingStatement | None = None
+    # The receipts' gross split by the Depot's withholding behaviour: what a
+    # withholding broker already settled (§43 Abs. 5 EStG), and what must
+    # still be declared (§32d Abs. 3 EStG).
+    settled_at_source_eur: Decimal | None = None
+    to_declare_eur: Decimal | None = None
 
-
-_CATEGORY_OF = {"dividend": "sonstige", "distribution": "sonstige", "interest": "sonstige"}
-"""Which pot each §20-typed transaction feeds — all three in the general
-pot, because the aktien pot holds share *sales* alone (§20 Abs. 6 Satz 4
-EStG) and Termingeschäfte their own. Futures positions (ticket 28) and
-securities disposals (ticket 46) emit below, each disposal wearing the
-category its producer stated. The emitters know what they are, never how
-the pots treat them (ADR-0013)."""
 
 FUTURES_CATEGORY = "termingeschaefte"
 """Where every futures close lands (§20 Abs. 2 Satz 1 Nr. 3 EStG): its own
@@ -479,67 +548,45 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         for category, key in OPENING_CARRYFORWARD_KEYS.items()
     }
     with lots.snapshot(engine) as connection:
-        transaction_rows, leg_rows = lots_repository.ledger(connection)
-        stance_rows = lots_repository.stance_rows(connection)
         instrument_rows = lots_repository.instrument_rows(connection)
         futures_rows = futures_repository.closed_position_rows(connection)
+        treaty_limits = {
+            row.country: row.rate for row in capital_income_repository.treaty_limit_rows(connection)
+        }
     instruments = {row.id: row for row in instrument_rows}
-    decisions_of = lots.grouped(stance_rows, "instrument_id")
-    legs_of = lots.grouped(leg_rows, "transaction_id")
 
+    # Dividends, distributions and interest (ticket 47): each receipt is one
+    # event stating its gross — the net that arrived plus everything withheld
+    # — with the German tax at source split into its components and any
+    # Quellensteuer beside its source country. The producer states the pot
+    # and, where a fund paid, its Teilfreistellung rate; a distribution that
+    # cannot name its exempt share refuses there, by name.
+    income = capital_income.receipts_through(engine, source, through_year=year)
     events = []
-    excluded = []
     awaiting = []
-    for transaction in transaction_rows:
-        if TAX_CONSEQUENCES[transaction.type].income != SECTION_20:
+    for receipt in income.counted:
+        if receipt.gross_eur is None:
+            awaiting.append(f"leg:{receipt.leg_id}")
             continue
-        event_year = fx.event_date(transaction.occurred_at).year
-        if event_year > year:
-            continue
-        for leg in legs_of.get(transaction.id, []):
-            if leg.role != "in":
-                continue
-            stance = income_excluding_stance(
-                instrument=instruments[leg.instrument_id],
-                decisions=decisions_of.get(leg.instrument_id, ()),
-                account_id=leg.account_id,
-            )
-            if stance is not None:
-                # A prior year's exclusion is that year's own report's to
-                # name; this year states only what it kept out itself.
-                if event_year == year:
-                    excluded.append(
-                        ExcludedEvent(
-                            leg_id=leg.id,
-                            type=transaction.type,
-                            account_id=leg.account_id,
-                            instrument_id=leg.instrument_id,
-                            received_at=transaction.occurred_at,
-                            stance=stance,
-                        )
-                    )
-                continue
-            gross = fx.value_eur(
-                engine,
-                source,
-                instrument=instruments[leg.instrument_id],
-                quantity=leg.quantity,
-                at=transaction.occurred_at,
-            )
-            if gross is None:
-                awaiting.append(f"leg:{leg.id}")
-                continue
-            events.append(
-                Section20Event(
-                    date=fx.event_date(transaction.occurred_at),
-                    category=_CATEGORY_OF[transaction.type],
-                    gross_eur=gross,
-                    exemption_rate=Decimal(0),
-                    german_withholding=NO_GERMAN_WITHHOLDING,
-                    foreign_withholding=None,
-                    source=f"leg:{leg.id}",
+        events.append(
+            Section20Event(
+                date=fx.event_date(receipt.received_at),
+                category=receipt.category,
+                gross_eur=receipt.gross_eur,
+                exemption_rate=receipt.exemption_rate,
+                german_withholding=GermanWithholding(
+                    kapitalertragsteuer_eur=receipt.kapitalertragsteuer_eur,
+                    solidarity_surcharge_eur=receipt.solidarity_surcharge_eur,
+                    church_tax_eur=receipt.church_tax_eur,
+                ),
+                foreign_withholding=ForeignWithholding(
+                    amount_eur=receipt.foreign_withholding_eur, country=receipt.source_country
                 )
+                if receipt.source_country is not None
+                else None,
+                source=f"leg:{receipt.leg_id}",
             )
+        )
 
     # Futures (ticket 28, ADR-0009): a closed position emits one event for
     # its net figure — realised result less trading fees plus attributed
@@ -604,13 +651,15 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             )
         )
 
+    receipts = tuple(receipt for receipt in income.counted if receipt.tax_year == year)
     if awaiting:
         return Section20Year(
             year=year,
             balances=None,
             assessment=None,
-            excluded=tuple(excluded),
+            excluded=income.excluded,
             awaiting_valuation=tuple(awaiting),
+            receipts=receipts,
         )
 
     first = min(
@@ -655,6 +704,23 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             solidarity_surcharge_rate=surcharge_rate,
             church_tax_rate=church_rate,
         ),
-        excluded=tuple(excluded),
+        excluded=income.excluded,
         awaiting_valuation=(),
+        receipts=receipts,
+        withholding=withholding_statement(events, year=year, treaty_limits=treaty_limits),
+        settled_at_source_eur=_gross(receipts, settled_at_source=True),
+        to_declare_eur=_gross(receipts, settled_at_source=False),
+    )
+
+
+def _gross(receipts: Iterable[IncomeReceipt], *, settled_at_source: bool) -> Decimal:
+    """The receipts' gross on one side of the withholding line. Every gross
+    is stated by the time this is asked — an awaiting year returned above."""
+    return sum(
+        (
+            receipt.gross_eur
+            for receipt in receipts
+            if receipt.settled_at_source is settled_at_source and receipt.gross_eur is not None
+        ),
+        Decimal(0),
     )

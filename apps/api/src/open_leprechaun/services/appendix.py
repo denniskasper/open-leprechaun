@@ -209,6 +209,29 @@ def _summary(report: reports.ReportDetail) -> list[tuple[str, str]]:
                 ("section20.tax_total_eur", _amount(assessment["tax"]["total_eur"])),
             ]
         )
+    # What was taken at source (ticket 47): settled apart from still to
+    # declare, German tax by component, and each source country's
+    # Quellensteuer split into creditable and reclaimable there.
+    entries.extend(
+        [
+            ("section20.settled_at_source_eur", _amount(section20["settled_at_source_eur"])),
+            ("section20.to_declare_eur", _amount(section20["to_declare_eur"])),
+        ]
+    )
+    withholding = section20["withholding"]
+    if withholding is not None:
+        entries.extend(
+            (f"section20.withheld.{component}", _amount(withheld))
+            for component, withheld in withholding["german"].items()
+        )
+        for credit in withholding["foreign"]:
+            prefix = f"section20.quellensteuer.{credit['country']}"
+            entries.extend(
+                [
+                    (f"{prefix}.creditable_eur", _amount(credit["creditable_eur"])),
+                    (f"{prefix}.reclaimable_eur", _amount(credit["reclaimable_eur"])),
+                ]
+            )
     return entries
 
 

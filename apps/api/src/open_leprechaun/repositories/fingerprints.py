@@ -147,6 +147,35 @@ INPUT_CLASSES: Mapping[str, str | None] = {
         )
         + " AS line FROM futures_position WHERE origin = 'manual'"
     ),
+    # What income Transactions declare beyond their legs (ticket 47): the
+    # payer selects a Teilfreistellung and every withheld amount moves a
+    # gross, so each is a figure's input exactly as a leg's quantity is.
+    "capital_income": (
+        "SELECT "
+        + _line(
+            "transaction_id",
+            "paying_instrument_id",
+            "foreign_withholding",
+            "source_country",
+            "kapitalertragsteuer",
+            "solidarity_surcharge",
+            "church_tax",
+        )
+        + " AS line FROM capital_income"
+    ),
+    # The per-country ceiling a Quellensteuer's creditability is judged
+    # against; the cited source is prose, like a note.
+    "treaty_limits": f"SELECT {_line('country', 'rate')} AS line FROM treaty_limit",
+    # Each Depot's effective withholding behaviour (ticket 43) — it decides
+    # whether income reads as settled at source or still to declare. Only
+    # Accounts with a behaviour at all, so a new exchange Account drifts
+    # nothing.
+    "withholding_behaviour": (
+        "SELECT "
+        + _line("account.id", "COALESCE(account.withholding_override, platform.withholding)")
+        + " AS line FROM account JOIN platform ON platform.id = account.platform_id"
+        " WHERE COALESCE(account.withholding_override, platform.withholding) IS NOT NULL"
+    ),
     # Deliberately empty although the reference-rate store (17) exists: that
     # store is append-only and immutable (ADR-0017) — a fetch only ever adds
     # coverage, so no figure already stated can change under it. Prices (18)

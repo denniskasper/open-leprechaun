@@ -6,7 +6,7 @@ from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer, StringC
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
-from open_leprechaun.repositories import statutory
+from open_leprechaun.repositories import capital_income, statutory
 from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services.statutory import (
     KEYS,
@@ -162,3 +162,66 @@ def choose_election(request: ElectionRequest, admin: AdminDep, engine: EngineDep
     statutory.set_election(
         engine, filing_status=request.filing_status, church_tax=request.church_tax
     )
+
+
+# ISO 3166-1 alpha-2, the shape the schema holds a source country to.
+Country = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]
+
+# A treaty limit is a rate: a fraction of one, never a percentage.
+TreatyRate = Annotated[
+    Decimal,
+    BeforeValidator(decimal_text_only),
+    Field(ge=0, le=1, allow_inf_nan=False),
+    PlainSerializer(lambda value: format(value, "f"), return_type=str),
+]
+
+
+class TreatyLimitRequest(BaseModel):
+    rate: TreatyRate
+    # The treaty article the rate was taken from — a limit is never entered
+    # uncited.
+    source: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class TreatyLimitResponse(BaseModel):
+    country: str
+    rate: TreatyRate
+    source: str
+
+
+@router.get(
+    "/treaty-limits",
+    summary="The treaty limit on Quellensteuer per source country",
+    response_model=list[TreatyLimitResponse],
+)
+def list_treaty_limits(admin: AdminDep, engine: EngineDep) -> list[TreatyLimitResponse]:
+    """The share of a gross dividend each double-taxation treaty lets the
+    source country keep (ticket 47): Quellensteuer is creditable up to it,
+    and reported as reclaimable from that country beyond it."""
+    return [
+        TreatyLimitResponse(country=row.country, rate=row.rate, source=row.source)
+        for row in capital_income.list_treaty_limits(engine)
+    ]
+
+
+@router.put(
+    "/treaty-limits/{country}",
+    summary="Enter or correct one source country's treaty limit",
+    status_code=204,
+)
+def put_treaty_limit(
+    country: Country, request: TreatyLimitRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    capital_income.upsert_treaty_limit(
+        engine, country=country, rate=request.rate, source=request.source
+    )
+
+
+@router.delete(
+    "/treaty-limits/{country}",
+    summary="Remove one source country's treaty limit",
+    status_code=204,
+)
+def delete_treaty_limit(country: Country, admin: AdminDep, engine: EngineDep) -> None:
+    if not capital_income.delete_treaty_limit(engine, country):
+        raise HTTPException(status_code=404, detail="No treaty limit is entered for that country.")

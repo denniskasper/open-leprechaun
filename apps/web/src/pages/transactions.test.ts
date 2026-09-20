@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { reconstructedSchema, transactionTypeSchema, type LegRole } from "@/api/transactions";
 import {
+  capitalIncomeOf,
+  EMPTY_WITHHELD,
   isPositiveDecimal,
   legTemplate,
   occurredAtWords,
@@ -8,6 +10,8 @@ import {
   signOf,
   TYPE_VOCABULARY,
   withLegRemoved,
+  withheldDefect,
+  withheldWords,
   withToggled,
   type DraftLeg,
 } from "./transactions";
@@ -138,5 +142,94 @@ describe("withToggled", () => {
     expect(back.size).toBe(0);
     expect([...one]).toEqual([7]);
     expect(none.size).toBe(0);
+  });
+});
+
+describe("capitalIncomeOf", () => {
+  it("declares nothing on a type that is not income from capital", () => {
+    expect(capitalIncomeOf("trade", { ...EMPTY_WITHHELD, kapitalertragsteuer: "5" })).toBeNull();
+  });
+
+  it("declares nothing where nothing was entered, so a plain receipt stays plain", () => {
+    expect(capitalIncomeOf("dividend", EMPTY_WITHHELD)).toBeNull();
+  });
+
+  it("states blank amounts as zero and keeps the entered strings exact", () => {
+    expect(
+      capitalIncomeOf("dividend", {
+        ...EMPTY_WITHHELD,
+        payerId: "7",
+        foreignWithholding: "15.30",
+        sourceCountry: "us",
+      }),
+    ).toEqual({
+      paying_instrument_id: 7,
+      foreign_withholding: "15.30",
+      source_country: "US",
+      kapitalertragsteuer: "0",
+      solidarity_surcharge: "0",
+      church_tax: "0",
+    });
+  });
+});
+
+describe("withheldDefect", () => {
+  it("accepts an empty declaration and a complete one", () => {
+    expect(withheldDefect("dividend", EMPTY_WITHHELD)).toBeNull();
+    expect(
+      withheldDefect("dividend", {
+        ...EMPTY_WITHHELD,
+        foreignWithholding: "15",
+        sourceCountry: "US",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps a foreign withholding tax and its source country together", () => {
+    expect(withheldDefect("dividend", { ...EMPTY_WITHHELD, foreignWithholding: "15" })).toMatch(
+      /source country/,
+    );
+    expect(withheldDefect("dividend", { ...EMPTY_WITHHELD, sourceCountry: "US" })).toMatch(
+      /source country/,
+    );
+  });
+
+  it("asks a distribution for the fund that paid it", () => {
+    expect(withheldDefect("distribution", EMPTY_WITHHELD)).toMatch(/fund/);
+    expect(withheldDefect("distribution", { ...EMPTY_WITHHELD, payerId: "7" })).toBeNull();
+  });
+
+  it("refuses an amount that is not a fixed-point decimal", () => {
+    expect(withheldDefect("interest", { ...EMPTY_WITHHELD, churchTax: "1,5" })).toMatch(/decimal/);
+  });
+
+  it("judges nothing on a type that declares nothing", () => {
+    expect(withheldDefect("trade", { ...EMPTY_WITHHELD, churchTax: "1,5" })).toBeNull();
+  });
+});
+
+describe("withheldWords", () => {
+  const nothing = {
+    paying_instrument_id: null,
+    foreign_withholding: "0",
+    source_country: null,
+    kapitalertragsteuer: "0",
+    solidarity_surcharge: "0",
+    church_tax: "0",
+  };
+
+  it("names each component taken, every amount beside its currency", () => {
+    const words = withheldWords(
+      { ...nothing, foreign_withholding: "15", source_country: "US", kapitalertragsteuer: "10" },
+      "USD",
+    );
+
+    expect(words).toContain("Quellensteuer US 15 USD");
+    expect(words).toContain("KESt 10 USD");
+    expect(words).not.toContain("Soli");
+  });
+
+  it("says so where a declaration took nothing", () => {
+    expect(withheldWords(nothing, "EUR")).toBe("nothing withheld");
   });
 });

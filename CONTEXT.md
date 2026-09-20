@@ -509,6 +509,21 @@ anything above is reclaimable from the source country, which this application re
 pursue. Recorded per dividend with its source country, because creditability depends on which
 country withheld.
 
+The ledger's in-leg of a dividend is the **net** that arrived; what was taken out before it did —
+Quellensteuer, and the components of **Kapitalertragsteuer at source** — is declared on the
+Transaction beside the security that paid, each amount in the received leg's own currency. The
+**gross** is their sum, and it is the gross that becomes the **Section 20 Event**.
+
+### Treaty limit
+
+The share of a gross dividend a double-taxation treaty lets the source country keep — the ceiling
+up to which its **Quellensteuer** is creditable, judged per dividend on that dividend's own gross.
+Configuration per source country with a cited treaty article, never a constant in logic; a country
+that withheld with no limit entered refuses to compute rather than crediting everything or nothing.
+
+_Avoid_: "withholding rate" — that is what the source country actually took, which may exceed the
+limit; the difference is the reclaimable part.
+
 ### Kapitalertragsteuer at source
 
 Tax a German broker withholds and remits on the Admin's behalf. It distinguishes a withholding

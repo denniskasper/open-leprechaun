@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import text
 
 from open_leprechaun.repositories import instruments, platforms, stances, statutory, transactions
-from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg
 from open_leprechaun.services import section20
 from open_leprechaun.services.statutory import StatutoryValueUnsetError
 
@@ -686,8 +686,36 @@ def test_dividends_distributions_and_interest_all_reach_the_sonstige_pot(store):
     to the aktien pot (§20 Abs. 6 Satz 4), and futures to their own."""
     _statutes(store)
     account, eur = _account(store), _eur(store)
-    for type, quantity in (("dividend", "100"), ("distribution", "40"), ("interest", "2.50")):
+    for type, quantity in (("dividend", "100"), ("interest", "2.50")):
         _income(store, account, eur, type=type, quantity=quantity, occurred_at=RECEIVED_2031)
+    # A distribution names the fund that paid it (ticket 47) — one §20 InvStG
+    # grants no Teilfreistellung, so the 40 € enter the pot whole.
+    statutory.upsert_value(
+        store,
+        year=2031,
+        key="partial_exemption_sonstige",
+        value=Decimal(0),
+        source="§ 20 InvStG",
+    )
+    fund = instruments.create_security(
+        store,
+        symbol="BOND",
+        name="Bond ETF",
+        type="etf",
+        isin="IE00B3F81R35",
+        fund_category="sonstige",
+        fund_category_source="admin",
+        distribution_policy="distributing",
+    )
+    paid = transactions.create_transaction(
+        store,
+        type="distribution",
+        occurred_at=RECEIVED_2031,
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=eur, role="in", quantity=Decimal("40"))],
+        capital_income=CapitalIncome(paying_instrument_id=fund),
+    )
+    assert isinstance(paid, int)
 
     pots = _pots(section20.year_report(store, FakeReferenceRateSource(), year=2031))
 
@@ -741,7 +769,7 @@ def test_income_awaiting_a_crypto_price_leaves_the_year_unstated(store):
     account, btc = _account(store), _btc(store)
     _eur(store)
     _keep(store, btc, account)
-    _income(store, account, btc, type="distribution", quantity="0.1", occurred_at=RECEIVED_2031)
+    _income(store, account, btc, type="dividend", quantity="0.1", occurred_at=RECEIVED_2031)
 
     report = section20.year_report(store, FakeReferenceRateSource(), year=2031)
 
@@ -854,7 +882,7 @@ def test_a_prior_year_event_awaiting_valuation_blocks_the_chained_year(store):
     eur = _eur(store)
     _keep(store, btc, account)
     prior = datetime(2030, 3, 14, 12, 0, tzinfo=UTC)
-    _income(store, account, btc, type="distribution", quantity="0.1", occurred_at=prior)
+    _income(store, account, btc, type="dividend", quantity="0.1", occurred_at=prior)
     _income(store, account, eur, type="dividend", quantity="500", occurred_at=RECEIVED_2031)
 
     report = section20.year_report(store, FakeReferenceRateSource(), year=2031)

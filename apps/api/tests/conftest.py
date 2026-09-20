@@ -78,6 +78,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # them; a name saved by one test must not answer another's list.
         connection.execute(text("DELETE FROM column_mapping"))
         connection.execute(text("DELETE FROM transaction"))
+        # Treaty limits are configuration no ledger row points at; a limit
+        # one test entered must not judge another test's Quellensteuer.
+        connection.execute(text("DELETE FROM treaty_limit"))
         # Aggregates after their member transactions; the SET NULL release
         # makes either order work, this one just deletes nothing twice.
         connection.execute(text("DELETE FROM aggregate"))

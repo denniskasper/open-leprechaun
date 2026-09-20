@@ -28,6 +28,22 @@ class Leg:
     charged_against: int | None = None
 
 
+@dataclass(frozen=True)
+class CapitalIncome:
+    """What a dividend, distribution or interest Transaction declares beyond
+    its legs (ticket 47): the security that paid, the Quellensteuer with its
+    source country, and the German tax withheld at source split into its
+    components. Every amount is denominated in the received leg's own
+    Instrument, so the gross is the net that arrived plus everything here."""
+
+    paying_instrument_id: int | None = None
+    foreign_withholding: Decimal = Decimal(0)
+    source_country: str | None = None
+    kapitalertragsteuer: Decimal = Decimal(0)
+    solidarity_surcharge: Decimal = Decimal(0)
+    church_tax: Decimal = Decimal(0)
+
+
 class Refusal(Enum):
     """Why a write did not happen, in the caller's terms rather than SQL's."""
 
@@ -56,6 +72,7 @@ def create_transaction(
     legs: list[Leg],
     reconstructed: str | None = None,
     estimated_basis_eur: Decimal | None = None,
+    capital_income: CapitalIncome | None = None,
 ) -> int | Refusal:
     try:
         with engine.begin() as connection:
@@ -69,6 +86,7 @@ def create_transaction(
                 legs=legs,
                 reconstructed=reconstructed,
                 estimated_basis_eur=estimated_basis_eur,
+                capital_income=capital_income,
             )
     except IntegrityError as refused:
         return _which_foundation_was_missing(refused)
@@ -83,6 +101,7 @@ def insert_transaction(
     legs: list[Leg],
     reconstructed: str | None = None,
     estimated_basis_eur: Decimal | None = None,
+    capital_income: CapitalIncome | None = None,
 ) -> int:
     """The insert itself, on the caller's connection — for a caller that
     writes many events atomically, as an import commit does."""
@@ -102,6 +121,7 @@ def insert_transaction(
         },
     ).scalar_one()
     _insert_legs(connection, transaction_id, legs)
+    _insert_capital_income(connection, transaction_id, capital_income)
     return transaction_id
 
 
@@ -115,6 +135,7 @@ def replace_transaction(
     legs: list[Leg],
     reconstructed: str | None = None,
     estimated_basis_eur: Decimal | None = None,
+    capital_income: CapitalIncome | None = None,
 ) -> Refusal | None:
     """Revise an event wholesale: the header updated, the legs swapped for
     the given set in one transaction. None means it was replaced."""
@@ -147,6 +168,11 @@ def replace_transaction(
                 {"transaction_id": transaction_id},
             )
             _insert_legs(connection, transaction_id, legs)
+            connection.execute(
+                text("DELETE FROM capital_income WHERE transaction_id = :transaction_id"),
+                {"transaction_id": transaction_id},
+            )
+            _insert_capital_income(connection, transaction_id, capital_income)
             _mark_overridden(connection, [transaction_id])
             return None
     except IntegrityError as refused:
@@ -298,10 +324,39 @@ def _insert_legs(connection: Connection, transaction_id: int, legs: list[Leg]) -
             )
 
 
+_CAPITAL_INCOME_COLUMNS = (
+    "paying_instrument_id, foreign_withholding, source_country,"
+    " kapitalertragsteuer, solidarity_surcharge, church_tax"
+)
+
+
+def _insert_capital_income(
+    connection: Connection, transaction_id: int, declared: CapitalIncome | None
+) -> None:
+    if declared is None:
+        return
+    connection.execute(
+        text(
+            f"INSERT INTO capital_income (transaction_id, {_CAPITAL_INCOME_COLUMNS})"
+            " VALUES (:transaction_id, :paying_instrument_id, :foreign_withholding,"
+            " :source_country, :kapitalertragsteuer, :solidarity_surcharge, :church_tax)"
+        ),
+        {
+            "transaction_id": transaction_id,
+            "paying_instrument_id": declared.paying_instrument_id,
+            "foreign_withholding": declared.foreign_withholding,
+            "source_country": declared.source_country,
+            "kapitalertragsteuer": declared.kapitalertragsteuer,
+            "solidarity_surcharge": declared.solidarity_surcharge,
+            "church_tax": declared.church_tax,
+        },
+    )
+
+
 def _which_foundation_was_missing(refused: IntegrityError) -> Refusal:
     constraint = getattr(getattr(refused.orig, "diag", None), "constraint_name", None)
     if constraint == "transaction_leg_account_fk":
         return Refusal.no_such_account
-    if constraint == "transaction_leg_instrument_fk":
+    if constraint in ("transaction_leg_instrument_fk", "capital_income_paying_instrument_fk"):
         return Refusal.no_such_instrument
     raise refused

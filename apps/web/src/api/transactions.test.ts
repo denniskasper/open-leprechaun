@@ -14,6 +14,7 @@ const buy = {
   note: "First buy",
   reconstructed: null,
   estimated_basis_eur: null,
+  capital_income: null,
   import_batch_id: null,
   import_source: null,
   manually_overridden: false,
@@ -51,6 +52,7 @@ const drafted: NewTransaction = {
   note: null,
   reconstructed: null,
   estimated_basis_eur: null,
+  capital_income: null,
   legs: [
     { account_id: 3, instrument_id: 5, role: "fee", quantity: "4.90", charged_against: null },
   ],

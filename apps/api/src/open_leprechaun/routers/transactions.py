@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -14,11 +15,12 @@ from pydantic import (
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories import transactions
-from open_leprechaun.repositories.transactions import Leg, Refusal
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg, Refusal
 from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services.transactions import (
     TransactionOverview,
     declaration_defect,
+    income_defect,
     overview,
     retype_all,
     structural_defect,
@@ -71,6 +73,17 @@ EstimatedBasis = Annotated[
     PlainSerializer(lambda basis: format(basis, "f"), return_type=str),
 ]
 
+# What was withheld may honestly be nothing, never negative.
+Withheld = Annotated[
+    Decimal,
+    BeforeValidator(decimal_text_only),
+    Field(ge=0, allow_inf_nan=False),
+    PlainSerializer(lambda withheld: format(withheld, "f"), return_type=str),
+]
+
+# ISO 3166-1 alpha-2, the shape the schema holds a source country to.
+Country = Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]
+
 # A note is prose for the Admin; trimmed so blank cannot pose as one.
 Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
 
@@ -85,6 +98,24 @@ class LegPayload(BaseModel):
     charged_against: int | None = None
 
 
+class CapitalIncomePayload(BaseModel):
+    """What a dividend, distribution or interest event declares beyond its
+    legs (ticket 47). The in-leg is the net that arrived; every amount here
+    was taken out before it did, in the received leg's own currency — the
+    gross is their sum."""
+
+    # The security that paid — what selects a fund distribution's
+    # Teilfreistellung.
+    paying_instrument_id: int | None = None
+    # Quellensteuer and the country that withheld it, recorded together.
+    foreign_withholding: Withheld = Decimal(0)
+    source_country: Country | None = None
+    # German tax withheld at source, split into its components.
+    kapitalertragsteuer: Withheld = Decimal(0)
+    solidarity_surcharge: Withheld = Decimal(0)
+    church_tax: Withheld = Decimal(0)
+
+
 class RecordTransactionRequest(BaseModel):
     type: TransactionType
     occurred_at: AwareDatetime
@@ -95,7 +126,24 @@ class RecordTransactionRequest(BaseModel):
     # declaration_defect judges the pairing.
     reconstructed: Reconstructed | None = None
     estimated_basis_eur: EstimatedBasis | None = None
+    # What was withheld at source and which security paid (ticket 47) —
+    # only on a dividend, a distribution or interest; the service's
+    # income_defect judges the pairing.
+    capital_income: CapitalIncomePayload | None = None
     legs: list[LegPayload]
+
+    def declared_income(self) -> CapitalIncome | None:
+        if self.capital_income is None:
+            return None
+        declared = self.capital_income
+        return CapitalIncome(
+            paying_instrument_id=declared.paying_instrument_id,
+            foreign_withholding=declared.foreign_withholding,
+            source_country=declared.source_country,
+            kapitalertragsteuer=declared.kapitalertragsteuer,
+            solidarity_surcharge=declared.solidarity_surcharge,
+            church_tax=declared.church_tax,
+        )
 
 
 class RegisteredResponse(BaseModel):
@@ -118,6 +166,7 @@ class TransactionResponse(BaseModel):
     note: str | None
     reconstructed: Reconstructed | None
     estimated_basis_eur: EstimatedBasis | None
+    capital_income: CapitalIncomePayload | None
     # The dust-sweep aggregate this event belongs to (ticket 30) — the
     # marker the summary presentation collapses on.
     aggregate_id: int | None
@@ -138,6 +187,9 @@ class TransactionResponse(BaseModel):
             note=transaction.note,
             reconstructed=transaction.reconstructed,
             estimated_basis_eur=transaction.estimated_basis_eur,
+            capital_income=CapitalIncomePayload(**asdict(transaction.capital_income))
+            if transaction.capital_income is not None
+            else None,
             aggregate_id=transaction.aggregate_id,
             import_batch_id=transaction.import_batch_id,
             import_source=transaction.import_source,
@@ -183,6 +235,7 @@ def record_transaction(
         legs=legs,
         reconstructed=request.reconstructed,
         estimated_basis_eur=request.estimated_basis_eur,
+        capital_income=request.declared_income(),
     )
     if isinstance(created, Refusal):
         raise _refused(created)
@@ -207,6 +260,7 @@ def revise_transaction(
         legs=legs,
         reconstructed=request.reconstructed,
         estimated_basis_eur=request.estimated_basis_eur,
+        capital_income=request.declared_income(),
     )
     if refused is not None:
         raise _refused(refused)
@@ -300,10 +354,14 @@ def _balanced(request: RecordTransactionRequest) -> list[Leg]:
         )
         for leg in request.legs
     ]
-    defect = structural_defect(request.type, legs) or declaration_defect(
-        request.type,
-        reconstructed=request.reconstructed,
-        estimated_basis_eur=request.estimated_basis_eur,
+    defect = (
+        structural_defect(request.type, legs)
+        or declaration_defect(
+            request.type,
+            reconstructed=request.reconstructed,
+            estimated_basis_eur=request.estimated_basis_eur,
+        )
+        or income_defect(request.type, legs, request.declared_income())
     )
     if defect is not None:
         raise HTTPException(status_code=422, detail=defect)

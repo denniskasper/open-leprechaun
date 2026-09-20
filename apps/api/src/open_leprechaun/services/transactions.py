@@ -15,8 +15,8 @@ from typing import Protocol
 
 from sqlalchemy import Engine
 
-from open_leprechaun.repositories import imports, transactions
-from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.repositories import capital_income, imports, transactions
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg
 
 
 class LegShape(Protocol):
@@ -131,6 +131,40 @@ def declaration_defect(
     return None
 
 
+INCOME_TYPES = frozenset({"dividend", "distribution", "interest"})
+"""The types that may declare capital income (ticket 47): what was withheld
+at source, by whom, and which security paid."""
+
+
+def income_defect(
+    type: str, legs: Sequence[LegShape], capital_income: CapitalIncome | None
+) -> str | None:
+    """The sentence naming why this capital-income declaration does not fit,
+    or None when it does. Only income from capital declares one — and a
+    distribution always does, naming the fund that paid it, because its
+    Teilfreistellung follows the payer; its amounts are denominated in the
+    received leg's Instrument, so exactly one leg may have arrived; and a
+    Quellensteuer travels with its source country, because creditability
+    depends on which country withheld."""
+    names_no_payer = capital_income is None or capital_income.paying_instrument_id is None
+    if type == "distribution" and names_no_payer:
+        return (
+            "A distribution names the fund that paid it — its partial exemption follows the fund."
+        )
+    if capital_income is None:
+        return None
+    if type not in INCOME_TYPES:
+        return "Only a dividend, a distribution or interest declares what was withheld at source."
+    if sum(leg.role == "in" for leg in legs) != 1:
+        return (
+            "What was withheld is stated in the currency of the one received leg —"
+            " a second receipt is its own Transaction."
+        )
+    if (capital_income.foreign_withholding > 0) != (capital_income.source_country is not None):
+        return "A foreign withholding tax and its source country are recorded together."
+    return None
+
+
 def _attachment_defect(legs: Sequence[LegShape]) -> str | None:
     for position, leg in enumerate(legs):
         if leg.charged_against is None:
@@ -164,6 +198,9 @@ class TransactionOverview:
     # An Opening Balance's declarations (ticket 15); None everywhere else.
     reconstructed: str | None
     estimated_basis_eur: Decimal | None
+    # What an income event declares beyond its legs (ticket 47): the payer
+    # and everything withheld at source; None where nothing was declared.
+    capital_income: CapitalIncome | None
     # The dust-sweep Aggregate this event belongs to (ticket 30) — a
     # presentation marker the summary collapses on, never a tax input.
     aggregate_id: int | None
@@ -191,6 +228,17 @@ def overview(engine: Engine) -> list[TransactionOverview]:
             )
         )
     provenance = {row.transaction_id: row for row in imports.list_provenance(engine)}
+    declared = {
+        row.transaction_id: CapitalIncome(
+            paying_instrument_id=row.paying_instrument_id,
+            foreign_withholding=row.foreign_withholding,
+            source_country=row.source_country,
+            kapitalertragsteuer=row.kapitalertragsteuer,
+            solidarity_surcharge=row.solidarity_surcharge,
+            church_tax=row.church_tax,
+        )
+        for row in _declaration_rows(engine)
+    }
     ledger = []
     for row in transactions.list_transactions(engine):
         imported = provenance.get(row.id)
@@ -202,6 +250,7 @@ def overview(engine: Engine) -> list[TransactionOverview]:
                 note=row.note,
                 reconstructed=row.reconstructed,
                 estimated_basis_eur=row.estimated_basis_eur,
+                capital_income=declared.get(row.id),
                 aggregate_id=row.aggregate_id,
                 import_batch_id=imported.batch_id if imported else None,
                 import_source=imported.source if imported else None,
@@ -210,6 +259,11 @@ def overview(engine: Engine) -> list[TransactionOverview]:
             )
         )
     return ledger
+
+
+def _declaration_rows(engine: Engine) -> list:
+    with engine.connect() as connection:
+        return capital_income.declaration_rows(connection)
 
 
 @dataclass(frozen=True)
@@ -224,10 +278,14 @@ def retype_defect(new_type: str, transaction: TransactionOverview) -> str | None
     declarations it already has. Fee attachments are judged as unattached —
     which sibling a fee was charged against does not depend on the type."""
     legs = [_RoleOnly(role=leg.role) for leg in transaction.legs]
-    return structural_defect(new_type, legs) or declaration_defect(
-        new_type,
-        reconstructed=transaction.reconstructed,
-        estimated_basis_eur=transaction.estimated_basis_eur,
+    return (
+        structural_defect(new_type, legs)
+        or declaration_defect(
+            new_type,
+            reconstructed=transaction.reconstructed,
+            estimated_basis_eur=transaction.estimated_basis_eur,
+        )
+        or income_defect(new_type, legs, transaction.capital_income)
     )
 
 
@@ -252,12 +310,15 @@ def retype_all(
 
 
 __all__ = [
+    "INCOME_TYPES",
     "RECONSTRUCTED",
     "TRANSACTION_TYPES",
+    "CapitalIncome",
     "Leg",
     "LegRules",
     "LegShape",
     "declaration_defect",
+    "income_defect",
     "overview",
     "retype_all",
     "retype_defect",

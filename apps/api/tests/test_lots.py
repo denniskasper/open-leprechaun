@@ -686,6 +686,9 @@ def test_a_materialisation_records_a_fingerprint_per_input_class(db):
         "futures_fills",
         "funding_payments",
         "manual_futures_positions",
+        "capital_income",
+        "treaty_limits",
+        "withholding_behaviour",
         "rates",
         "corporate_actions",
     }

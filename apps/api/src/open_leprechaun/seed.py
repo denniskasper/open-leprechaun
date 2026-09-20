@@ -342,6 +342,52 @@ def _transactions(connection: Connection) -> None:
                 )
 
 
+def _capital_income(connection: Connection) -> None:
+    """Income taxed before it arrived (ticket 47): interest on the Depot's
+    cash, its in-leg the net and the declaration beside it stating the German
+    tax the broker withheld, split into its components — plus one treaty
+    limit, so the settings screen opens with a cited example. Keyed for
+    idempotency like every seeded Transaction; the declaration rides on the
+    Transaction's own insert, so a second run adds neither."""
+    transaction_id = connection.execute(
+        text(
+            "INSERT INTO transaction (type, occurred_at, note)"
+            " SELECT 'interest', CAST(:occurred_at AS timestamptz), :note"
+            " WHERE NOT EXISTS (SELECT 1 FROM transaction WHERE type = 'interest'"
+            " AND occurred_at = CAST(:occurred_at AS timestamptz))"
+            " RETURNING id"
+        ),
+        {"occurred_at": "2026-03-31T00:00:00+00:00", "note": "Quarterly interest, taxed at source"},
+    ).scalar_one_or_none()
+    if transaction_id is not None:
+        connection.execute(
+            text(
+                "INSERT INTO transaction_leg"
+                " (transaction_id, account_id, instrument_id, role, quantity)"
+                " SELECT :transaction_id, account.id, instrument.id, 'in', 7.37"
+                " FROM account JOIN platform ON platform.id = account.platform_id, instrument"
+                " WHERE platform.name = 'Scalable Capital' AND account.name = 'Depot'"
+                " AND instrument.family = 'cash' AND instrument.symbol = 'EUR'"
+            ),
+            {"transaction_id": transaction_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO capital_income"
+                " (transaction_id, kapitalertragsteuer, solidarity_surcharge)"
+                " VALUES (:transaction_id, 2.50, 0.13)"
+            ),
+            {"transaction_id": transaction_id},
+        )
+    connection.execute(
+        text(
+            "INSERT INTO treaty_limit (country, rate, source)"
+            " VALUES ('US', 0.15, 'Art. 10 Abs. 2 DBA-USA')"
+            " ON CONFLICT DO NOTHING"
+        )
+    )
+
+
 def _stances(connection: Connection) -> None:
     """The stance landscape ticket 14 describes: the genuine holdings kept at
     the Accounts that hold them, and one same-ticker spam token — sprayed
@@ -540,6 +586,7 @@ STEPS: Sequence[SeedStep] = (
     _cash,
     _platforms,
     _transactions,
+    _capital_income,
     _stances,
     _delegations,
     _futures,

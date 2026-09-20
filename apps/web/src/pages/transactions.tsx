@@ -11,6 +11,7 @@ import {
   recordTransaction,
   removeTransaction,
   reviseTransaction,
+  type CapitalIncome,
   type LegRole,
   type NewTransaction,
   type Reconstructed,
@@ -132,6 +133,132 @@ export function legTemplate(type: TransactionType): LegRole[] {
 /** Positive and fixed-point: digits with at most one point, and not all zero. */
 export function isPositiveDecimal(value: string): boolean {
   return DECIMAL_PATTERN.test(value) && /[1-9]/.test(value);
+}
+
+/** The types that may declare what was withheld at source. */
+const INCOME_TYPES: ReadonlySet<TransactionType> = new Set([
+  "dividend",
+  "distribution",
+  "interest",
+]);
+
+/** What the form holds of a capital-income declaration, as typed. */
+export interface DraftWithheld {
+  payerId: string;
+  foreignWithholding: string;
+  sourceCountry: string;
+  kapitalertragsteuer: string;
+  solidaritySurcharge: string;
+  churchTax: string;
+}
+
+export const EMPTY_WITHHELD: DraftWithheld = {
+  payerId: "",
+  foreignWithholding: "",
+  sourceCountry: "",
+  kapitalertragsteuer: "",
+  solidaritySurcharge: "",
+  churchTax: "",
+};
+
+const COUNTRY_PATTERN = /^[A-Za-z]{2}$/;
+
+/**
+ * The declaration the draft amounts to — null on a type that declares
+ * nothing, and where nothing was entered, so a plain receipt stays plain.
+ * A blank amount is zero; entered strings cross exactly as typed.
+ */
+export function capitalIncomeOf(
+  type: TransactionType,
+  draft: DraftWithheld,
+): CapitalIncome | null {
+  if (!INCOME_TYPES.has(type) || Object.values(draft).every((value) => value.trim() === "")) {
+    return null;
+  }
+  return {
+    paying_instrument_id: draft.payerId ? Number(draft.payerId) : null,
+    foreign_withholding: draft.foreignWithholding || "0",
+    source_country: draft.sourceCountry.trim().toUpperCase() || null,
+    kapitalertragsteuer: draft.kapitalertragsteuer || "0",
+    solidarity_surcharge: draft.solidaritySurcharge || "0",
+    church_tax: draft.churchTax || "0",
+  };
+}
+
+/**
+ * The sentence naming why the draft declaration cannot be recorded, or null
+ * when it can — the API's own judgements, made before the round trip.
+ */
+export function withheldDefect(type: TransactionType, draft: DraftWithheld): string | null {
+  if (!INCOME_TYPES.has(type)) {
+    return null;
+  }
+  const amounts = [
+    draft.foreignWithholding,
+    draft.kapitalertragsteuer,
+    draft.solidaritySurcharge,
+    draft.churchTax,
+  ];
+  if (amounts.some((amount) => amount !== "" && !DECIMAL_PATTERN.test(amount))) {
+    return "Withheld amounts are plain decimals — a point separates the fraction.";
+  }
+  const country = draft.sourceCountry.trim();
+  if (isPositiveDecimal(draft.foreignWithholding) !== (country !== "")) {
+    return "A foreign withholding tax and its source country are recorded together.";
+  }
+  if (country !== "" && !COUNTRY_PATTERN.test(country)) {
+    return "The source country is its two-letter code — US, CH, FR.";
+  }
+  if (type === "distribution" && !draft.payerId) {
+    return "A distribution names the fund that paid it — its partial exemption follows the fund.";
+  }
+  return null;
+}
+
+/**
+ * What a recorded declaration took out, in a line: each non-zero component
+ * by its short name, every amount beside the currency it was withheld in —
+ * the received leg's own.
+ */
+export function withheldWords(declared: CapitalIncome, currency: string): string {
+  const parts = [
+    [`Quellensteuer ${declared.source_country ?? ""}`.trim(), declared.foreign_withholding],
+    ["KESt", declared.kapitalertragsteuer],
+    ["Soli", declared.solidarity_surcharge],
+    ["KiSt", declared.church_tax],
+  ] as const;
+  const taken = parts
+    .filter(([, amount]) => isPositiveDecimal(amount))
+    .map(([name, amount]) => `${name} ${formatQuantity(amount)} ${currency}`);
+  return taken.length === 0 ? "nothing withheld" : `withheld · ${taken.join(" · ")}`;
+}
+
+/** The symbol of the one leg an income event received — what its withheld amounts are in. */
+function receivedSymbol(
+  transaction: Transaction,
+  instrumentById: ReadonlyMap<number, Instrument>,
+): string {
+  const received = transaction.legs.find((leg) => leg.role === "in");
+  if (!received) {
+    return "";
+  }
+  return instrumentById.get(received.instrument_id)?.symbol ?? `#${received.instrument_id}`;
+}
+
+function withheldOf(transaction: Transaction | undefined): DraftWithheld {
+  const declared = transaction?.capital_income;
+  if (!declared) {
+    return EMPTY_WITHHELD;
+  }
+  const amount = (value: string) => (isPositiveDecimal(value) ? value : "");
+  return {
+    payerId: declared.paying_instrument_id === null ? "" : String(declared.paying_instrument_id),
+    foreignWithholding: amount(declared.foreign_withholding),
+    sourceCountry: declared.source_country ?? "",
+    kapitalertragsteuer: amount(declared.kapitalertragsteuer),
+    solidaritySurcharge: amount(declared.solidarity_surcharge),
+    churchTax: amount(declared.church_tax),
+  };
 }
 
 export interface DraftLeg {
@@ -499,6 +626,14 @@ function LedgerRow({
               )}
             </p>
           )}
+          {transaction.capital_income && (
+            <p className="mt-0.5 font-mono text-xs tabular-nums text-muted-foreground">
+              {withheldWords(
+                transaction.capital_income,
+                receivedSymbol(transaction, instrumentById),
+              )}
+            </p>
+          )}
           {transaction.note && (
             <p className="mt-0.5 max-w-52 truncate text-xs text-muted-foreground">
               {transaction.note}
@@ -662,6 +797,9 @@ function TransactionForm({
     revising?.reconstructed ?? "basis",
   );
   const [estimatedBasis, setEstimatedBasis] = useState(revising?.estimated_basis_eur ?? "");
+  // What was withheld at source; carried whatever the type, submitted only
+  // on a dividend, a distribution or interest.
+  const [withheld, setWithheld] = useState<DraftWithheld>(() => withheldOf(revising));
   const [legs, setLegs] = useState<DraftLeg[]>(
     revising ? draftsOf(revising) : legTemplate("trade").map(freshLeg),
   );
@@ -692,6 +830,10 @@ function TransactionForm({
     );
   }
 
+  function declare(change: Partial<DraftWithheld>) {
+    setWithheld((current) => ({ ...current, ...change }));
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     save.mutate({
@@ -700,6 +842,7 @@ function TransactionForm({
       note: note.trim() || null,
       reconstructed: type === "opening_balance" ? reconstructed : null,
       estimated_basis_eur: type === "opening_balance" ? estimatedBasis : null,
+      capital_income: capitalIncomeOf(type, withheld),
       legs: legs.map((leg) => ({
         account_id: Number(leg.accountId),
         instrument_id: Number(leg.instrumentId),
@@ -710,6 +853,7 @@ function TransactionForm({
     });
   }
 
+  const withheldProblem = withheldDefect(type, withheld);
   const incomplete =
     legs.length === 0 ||
     legs.some(
@@ -717,7 +861,8 @@ function TransactionForm({
     ) ||
     // Zero is a legitimate estimate — the most conservative there is — so the
     // basis is judged by shape alone, not by isPositiveDecimal.
-    (type === "opening_balance" && !DECIMAL_PATTERN.test(estimatedBasis));
+    (type === "opening_balance" && !DECIMAL_PATTERN.test(estimatedBasis)) ||
+    withheldProblem !== null;
 
   return (
     <form
@@ -812,6 +957,88 @@ function TransactionForm({
         </fieldset>
       )}
 
+      {INCOME_TYPES.has(type) && (
+        <fieldset
+          className="mt-5 space-y-4 rounded-md border border-border p-4"
+          aria-label="Withheld at source"
+        >
+          <legend className="microlabel px-1 text-muted-foreground">Withheld at source</legend>
+          <p className="max-w-prose text-xs text-muted-foreground">
+            The leg below is the net that arrived. Enter what was taken out before it did, in the
+            same currency — the gross is their sum. Leave blank what was not withheld.
+          </p>
+          <div className="max-w-80 space-y-2">
+            <label htmlFor={`${id}-payer`} className="microlabel block text-muted-foreground">
+              Paid by{type === "distribution" ? "" : " (optional)"}
+            </label>
+            <select
+              id={`${id}-payer`}
+              value={withheld.payerId}
+              onChange={(event) => declare({ payerId: event.target.value })}
+              className={SELECT_SHELL}
+            >
+              <option value="" className="bg-background text-foreground">
+                —
+              </option>
+              {instruments
+                .filter((instrument) => instrument.family === "security")
+                .map((instrument) => (
+                  <option
+                    key={instrument.id}
+                    value={instrument.id}
+                    className="bg-background text-foreground"
+                  >
+                    {instrument.symbol} · {instrument.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <WithheldAmount
+              id={`${id}-foreign`}
+              label="Foreign withholding tax"
+              value={withheld.foreignWithholding}
+              onChange={(foreignWithholding) => declare({ foreignWithholding })}
+            />
+            <div className="w-24 space-y-2">
+              <label htmlFor={`${id}-country`} className="microlabel block text-muted-foreground">
+                Source country
+              </label>
+              <Input
+                id={`${id}-country`}
+                value={withheld.sourceCountry}
+                onChange={(event) => declare({ sourceCountry: event.target.value })}
+                maxLength={2}
+                placeholder="US"
+                title="The two-letter code of the country that withheld — creditability depends on it."
+                className="font-mono uppercase"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <WithheldAmount
+              id={`${id}-kest`}
+              label="Kapitalertragsteuer"
+              value={withheld.kapitalertragsteuer}
+              onChange={(kapitalertragsteuer) => declare({ kapitalertragsteuer })}
+            />
+            <WithheldAmount
+              id={`${id}-soli`}
+              label="Solidaritätszuschlag"
+              value={withheld.solidaritySurcharge}
+              onChange={(solidaritySurcharge) => declare({ solidaritySurcharge })}
+            />
+            <WithheldAmount
+              id={`${id}-church`}
+              label="Church tax"
+              value={withheld.churchTax}
+              onChange={(churchTax) => declare({ churchTax })}
+            />
+          </div>
+          {withheldProblem && <p className="text-xs text-caution">{withheldProblem}</p>}
+        </fieldset>
+      )}
+
       <div className="mt-5 space-y-3">
         <p className="microlabel text-muted-foreground">Legs</p>
         {legs.map((leg, position) => (
@@ -853,6 +1080,35 @@ function TransactionForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function WithheldAmount({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="w-44 space-y-2">
+      <label htmlFor={id} className="microlabel block text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
+        inputMode="decimal"
+        pattern={DECIMAL_PATTERN.source}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="0.00"
+        className="font-mono tabular-nums"
+      />
+    </div>
   );
 }
 

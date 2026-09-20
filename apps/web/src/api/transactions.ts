@@ -49,6 +49,20 @@ export const legSchema = z.object({
   charged_against_leg_id: z.number().nullable(),
 });
 
+/**
+ * What a dividend, distribution or interest event declares beyond its legs:
+ * the security that paid, and every tax taken out before the net arrived —
+ * each amount in the received leg's own currency, so the gross is their sum.
+ */
+export const capitalIncomeSchema = z.object({
+  paying_instrument_id: z.number().nullable(),
+  foreign_withholding: decimalString,
+  source_country: z.string().nullable(),
+  kapitalertragsteuer: decimalString,
+  solidarity_surcharge: decimalString,
+  church_tax: decimalString,
+});
+
 export const transactionSchema = z.object({
   id: z.number(),
   type: transactionTypeSchema,
@@ -58,6 +72,8 @@ export const transactionSchema = z.object({
   // estimated basis is a monetary amount and crosses as a decimal string.
   reconstructed: reconstructedSchema.nullable(),
   estimated_basis_eur: decimalString.nullable(),
+  // What was withheld at source; null where the event declared nothing.
+  capital_income: capitalIncomeSchema.nullable(),
   // Import provenance (ticket 31): the batch and source that created this
   // row, null on a hand-recorded event. An imported row the Admin edited by
   // hand is manually overridden — a re-import never silently reverts it.
@@ -71,6 +87,7 @@ export type TransactionType = z.infer<typeof transactionTypeSchema>;
 export type LegRole = z.infer<typeof legRoleSchema>;
 export type Reconstructed = z.infer<typeof reconstructedSchema>;
 export type Leg = z.infer<typeof legSchema>;
+export type CapitalIncome = z.infer<typeof capitalIncomeSchema>;
 export type Transaction = z.infer<typeof transactionSchema>;
 
 export interface NewLeg {
@@ -88,6 +105,7 @@ export interface NewTransaction {
   note: string | null;
   reconstructed: Reconstructed | null;
   estimated_basis_eur: string | null;
+  capital_income: CapitalIncome | null;
   legs: NewLeg[];
 }
 

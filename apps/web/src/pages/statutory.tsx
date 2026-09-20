@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Pencil, Plus } from "lucide-react";
+import { CircleCheck, Pencil, Plus, X } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import {
   chooseElection,
+  enterTreatyLimit,
   enterValue,
   fetchStatutory,
+  fetchTreatyLimits,
+  removeTreatyLimit,
   unsetValue,
   type ChurchTax,
   type Election,
@@ -204,6 +207,7 @@ export function StatutoryPage() {
       ) : data ? (
         <div className="space-y-12">
           <ElectionPanel election={data} />
+          <TreatyLimitsPanel />
           {years.map((year, index) => (
             <YearSection key={year.year} keys={data.keys} year={year} index={index} />
           ))}
@@ -324,6 +328,146 @@ function ElectionPanel({ election }: { election: Election }) {
       {choose.isError && (
         <p role="alert" className="mt-3 text-sm text-alarm">
           {choose.error.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function TreatyLimitsPanel() {
+  const { data, error, refetch } = useQuery({
+    queryKey: ["treaty-limits"],
+    queryFn: fetchTreatyLimits,
+  });
+  const [country, setCountry] = useState("");
+  const [rate, setRate] = useState("");
+  const [source, setSource] = useState("");
+  const id = useId();
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["treaty-limits"] });
+
+  const enter = useMutation({
+    mutationFn: () =>
+      enterTreatyLimit({
+        country: country.trim().toUpperCase(),
+        rate: rate.trim(),
+        source: source.trim(),
+      }),
+    onSuccess: async () => {
+      await refresh();
+      setCountry("");
+      setRate("");
+      setSource("");
+    },
+  });
+  const remove = useMutation({ mutationFn: removeTreatyLimit, onSuccess: refresh });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    enter.mutate();
+  }
+
+  const failure = enter.error ?? remove.error;
+
+  return (
+    <section className="rise rounded-xl border border-border p-5" aria-label="Treaty limits">
+      <p className="microlabel text-muted-foreground">Treaty limits</p>
+      <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+        The share of a gross dividend each double-taxation treaty lets the source country keep.
+        Foreign withholding tax is creditable up to it; anything above is reported as reclaimable
+        from that country. A country that withheld with no limit entered refuses to compute.
+      </p>
+      {error ? (
+        <div className="mt-4">
+          <ErrorState
+            title="The treaty limits could not be loaded"
+            detail="The API did not answer with the per-country limits."
+            onRetry={() => void refetch()}
+          />
+        </div>
+      ) : data && data.length > 0 ? (
+        <ul className="mt-4 divide-y divide-border border-y border-border">
+          {data.map((limit) => (
+            <li key={limit.country} className="flex flex-wrap items-baseline gap-x-4 py-2.5">
+              <span className="w-8 font-mono text-sm font-medium">{limit.country}</span>
+              <span className="w-20 font-mono text-sm tabular-nums">
+                {displayValue("rate", limit.rate)}
+              </span>
+              <span className="min-w-48 flex-1 text-xs text-muted-foreground">{limit.source}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(limit.country)}
+                aria-label={`Remove the treaty limit for ${limit.country}`}
+              >
+                <X aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : data ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No limit entered yet — enter one for each country that withheld tax on a dividend.
+        </p>
+      ) : null}
+      <form
+        onSubmit={submit}
+        className="mt-4 flex flex-wrap items-end gap-3"
+        aria-label="Enter a treaty limit"
+      >
+        <div className="space-y-2">
+          <label htmlFor={`${id}-country`} className="microlabel block text-muted-foreground">
+            Country
+          </label>
+          <Input
+            id={`${id}-country`}
+            required
+            maxLength={2}
+            pattern="[A-Za-z]{2}"
+            value={country}
+            onChange={(event) => setCountry(event.target.value)}
+            placeholder="US"
+            className="w-20 font-mono uppercase"
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor={`${id}-rate`} className="microlabel block text-muted-foreground">
+            Rate (fraction of one)
+          </label>
+          <Input
+            id={`${id}-rate`}
+            required
+            inputMode="decimal"
+            pattern={DECIMAL_PATTERN.source}
+            value={rate}
+            onChange={(event) => setRate(event.target.value)}
+            placeholder="0.15"
+            className="w-36 font-mono tabular-nums"
+          />
+        </div>
+        <div className="min-w-64 flex-1 space-y-2">
+          <label htmlFor={`${id}-source`} className="microlabel block text-muted-foreground">
+            Source
+          </label>
+          <Input
+            id={`${id}-source`}
+            required
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            placeholder="Art. 10 Abs. 2 DBA-USA"
+          />
+        </div>
+        <Button type="submit" size="sm" disabled={enter.isPending}>
+          <Plus aria-hidden />
+          {enter.isPending ? "Storing…" : "Store"}
+        </Button>
+      </form>
+      {failure && (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          {failure.message}
         </p>
       )}
     </section>
