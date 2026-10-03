@@ -530,6 +530,19 @@ Tax a German broker withholds and remits on the Admin's behalf. It distinguishes
 **Depot**, where income is largely settled already, from a foreign one, where everything must be
 declared. The report shows amounts settled at source separately from amounts still to declare.
 
+### Form line
+
+Where one of the report's figures goes on the return: the form — Anlage SO, Anlage KAP, Anlage
+KAP-INV — and its Zeile, with the label printed beside it. A figure's mapping is **unambiguous**
+when exactly one line of that year's form asks for it, **ambiguous** when the form offers several
+and the ledger holds no fact that decides between them, and **unmapped** when no line numbers are
+recorded for the year. Line numbers move between years, so each **Tax Year** has its own table
+read from that year's official form; a year without one names the form and the field and says the
+number is missing.
+
+_Avoid_: carrying a line number from one year's form to another's, and guessing a line where the
+form asks for a fact the ledger does not hold.
+
 ## Presentation and access
 
 ### Admin

@@ -1,7 +1,7 @@
 """The report lifecycle (ticket 23). Generating a report is the Admin's
 explicit act: it computes the year's figures — §23 disposals (21), §22
-income (22) and the §20 category balances (26) — freezes them as JSON on a
-new report row, and stamps the
+income (22) and the §20 category balances (26), and where each belongs on
+the forms (51) — freezes them as JSON on a new report row, and stamps the
 fingerprint of the inputs that produced them (ADR-0014) under the report's
 own subject. The frozen figures are what every read answers, verbatim: a
 report is never recomputed, silently or otherwise — regenerating is a new
@@ -39,7 +39,14 @@ from sqlalchemy import Connection, Engine, Row
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import fingerprints, reports
 from open_leprechaun.repositories.reports import Refusal
-from open_leprechaun.services import lots, preflight, section20, section22, section23
+from open_leprechaun.services import (
+    lots,
+    preflight,
+    section20,
+    section22,
+    section23,
+    tax_forms,
+)
 
 __all__ = ["Blocked", "GenerationRacedError", "detail", "finalise", "generate", "overview"]
 
@@ -89,10 +96,22 @@ def generate(engine: Engine, source: ReferenceRateSource, *, year: int) -> int:
     any existing report, however many the year already has."""
     with lots.snapshot(engine) as connection:
         before = fingerprints.current(connection)
+    private_sales = section23.year_report(engine, source, year=year)
+    other_income = section22.year_report(engine, source, year=year)
+    capital_income = section20.year_report(engine, source, year=year)
     figures = {
-        "section23": _frozen(section23.year_report(engine, source, year=year)),
-        "section22": _frozen(section22.year_report(engine, source, year=year)),
-        "section20": _frozen(section20.year_report(engine, source, year=year)),
+        "section23": _frozen(private_sales),
+        "section22": _frozen(other_income),
+        "section20": _frozen(capital_income),
+        "forms": _frozen(
+            tax_forms.year_forms(
+                engine,
+                year=year,
+                section23=private_sales,
+                section22=other_income,
+                section20=capital_income,
+            )
+        ),
     }
     with lots.snapshot(engine) as connection:
         current = fingerprints.current(connection)

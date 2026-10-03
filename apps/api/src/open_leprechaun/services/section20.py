@@ -41,6 +41,7 @@ from open_leprechaun.repositories import statutory as statutory_repository
 from open_leprechaun.services import capital_income, futures, fx, lots, security_disposals
 from open_leprechaun.services.capital_income import ExcludedEvent, IncomeReceipt
 from open_leprechaun.services.rounding import cents
+from open_leprechaun.services.security_disposals import SecurityDisposal
 from open_leprechaun.services.statutory import (
     church_tax_rate_key,
     optional_values,
@@ -71,6 +72,7 @@ __all__ = [
     "WithholdingStatement",
     "assess",
     "carry",
+    "creditable_eur",
     "net",
     "withholding_statement",
     "year_report",
@@ -425,6 +427,14 @@ class WithholdingStatement:
     foreign: tuple[ForeignCredit, ...]
 
 
+def creditable_eur(*, gross_eur: Decimal, withheld_eur: Decimal, treaty_rate: Decimal) -> Decimal:
+    """What of one event's Quellensteuer is creditable: what was withheld,
+    up to the treaty rate on that event's own gross (§32d Abs. 5 EStG) — the
+    one rule, shared by the year's statement and by whoever must say which
+    side of the withholding line a credit falls on (services/tax_forms)."""
+    return min(withheld_eur, cents(gross_eur * treaty_rate))
+
+
 def withholding_statement(
     events: Iterable[Section20Event], *, year: int, treaty_limits: Mapping[str, Decimal]
 ) -> WithholdingStatement:
@@ -452,8 +462,11 @@ def withholding_statement(
                 " double-taxation treaty allows before its Quellensteuer can be judged"
                 " creditable."
             )
-        ceiling = cents(event.gross_eur * treaty_limits[foreign.country])
-        creditable = min(foreign.amount_eur, ceiling)
+        creditable = creditable_eur(
+            gross_eur=event.gross_eur,
+            withheld_eur=foreign.amount_eur,
+            treaty_rate=treaty_limits[foreign.country],
+        )
         sums = per_country.setdefault(foreign.country, [Decimal(0), Decimal(0)])
         sums[0] += foreign.amount_eur
         sums[1] += creditable
@@ -500,6 +513,10 @@ class Section20Year:
     # still be declared (§32d Abs. 3 EStG).
     settled_at_source_eur: Decimal | None = None
     to_declare_eur: Decimal | None = None
+    # The year's securities disposals as their producer stated them (ticket
+    # 46) — each naming its Depot and Instrument, which the event shape
+    # deliberately does not carry and the form sections (ticket 51) turn on.
+    disposals: tuple[SecurityDisposal, ...] = ()
 
 
 FUTURES_CATEGORY = "termingeschaefte"
@@ -635,7 +652,8 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     # valuation blocks the year exactly as an unvalued income leg does; an
     # unclassified fund or unknown-typed security refuses inside the
     # producer, by name, rather than assuming a pot or a zero rate.
-    for disposal in security_disposals.disposals_through(engine, source, through_year=year):
+    sold = security_disposals.disposals_through(engine, source, through_year=year)
+    for disposal in sold:
         if disposal.gain_eur is None:
             awaiting.append(f"leg:{disposal.leg_id}")
             continue
@@ -652,6 +670,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         )
 
     receipts = tuple(receipt for receipt in income.counted if receipt.tax_year == year)
+    disposals = tuple(disposal for disposal in sold if disposal.tax_year == year)
     if awaiting:
         return Section20Year(
             year=year,
@@ -660,6 +679,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             excluded=income.excluded,
             awaiting_valuation=tuple(awaiting),
             receipts=receipts,
+            disposals=disposals,
         )
 
     first = min(
@@ -710,6 +730,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         withholding=withholding_statement(events, year=year, treaty_limits=treaty_limits),
         settled_at_source_eur=_gross(receipts, settled_at_source=True),
         to_declare_eur=_gross(receipts, settled_at_source=False),
+        disposals=disposals,
     )
 
 

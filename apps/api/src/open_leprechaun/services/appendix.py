@@ -19,6 +19,13 @@ disposals stand in full while the totals exclude them — visible working,
 correct figure. §22 receipts and §20 events are one row each, wearing their
 own category.
 
+The summary also restates the form-shaped sections (ticket 51): each form
+line's figure beside where it goes on the return, and every line item names
+the form lines it feeds — so the lines feeding one form line add up to the
+figure stated for it. A §20 row states its gross beside what its category
+counted, because the fund lines of Anlage KAP-INV want the amount before
+Teilfreistellung.
+
 Euro amounts are stated in cents at this presentation boundary — the one
 rounding rule (services/rounding); quantities pass through verbatim. A
 figure the frozen report carries as null is stated as awaiting valuation,
@@ -36,7 +43,7 @@ from sqlalchemy import Engine
 
 from open_leprechaun.repositories import holdings as holdings_repository
 from open_leprechaun.repositories import lots as lots_repository
-from open_leprechaun.services import fx, lots, reports
+from open_leprechaun.services import fx, lots, reports, tax_forms
 from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.section23 import counts
 
@@ -66,6 +73,19 @@ class Line:
     holding_days: str = ""
     treatment: str = ""
     estimated_basis: str = ""
+    # A §20 event's gross, before any Teilfreistellung — what the forms ask
+    # for; `amount_eur` beside it is what the category counted.
+    gross_eur: str = ""
+    # What was taken out of a §20 receipt before it arrived (ticket 47): the
+    # German tax by component and the Quellensteuer — what the tax lines of
+    # Anlage KAP rest on.
+    kapitalertragsteuer_eur: str = ""
+    solidarity_surcharge_eur: str = ""
+    church_tax_eur: str = ""
+    foreign_withholding_eur: str = ""
+    # The form lines this line's figures feed, by key, space-separated — the
+    # summary's `form.<key>` entries say where each goes.
+    form_line_keys: str = ""
 
 
 COLUMNS = tuple(field.name for field in fields(Line))
@@ -117,10 +137,11 @@ def build(
     consumption states its fee share — and fails loudly on an older frozen
     report rather than rendering a silently thinner line; pre-release, such
     a report is regenerated, not migrated."""
+    feeds = _feeds(report.figures["forms"])
     lines = [
-        *_section23_lines(report.figures["section23"], instruments, accounts),
-        *_section22_lines(report.figures["section22"], instruments, accounts),
-        *_section20_lines(report.figures["section20"]),
+        *_section23_lines(report.figures["section23"], instruments, accounts, feeds),
+        *_section22_lines(report.figures["section22"], instruments, accounts, feeds),
+        *_section20_lines(report.figures["section20"], feeds),
     ]
     return Appendix(
         report_id=report.id,
@@ -160,8 +181,9 @@ def pdf_export(appendix: Appendix) -> bytes:
             row.cell(_latin(label))
             row.cell(_latin(value))
     pdf.ln(4)
-    pdf.set_font(size=6)
-    with pdf.table() as table:
+    font_size, widths = _line_table_fit(pdf, appendix.lines)
+    pdf.set_font(size=font_size)
+    with pdf.table(col_widths=widths) as table:
         header = table.row()
         for column in COLUMNS:
             header.cell(column)
@@ -170,6 +192,36 @@ def pdf_export(appendix: Appendix) -> bytes:
             for cell in line:
                 row.cell(_latin(cell))
     return bytes(pdf.output())
+
+
+_LINE_FONT_SIZES = (6, 5, 4)
+"""The line table's candidate font sizes, largest first."""
+
+
+def _line_table_fit(pdf: FPDF, lines: tuple[tuple[str, ...], ...]) -> tuple[int, tuple[float, ...]]:
+    """The font size for the line table and each column's share of it,
+    sized by the longest word the column must hold, so a cell wraps between
+    words and never inside one — a figure or a form-line key broken across
+    lines would no longer state itself. The largest size at which every
+    column fits the page, or the smallest where none does."""
+    restore = pdf.font_size_pt
+    size, needed = _LINE_FONT_SIZES[-1], ()
+    for size in _LINE_FONT_SIZES:
+        pdf.set_font(size=size)
+        needed = tuple(
+            max(
+                pdf.get_string_width(word)
+                for cell in (header, *(line[column] for line in lines))
+                for word in _latin(cell).split() or [""]
+            )
+            + 2 * pdf.c_margin
+            + 1
+            for column, header in enumerate(COLUMNS)
+        )
+        if sum(needed) <= pdf.epw:
+            break
+    pdf.set_font(size=restore)
+    return size, needed
 
 
 def _latin(text: str) -> str:
@@ -232,7 +284,36 @@ def _summary(report: reports.ReportDetail) -> list[tuple[str, str]]:
                     (f"{prefix}.reclaimable_eur", _amount(credit["reclaimable_eur"])),
                 ]
             )
+    for section in report.figures["forms"]["sections"]:
+        for line in section["lines"]:
+            entries.extend(
+                [
+                    (f"form.{line['key']}.line", _located(section["form"], line, report.year)),
+                    (f"form.{line['key']}.eur", _amount(line["amount_eur"])),
+                ]
+            )
     return entries
+
+
+def _located(form: str, line: dict, year: int) -> str:
+    """Where a form line's figure goes, as one phrase: the form and its
+    Zeile, every candidate where the mapping is ambiguous, and plainly that
+    no line is mapped where the year's form was never read."""
+    if not line["form_lines"]:
+        return f"{form} (line not mapped for {year})"
+    where = f"{form} Zeile {' or '.join(line['form_lines'])}"
+    return f"{where} (ambiguous)" if line["mapping"] == tax_forms.AMBIGUOUS else where
+
+
+def _feeds(forms: dict) -> dict[str, str]:
+    """Which form lines each record feeds: the record's name in the lines'
+    own vocabulary ("leg:42") to the keys of the form lines it backs."""
+    keys_of: dict[str, list[str]] = {}
+    for section in forms["sections"]:
+        for line in section["lines"]:
+            for source in line["backed_by"]:
+                keys_of.setdefault(source, []).append(line["key"])
+    return {source: " ".join(keys) for source, keys in keys_of.items()}
 
 
 def _freigrenze(verdict: dict | None, section: str, taxable_key: str) -> list[tuple[str, str]]:
@@ -271,7 +352,7 @@ def _estimated_exposure(figures: dict) -> str:
 
 
 def _section23_lines(
-    figures: dict, instruments: dict[int, str], accounts: dict[int, str]
+    figures: dict, instruments: dict[int, str], accounts: dict[int, str], feeds: dict[str, str]
 ) -> list[Line]:
     return [
         Line(
@@ -290,6 +371,11 @@ def _section23_lines(
             holding_days=str(consumption["holding_days"]),
             treatment=_treatment(consumption),
             estimated_basis=ESTIMATED if consumption["basis_source"] == lots.ESTIMATE else "",
+            # Only a slice that counts is declared — an exempt one stands
+            # here and on no form.
+            form_line_keys=feeds.get(f"leg:{disposal['leg_id']}", "")
+            if counts(long_term=consumption["long_term"], basis_source=consumption["basis_source"])
+            else "",
         )
         for disposal in figures["disposals"]
         for consumption in disposal["consumptions"]
@@ -307,7 +393,7 @@ def _treatment(consumption: dict) -> str:
 
 
 def _section22_lines(
-    figures: dict, instruments: dict[int, str], accounts: dict[int, str]
+    figures: dict, instruments: dict[int, str], accounts: dict[int, str], feeds: dict[str, str]
 ) -> list[Line]:
     return [
         Line(
@@ -320,15 +406,19 @@ def _section22_lines(
             quantity=income["quantity"],
             amount_eur=_amount(income["market_value_eur"], absent=""),
             treatment="awaiting_valuation" if income["market_value_eur"] is None else "counted",
+            form_line_keys=feeds.get(f"leg:{income['leg_id']}", ""),
         )
         for income in figures["incomes"]
     ]
 
 
-def _section20_lines(figures: dict) -> list[Line]:
+def _section20_lines(figures: dict, feeds: dict[str, str]) -> list[Line]:
     """One row per Section 20 Event as its pot counted it. The frozen entry
     names its producing record (`source`) rather than an Instrument or
-    Account — the event shape's own vocabulary (ADR-0013)."""
+    Account — the event shape's own vocabulary (ADR-0013). A receipt's row
+    also states what was withheld from it; a disposal or a futures close had
+    nothing withheld and leaves those cells empty."""
+    withheld_of = {f"leg:{receipt['leg_id']}": receipt for receipt in figures["receipts"]}
     return [
         Line(
             section="section20",
@@ -337,10 +427,25 @@ def _section20_lines(figures: dict) -> list[Line]:
             date=entry["event"]["date"],
             amount_eur=_amount(entry["counted_eur"]),
             treatment="counted",
+            gross_eur=_amount(entry["event"]["gross_eur"]),
+            **{
+                component: _amount(withheld_of[entry["event"]["source"]][component])
+                for component in _WITHHELD_COMPONENTS
+                if entry["event"]["source"] in withheld_of
+            },
+            form_line_keys=feeds.get(entry["event"]["source"], ""),
         )
         for balance in figures["balances"] or []
         for entry in balance["entries"]
     ]
+
+
+_WITHHELD_COMPONENTS = (
+    "kapitalertragsteuer_eur",
+    "solidarity_surcharge_eur",
+    "church_tax_eur",
+    "foreign_withholding_eur",
+)
 
 
 def _amount(frozen: str | None, *, absent: str = AWAITING) -> str:
