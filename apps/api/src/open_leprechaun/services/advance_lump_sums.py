@@ -292,7 +292,12 @@ def _standing(piece: lots.Slice, instrument_id: int, *, year: int) -> tuple[int,
     (ticket 52) of a later year undone, because a fund's per-unit values for
     a year are stated in that year's units. None where the slice did not
     exist yet: a spun-off slice inherits its acquisition instant, but what
-    accrued before the spin-off accrued on the lot it was taken from."""
+    accrued before the spin-off accrued on the lot it was taken from.
+
+    An event within the derived year stands: the year closes in the new
+    units, so the fund's entered values for that year — its first redemption
+    price included — are to be stated in them, as a fund publishes them after
+    a split."""
     quantity = piece.quantity
     for change in reversed(piece.changes):
         if fx.event_date(change.at).year <= year:

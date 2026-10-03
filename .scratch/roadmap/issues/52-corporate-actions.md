@@ -58,9 +58,9 @@ Decisions worth recording:
   the Instrument and units the slice was acquired as (`lots.origin`) and then apply what the
   events left of it (`lots.restated`); the Vorabpauschale judges each derived year in that
   year's units, under the fund the slice was a unit of then.
-- **In transit**: a split or capital return reaches slices a confirmed transfer has in transit;
-  a merger or spin-off leaves them — which Account the target units belong to in transit is not
-  guessed.
+- **In transit**: every kind reaches slices a confirmed transfer has in transit — they are still
+  held. They travel on rewritten (a merger's as target units) and arrive as their in-leg states
+  them; what a spin-off takes from them comes to rest in the destination Account.
 - **A merger carries the whole basis**; the ratio the Admin supplies is the exchange ratio. A
   cash component is a separate ledger entry.
 - **Scope**: securities and crypto assets (a token swap is the same event); cash is refused.
@@ -71,3 +71,13 @@ Decisions worth recording:
   figures already rest on the adjusted lots, and the events are listed with their per-lot
   effect on their own screen.
 - No version bump — rides as `feat:` like its predecessors.
+- Post-review fixes (two-axis review): a merger or spin-off now reaches in-transit slices (before,
+  a parcel arriving as target units was trimmed as if part had gone missing); a capital return
+  meeting a basis still awaiting valuation is flagged, since its excess cannot be judged until
+  the basis is stated; the ISIN change moved its decision into `services/securities` and refuses
+  an ISIN any other Instrument carries *or once carried*, and a malformed one. Stated rather
+  than changed: the Vorabpauschale of the year a split falls in is computed in the new units, so
+  that year's redemption values are entered split-adjusted. Left open for the Admin: the cash a
+  capital return pays has no neutral transaction type — recorded as a dividend it would book
+  income beside the basis reduction — and the frozen report carries no corporate-actions
+  section.

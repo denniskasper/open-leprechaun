@@ -302,7 +302,9 @@ def derive(
         while walked < len(legless) and (instant is None or legless[walked][0] <= instant):
             _, is_action, event = legless[walked]
             if is_action:
-                effects[event.id] = _apply(event, queues, arriving, leg_by_id, held, decisions_of)
+                effects[event.id] = _apply(
+                    event, queues, _in_transit(arriving, out_for_in, leg_by_id), held, decisions_of
+                )
             else:
                 net = net_figure(event)
                 if net > 0:
@@ -481,11 +483,22 @@ def _rebuild_on(connection: Connection, fingerprint: dict[str, fingerprints.Inpu
     fingerprints.record(connection, SUBJECT, fingerprint)
 
 
+def _in_transit(
+    arriving: dict[int, list[Slice]], out_for_in: dict[int, int], leg_by_id: dict[int, Row]
+) -> list[tuple[int, int, list[Slice]]]:
+    """What confirmed transfers have under way at this point of the pass:
+    (Instrument that left, destination Account, the slices) — still held,
+    though in no queue."""
+    return [
+        (leg_by_id[out_for_in[in_leg_id]].instrument_id, leg_by_id[in_leg_id].account_id, pieces)
+        for in_leg_id, pieces in arriving.items()
+    ]
+
+
 def _apply(
     action: CorporateAction,
     queues: dict[tuple[int, int], list[Slice]],
-    arriving: dict[int, list[Slice]],
-    leg_by_id: dict[int, Row],
+    in_transit: list[tuple[int, int, list[Slice]]],
     held: dict[tuple[int, int], Decimal],
     decisions_of: dict[int, list[Row]],
 ) -> list[LotEffect]:
@@ -501,13 +514,28 @@ def _apply(
     is needed, but an ignored or dangerous target still enters no cost basis
     — as everywhere (ADR-0012).
 
-    Slices a confirmed transfer has in transit are still held: a split
-    rescales them and a capital return reaches them, so they arrive in the
-    units their in-leg states. A merger or spin-off leaves them as they are —
-    which Account its target units belong to in transit is exactly the kind
-    of fact the application does not guess."""
+    Slices a confirmed transfer has in transit are still held, so the event
+    reaches them too: they travel on rewritten — rescaled, reduced, or as
+    units of a merger's target — and arrive as their in-leg states them.
+    What a spin-off takes from them has no leg to arrive on; it comes to
+    rest where the parcel does, in the destination Account."""
     rewrite = _REWRITES[action.kind]
+    target_id = action.target_instrument_id
     effects = []
+
+    def settle(account_id: int, moving: list[Slice], unvouched: Decimal) -> bool:
+        """Book what moved to the target Instrument at this Account; whether
+        it entered the cost basis there."""
+        if target_id is None:
+            return False
+        target = (account_id, target_id)
+        held[target] = held.get(target, Decimal(0)) + _quantity(moving) + unvouched
+        stance = effective_stance(decisions_of.get(target_id, ()), account_id)
+        if never_enters_cost_basis(stance):
+            return False
+        _enqueue(queues.setdefault(target, []), moving)
+        return True
+
     accounts = sorted(
         {account_id for account_id, held_id in (*queues, *held) if held_id == action.instrument_id}
     )
@@ -516,38 +544,35 @@ def _apply(
         queue = queues.setdefault(key, [])
         unvouched = held.get(key, Decimal(0)) - _quantity(queue)
         outcomes = [(piece, rewrite(action, piece)) for piece in queue]
-        staying = [outcome.stays for _, outcome in outcomes if outcome.stays is not None]
+        queue[:] = [outcome.stays for _, outcome in outcomes if outcome.stays is not None]
         moving = [outcome.moves for _, outcome in outcomes if outcome.moves is not None]
-        queue[:] = staying
         if action.kind == "split":
-            held[key] = _quantity(staying) + _rescaled(action, unvouched)
-        entered = False
-        if action.target_instrument_id is not None:
-            target = (account_id, action.target_instrument_id)
-            if action.kind == "merger":
-                held[key] = Decimal(0)
-            held[target] = (
-                held.get(target, Decimal(0)) + _quantity(moving) + _rescaled(action, unvouched)
-            )
-            stance = effective_stance(decisions_of.get(action.target_instrument_id, ()), account_id)
-            entered = not never_enters_cost_basis(stance)
-            if entered:
-                _enqueue(queues.setdefault(target, []), moving)
+            held[key] = _quantity(queue) + _rescaled(action, unvouched)
+        elif action.kind == "merger":
+            held[key] = Decimal(0)
+        entered = settle(
+            account_id, moving, Decimal(0) if target_id is None else _rescaled(action, unvouched)
+        )
         effects += [
             _effect(action, account_id, piece, outcome, entered=entered)
             for piece, outcome in outcomes
         ]
-    if action.target_instrument_id is None:
-        for in_leg_id, pieces in arriving.items():
-            in_leg = leg_by_id[in_leg_id]
-            if in_leg.instrument_id != action.instrument_id:
-                continue
-            outcomes = [(piece, rewrite(action, piece)) for piece in pieces]
+    for left_as, account_id, pieces in in_transit:
+        if left_as != action.instrument_id:
+            continue
+        outcomes = [(piece, rewrite(action, piece)) for piece in pieces]
+        moving = [outcome.moves for _, outcome in outcomes if outcome.moves is not None]
+        if action.kind == "merger":
+            # The parcel itself became the target's units, and arrives so.
+            pieces[:] = moving
+            entered = True
+        else:
             pieces[:] = [outcome.stays for _, outcome in outcomes if outcome.stays is not None]
-            effects += [
-                _effect(action, in_leg.account_id, piece, outcome, entered=False)
-                for piece, outcome in outcomes
-            ]
+            entered = settle(account_id, moving, Decimal(0))
+        effects += [
+            _effect(action, account_id, piece, outcome, entered=entered)
+            for piece, outcome in outcomes
+        ]
     return effects
 
 

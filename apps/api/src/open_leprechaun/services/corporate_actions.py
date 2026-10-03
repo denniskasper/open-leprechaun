@@ -15,8 +15,9 @@ Where the treatment is fact-specific the application records and refuses to
 assert: a spin-off moves the share of basis the Admin supplied and a merger
 carries the basis across at the exchange ratio the Admin supplied, and both
 stand **flagged for manual review** until the Admin marks them reviewed — as
-does a capital return that exceeded a lot's basis, because what the excess
-is taxed as is no arithmetic of this module's. The flag is prose about the
+does a capital return that exceeded a lot's basis — or met one still awaiting
+its valuation, which nobody can yet say it did not exceed — because what an
+excess is taxed as is no arithmetic of this module's. The flag is prose about the
 event: reviewing changes no figure.
 """
 
@@ -130,7 +131,12 @@ def awaiting_review(engine: Engine, *, through_year: int) -> list[Recorded]:
 
 
 def _with_effects(action: CorporateAction | Row, effects: list[LotEffect]) -> Recorded:
-    exceeded = any(effect.excess_eur > 0 for effect in effects)
+    # A return that exceeded a lot's basis — or one taken off a basis only
+    # a report can state, where nobody can yet say whether it did.
+    exceeded = any(effect.excess_eur > 0 for effect in effects) or (
+        action.kind == "capital_return"
+        and any(effect.before.basis_eur is None for effect in effects)
+    )
     return Recorded(
         id=action.id,
         kind=action.kind,

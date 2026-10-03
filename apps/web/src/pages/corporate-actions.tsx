@@ -34,7 +34,8 @@ export const KIND_WORDS: Record<CorporateActionKind, { label: string; effect: st
   },
   capital_return: {
     label: "Capital return",
-    effect: "Takes the amount per unit off the basis of every open lot instead of booking income.",
+    effect:
+      "Takes the amount per unit off the basis of every open lot instead of booking income. Flagged for manual review where it exceeds a lot's basis, or meets one still awaiting valuation.",
   },
   spin_off: {
     label: "Spin-off",
@@ -116,9 +117,14 @@ function shrinks(unitsNew: string, unitsOld: string): boolean {
   return Number(unitsNew) < Number(unitsOld);
 }
 
-/** "2 for 1 split", "1 SHL for every 4 held · 20 % of basis" — the event in a line. */
+/** A ratio side or share as stated, through the one quantity format. */
+function stated(value: string | null): string {
+  return formatQuantity(trimDecimal(value ?? "0"));
+}
+
+/** "2 for 1 split", "1 SHL for every 4 held · share of basis 0.2" — the event in a line. */
 export function termsOf(action: CorporateAction, symbolOf: (id: number) => string): string {
-  const ratio = `${trimDecimal(action.units_new ?? "")} for ${trimDecimal(action.units_old ?? "")}`;
+  const ratio = `${stated(action.units_new)} for ${stated(action.units_old)}`;
   switch (action.kind) {
     case "split":
       return shrinks(action.units_new ?? "", action.units_old ?? "")
@@ -130,9 +136,9 @@ export function termsOf(action: CorporateAction, symbolOf: (id: number) => strin
       return `${ratio} into ${symbolOf(action.target_instrument_id ?? 0)}`;
     case "spin_off":
       return (
-        `${trimDecimal(action.units_new ?? "")} ${symbolOf(action.target_instrument_id ?? 0)}` +
-        ` for every ${trimDecimal(action.units_old ?? "")} held · share of basis ` +
-        trimDecimal(action.basis_share ?? "")
+        `${stated(action.units_new)} ${symbolOf(action.target_instrument_id ?? 0)}` +
+        ` for every ${stated(action.units_old)} held · share of basis ` +
+        stated(action.basis_share)
       );
   }
 }
@@ -167,7 +173,7 @@ export function CorporateActionsPage() {
   const placeOf = (id: number) => places.get(id) ?? `account:${id}`;
   // An issuer event acts on a security or a crypto asset — never on cash.
   const holdable = instruments.data?.filter((entry) => entry.family !== "cash") ?? [];
-  const failed = actions.error ?? instruments.error;
+  const failed = actions.error ?? instruments.error ?? platforms.error;
 
   return (
     <div className="space-y-10">
@@ -180,13 +186,14 @@ export function CorporateActionsPage() {
       {failed ? (
         <ErrorState
           title="Corporate actions could not be loaded"
-          detail="The API did not answer with the recorded events and the Instruments they act on."
+          detail="The API did not answer with the recorded events, the Instruments they act on and the Accounts that hold them."
           onRetry={() => {
             void actions.refetch();
             void instruments.refetch();
+            void platforms.refetch();
           }}
         />
-      ) : actions.data && instruments.data ? (
+      ) : actions.data && instruments.data && platforms.data ? (
         <>
           <RecordForm instruments={holdable} symbolOf={symbolOf} placeOf={placeOf} />
 
@@ -274,7 +281,7 @@ function RecordForm({
     },
   });
 
-  const stated = statedAction(draft);
+  const request = statedAction(draft);
   const changesUnits = draft.kind !== "capital_return";
   const namesTarget = draft.kind === "spin_off" || draft.kind === "merger";
   const decimal = { inputMode: "decimal" as const, pattern: DECIMAL_PATTERN.source, required: true };
@@ -289,8 +296,8 @@ function RecordForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (stated) {
-      preview.mutate(stated);
+    if (request) {
+      preview.mutate(request);
     }
   }
 
@@ -406,13 +413,13 @@ function RecordForm({
         <MutationAlert mutation={preview} />
 
         <div className="mt-4">
-          <Button type="submit" variant="outline" size="sm" disabled={!stated || preview.isPending}>
+          <Button type="submit" variant="outline" size="sm" disabled={!request || preview.isPending}>
             <Eye aria-hidden />
             {preview.isPending ? "Previewing…" : "Preview affected lots"}
           </Button>
         </div>
 
-        {preview.data && stated && (
+        {preview.data && request && (
           <div className="mt-5 border-t border-border pt-5" aria-live="polite">
             <p className="microlabel text-muted-foreground">Preview — nothing is applied yet</p>
             <p className="mt-1 font-mono text-sm tabular-nums">
@@ -422,7 +429,7 @@ function RecordForm({
             <LotTable lots={preview.data.lots} symbolOf={symbolOf} placeOf={placeOf} />
             <MutationAlert mutation={apply} />
             <div className="mt-4">
-              <Button size="sm" disabled={apply.isPending} onClick={() => apply.mutate(stated)}>
+              <Button size="sm" disabled={apply.isPending} onClick={() => apply.mutate(request)}>
                 <Check aria-hidden />
                 {apply.isPending ? "Applying…" : "Apply"}
               </Button>

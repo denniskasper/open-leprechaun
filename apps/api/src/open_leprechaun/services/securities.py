@@ -3,6 +3,7 @@ against the ledger, so a result that is already an Instrument says so instead
 of inviting a duplicate."""
 
 from dataclasses import dataclass
+from enum import Enum
 
 from sqlalchemy import Engine
 
@@ -10,7 +11,7 @@ from open_leprechaun.ports.security_search import SecurityCandidate, SecuritySea
 from open_leprechaun.repositories import instruments
 from open_leprechaun.repositories.instruments import FUND_TYPES
 
-__all__ = ["FUND_TYPES", "FoundCandidate", "search"]
+__all__ = ["FUND_TYPES", "FoundCandidate", "IsinChange", "change_isin", "search"]
 
 
 @dataclass(frozen=True)
@@ -37,3 +38,33 @@ def _present(engine: Engine, isin: str) -> int | None:
         row.id for row in instruments.find_by_identifier(engine, isin) if row.family == "security"
     ]
     return matches[0] if matches else None
+
+
+class IsinChange(Enum):
+    """How an identifier change ended."""
+
+    changed = "changed"
+    no_such_security = "no_such_security"
+    # The ISIN names — or once named — another Instrument.
+    taken = "taken"
+
+
+def change_isin(engine: Engine, instrument_id: int, *, new_isin: str) -> IsinChange:
+    """An identifier change (ticket 52): a merger or redomiciliation that
+    renames the paper without replacing it. The Instrument stays the row it
+    was — every leg and lot recorded under the old ISIN is still its own —
+    and its identifier history keeps the superseded ISIN resolving to it.
+
+    An ISIN another Instrument carries, or ever carried, is refused: the
+    history resolves an identifier to every Instrument it has named, and two
+    answers for one ISIN would let an import land on the wrong one."""
+    instrument = instruments.get(engine, instrument_id)
+    if instrument is None or instrument.family != "security":
+        return IsinChange.no_such_security
+    if instrument.isin == new_isin:
+        return IsinChange.changed
+    if any(row.id != instrument_id for row in instruments.find_by_identifier(engine, new_isin)):
+        return IsinChange.taken
+    if not instruments.change_isin(engine, instrument_id, new_isin=new_isin):
+        return IsinChange.taken
+    return IsinChange.changed

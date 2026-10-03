@@ -122,6 +122,41 @@ def _held(db, instrument, *, eur):
     return depot
 
 
+def _transfer(db, source, destination, *, left, arrived):
+    """A confirmed self-transfer that left before EFFECTIVE and arrived after
+    it — each side an (Instrument, quantity) as its venue booked it."""
+    outgoing = transactions.create_transaction(
+        db,
+        type="transfer_out",
+        occurred_at=datetime(2031, 4, 30, 12, 0, tzinfo=UTC),
+        note=None,
+        legs=[Leg(account_id=source, instrument_id=left[0], role="out", quantity=Decimal(left[1]))],
+    )
+    incoming = transactions.create_transaction(
+        db,
+        type="transfer_in",
+        occurred_at=datetime(2031, 5, 5, 12, 0, tzinfo=UTC),
+        note=None,
+        legs=[
+            Leg(
+                account_id=destination,
+                instrument_id=arrived[0],
+                role="in",
+                quantity=Decimal(arrived[1]),
+            )
+        ],
+    )
+    with db.connect() as connection:
+        out_leg, in_leg = (
+            connection.execute(
+                text("SELECT id FROM transaction_leg WHERE transaction_id = :id"), {"id": moved}
+            ).scalar_one()
+            for moved in (outgoing, incoming)
+        )
+    decided = transfer_matches.decide(db, out_leg_id=out_leg, in_leg_id=in_leg, verdict="confirmed")
+    assert isinstance(decided, int)
+
+
 def _split(instrument, *, new="2", old="1", effective_at=EFFECTIVE):
     return {
         "kind": "split",
@@ -364,29 +399,7 @@ def test_a_split_reaches_the_lots_a_transfer_has_in_transit(db, client):
     destination = _depot(db, platform_name="Trade Republic")
     _keep(db, sap, source)
     _buy(db, source, sap, eur, quantity="10", cost="1000")
-    outgoing = transactions.create_transaction(
-        db,
-        type="transfer_out",
-        occurred_at=datetime(2031, 4, 30, 12, 0, tzinfo=UTC),
-        note=None,
-        legs=[Leg(account_id=source, instrument_id=sap, role="out", quantity=Decimal("10"))],
-    )
-    incoming = transactions.create_transaction(
-        db,
-        type="transfer_in",
-        occurred_at=datetime(2031, 5, 5, 12, 0, tzinfo=UTC),
-        note=None,
-        legs=[Leg(account_id=destination, instrument_id=sap, role="in", quantity=Decimal("20"))],
-    )
-    with db.connect() as connection:
-        out_leg, in_leg = (
-            connection.execute(
-                text("SELECT id FROM transaction_leg WHERE transaction_id = :id"), {"id": moved}
-            ).scalar_one()
-            for moved in (outgoing, incoming)
-        )
-    decided = transfer_matches.decide(db, out_leg_id=out_leg, in_leg_id=in_leg, verdict="confirmed")
-    assert isinstance(decided, int)
+    _transfer(db, source, destination, left=(sap, "10"), arrived=(sap, "20"))
 
     _apply(client, _split(sap))
 
@@ -470,6 +483,23 @@ def test_a_capital_return_beyond_a_lots_basis_stops_at_zero_and_is_flagged(db, c
     assert _position(client, sap, depot)["basis_eur"] == "1500.00"
 
 
+def test_a_capital_return_off_a_basis_awaiting_valuation_is_flagged(db, client):
+    """A lot bought in USD states its basis only at report time, so nobody
+    can yet say the return stayed within it — the event waits for review
+    rather than letting an excess vanish unnamed."""
+    _eur(db)
+    sap = _share(db)
+    usd = instruments.create_cash(db, symbol="USD", name="US Dollar")
+    depot = _depot(db)
+    _keep(db, sap, depot)
+    _buy(db, depot, sap, usd, quantity="10", cost="1100")
+
+    _apply(client, _capital_return(sap, amount="5"))
+
+    (action,) = client.get("/api/corporate-actions").json()
+    assert action["needs_review"] is True
+
+
 # --- Spin-off and merger -----------------------------------------------------
 
 
@@ -551,6 +581,24 @@ def test_a_merger_moves_every_lot_into_the_target_at_the_exchange_ratio(db, clie
             [{"instrument_id": new, "quantity": "15", "basis_eur": "6000"}],
         ),
     ]
+
+
+def test_a_merger_reaches_the_lots_a_transfer_has_in_transit(db, client):
+    """A Depotübertrag that left as the old paper and arrived, after the
+    merger, as the target's: the carried lot arrives as target units with
+    its whole basis — nothing is dropped as if it had gone missing en route."""
+    eur, old, new = _eur(db), _share(db), _share(db, "NEW", "DE000NEW0001")
+    source = _depot(db)
+    destination = _depot(db, platform_name="Trade Republic")
+    _keep(db, old, source)
+    _buy(db, source, old, eur, quantity="10", cost="1000")
+    _transfer(db, source, destination, left=(old, "10"), arrived=(new, "5"))
+
+    _apply(client, _merger(old, new))
+
+    position = _position(client, new, destination)
+    assert (position["quantity"], position["basis_eur"]) == ("5", "1000")
+    assert position["basis_gap"] is None
 
 
 def test_a_basis_awaiting_valuation_follows_a_capital_return_and_a_spin_off(db, client):
@@ -766,4 +814,21 @@ def test_an_identifier_change_cannot_take_another_instruments_isin(db, client):
     assert response.status_code == 409
     assert instruments.get(db, sap).isin == "DE0007164600"
     assert instruments.get(db, other).isin == "DE000SHL1006"
-    assert client.put("/api/securities/999999/isin", json={"isin": "X"}).status_code == 404
+    missing = client.put("/api/securities/999999/isin", json={"isin": "NL0000SAP001"})
+    assert missing.status_code == 404
+    assert client.put(f"/api/securities/{sap}/isin", json={"isin": "X"}).status_code == 422
+
+
+def test_an_identifier_change_cannot_take_an_isin_another_instrument_once_carried(db, client):
+    """A superseded ISIN still resolves to the Instrument that carried it;
+    handing it to another would give one identifier two answers."""
+    sap, other = _share(db), _share(db, "SHL", "DE000SHL1006")
+    assert (
+        client.put(f"/api/securities/{other}/isin", json={"isin": "NL0000SHL001"}).status_code
+        == 204
+    )
+
+    response = client.put(f"/api/securities/{sap}/isin", json={"isin": "DE000SHL1006"})
+
+    assert response.status_code == 409
+    assert [row.id for row in instruments.find_by_identifier(db, "DE000SHL1006")] == [other]

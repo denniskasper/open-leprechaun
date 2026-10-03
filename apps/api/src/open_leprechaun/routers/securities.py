@@ -17,7 +17,7 @@ from open_leprechaun.ports.crypto_prices import ProviderOutageError, RateLimited
 from open_leprechaun.repositories import instruments
 from open_leprechaun.security_search import SecuritySearchDep
 from open_leprechaun.services import securities
-from open_leprechaun.services.securities import FUND_TYPES, FoundCandidate
+from open_leprechaun.services.securities import FUND_TYPES, FoundCandidate, IsinChange
 
 router = APIRouter(tags=["securities"])
 
@@ -295,7 +295,13 @@ def review_security(
 
 
 class ChangeIsinRequest(BaseModel):
-    isin: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, to_upper=True)]
+    # Two letters, nine alphanumerics, a check digit (ISO 6166).
+    isin: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True, to_upper=True, pattern=r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
+        ),
+    ]
 
 
 @router.put(
@@ -306,16 +312,11 @@ class ChangeIsinRequest(BaseModel):
 def change_isin(
     instrument_id: int, request: ChangeIsinRequest, admin: AdminDep, engine: EngineDep
 ) -> None:
-    """An identifier change — a merger or redomiciliation that renames the
-    paper without replacing it (ticket 52). The Instrument stays the row it
-    was, so every leg and lot recorded under the old ISIN is still its own,
-    and the old ISIN still resolves to it."""
-    instrument = instruments.get(engine, instrument_id)
-    if instrument is None or instrument.family != "security":
+    outcome = securities.change_isin(engine, instrument_id, new_isin=request.isin)
+    if outcome is IsinChange.no_such_security:
         raise HTTPException(status_code=404, detail="No such security.")
-    if instrument.isin == request.isin:
-        return
-    if not instruments.change_isin(engine, instrument_id, new_isin=request.isin):
+    if outcome is IsinChange.taken:
         raise HTTPException(
-            status_code=409, detail=f"Another Instrument already carries the ISIN {request.isin}."
+            status_code=409,
+            detail=f"The ISIN {request.isin} names, or once named, another Instrument.",
         )
