@@ -174,9 +174,7 @@ def disposals_through(
                 proceeds_share,
                 costs_share,
                 _basis(engine, source, walked, piece, instrument),
-                schedule.accumulated(
-                    instrument, acquired_at=piece.acquired_at, quantity=piece.quantity, until=at
-                ),
+                schedule.accumulated(walked.instruments, instrument.id, piece, until=at),
             )
             for piece, proceeds_share, costs_share in zip(
                 consumed, proceeds_shares, costs_shares, strict=True
@@ -280,20 +278,39 @@ def _basis(
     could not value is stated here from the purchase's own legs at the
     acquisition date's rate — the respective event date, §20 Abs. 4 Satz 1
     EStG. A lot minted by income at market value awaits what only a security
-    price could state — None, never a guess."""
+    price could state — None, never a guess.
+
+    Either way the acquisition is valued as it happened — the Instrument and
+    the units the slice entered the books as (`lots.origin`), whatever a
+    Corporate Action has made of them since — and what such events did to an
+    awaited basis is applied to the stated one (`lots.restated`)."""
     if piece.basis_eur is not None:
         return piece.basis_eur
+    acquired_as, acquired_quantity = lots.origin(piece, instrument.id)
     if piece.basis_source == lots.COST and piece.minted_by_leg_id is not None:
-        return _cost_at_acquisition(engine, source, walked, piece)
+        return lots.restated(
+            piece, _cost_at_acquisition(engine, source, walked, piece, acquired_quantity)
+        )
     if piece.basis_source == lots.MARKET_VALUE:
-        return fx.value_eur(
-            engine, source, instrument=instrument, quantity=piece.quantity, at=piece.acquired_at
+        return lots.restated(
+            piece,
+            fx.value_eur(
+                engine,
+                source,
+                instrument=walked.instruments[acquired_as],
+                quantity=acquired_quantity,
+                at=piece.acquired_at,
+            ),
         )
     return None
 
 
 def _cost_at_acquisition(
-    engine: Engine, source: ReferenceRateSource, walked: disposals.Replay, piece: lots.Slice
+    engine: Engine,
+    source: ReferenceRateSource,
+    walked: disposals.Replay,
+    piece: lots.Slice,
+    acquired_quantity: Decimal,
 ) -> Decimal | None:
     """What the purchase cost, valued at its own instant: the legs that left
     plus the fees charged against the acquisition (the same components
@@ -304,7 +321,9 @@ def _cost_at_acquisition(
     A partially consumed slice takes its share pro-rata at Decimal's default
     precision, like every report-time valuation: the slices of one lot are
     valued independently here, so a cents-rounded share could invent a cent
-    across the halves of a lot — exact division cannot."""
+    across the halves of a lot — exact division cannot. The share is judged
+    in the purchase's own units — what the slice was when it was acquired —
+    so a split since cannot inflate it."""
     minting = walked.leg_by_id[piece.minted_by_leg_id]
     siblings = walked.legs_of.get(minting.transaction_id, [])
     if sum(sibling.role == "in" for sibling in siblings) > 1:
@@ -321,6 +340,6 @@ def _cost_at_acquisition(
         walked.instruments,
         piece.acquired_at,
     )
-    if total is None or piece.quantity == minting.quantity:
+    if total is None or acquired_quantity == minting.quantity:
         return total
-    return total * piece.quantity / minting.quantity
+    return total * acquired_quantity / minting.quantity

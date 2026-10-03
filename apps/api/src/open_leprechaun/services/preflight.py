@@ -23,6 +23,7 @@ from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
 from open_leprechaun.services import (
     advance_lump_sums,
+    corporate_actions,
     disposals,
     fx,
     lots,
@@ -251,6 +252,27 @@ def _missing_advance_lump_sum_inputs(engine: Engine, year: int) -> Blocker | Non
     )
 
 
+def _unreviewed_corporate_actions(engine: Engine, year: int) -> Blocker | None:
+    """Corporate Actions in effect up to the end of the report's year that
+    stand flagged for manual review (ticket 52): a spin-off or merger, whose
+    basis moved by a ratio the Admin supplied, or a capital return that
+    exceeded a lot's basis. Their treatment is fact-specific and the
+    application asserts none — so a report resting on one waits until the
+    Admin has looked at it and marked it reviewed."""
+    flagged = corporate_actions.awaiting_review(engine, through_year=year)
+    if not flagged:
+        return None
+    return Blocker(
+        kind="unreviewed_corporate_actions",
+        detail=(
+            f"{_count(len(flagged), 'Corporate Action')} in effect up to the end of {year}"
+            f" {'awaits' if len(flagged) == 1 else 'await'} manual review."
+        ),
+        resolve_path="/corporate-actions",
+        count=len(flagged),
+    )
+
+
 def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
@@ -267,6 +289,7 @@ CHECKS: tuple[Check, ...] = (
     _futures_derivation_issues,
     _missing_statutory_configuration,
     _missing_advance_lump_sum_inputs,
+    _unreviewed_corporate_actions,
 )
 """Every registered pre-flight check. A later ticket registers a further
 blocker by appending its check here — the finalisation flow reads only this

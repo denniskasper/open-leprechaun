@@ -5,10 +5,10 @@ imported unknown identifier opened. Listings (ticket 45) join here: resolve
 an identifier to the markets the provider knows, enter one by hand where no
 provider does, and choose which Listing is the price source."""
 
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, StringConstraints, model_validator
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
@@ -292,3 +292,30 @@ def review_security(
         distribution_policy=classification.distribution_policy if classification else None,
     ):
         raise HTTPException(status_code=404, detail="No such security awaiting review.")
+
+
+class ChangeIsinRequest(BaseModel):
+    isin: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, to_upper=True)]
+
+
+@router.put(
+    "/securities/{instrument_id}/isin",
+    status_code=204,
+    summary="Reassign a security's ISIN; the superseded one stays in its identifier history",
+)
+def change_isin(
+    instrument_id: int, request: ChangeIsinRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """An identifier change — a merger or redomiciliation that renames the
+    paper without replacing it (ticket 52). The Instrument stays the row it
+    was, so every leg and lot recorded under the old ISIN is still its own,
+    and the old ISIN still resolves to it."""
+    instrument = instruments.get(engine, instrument_id)
+    if instrument is None or instrument.family != "security":
+        raise HTTPException(status_code=404, detail="No such security.")
+    if instrument.isin == request.isin:
+        return
+    if not instruments.change_isin(engine, instrument_id, new_isin=request.isin):
+        raise HTTPException(
+            status_code=409, detail=f"Another Instrument already carries the ISIN {request.isin}."
+        )

@@ -8,7 +8,7 @@ deliberately shared, never duplicated.
 
 Each class digests exactly the columns a derivation reads, so a note edit
 never churns a materialisation while every tax-relevant change does. A class
-declared with no source — rates, corporate actions (52) — digests as empty,
+declared with no source — rates — digests as empty,
 whether its table is unbuilt or deliberately excluded (each entry says
 which); the ticket that points an entry at rows makes that first real digest
 mark every dependent materialisation stale. An empty table digests like an
@@ -189,10 +189,27 @@ INPUT_CLASSES: Mapping[str, str | None] = {
     # Deliberately empty although the reference-rate store (17) exists: that
     # store is append-only and immutable (ADR-0017) — a fetch only ever adds
     # coverage, so no figure already stated can change under it. Prices (18)
-    # point this entry at rows when they arrive, being corrections-capable...
+    # point this entry at rows when they arrive, being corrections-capable.
     "rates": None,
-    # ...and corporate actions (52), whose reversal is remove-and-rebuild.
-    "corporate_actions": None,
+    # Corporate Actions (ticket 52): each event rewrites the lots open at its
+    # instant, so recording one, and removing one — its whole reversal —
+    # moves every figure resting on those lots. The note and the Admin's
+    # review mark are prose about the event, never an input.
+    "corporate_actions": (
+        "SELECT "
+        + _line(
+            "id",
+            "kind",
+            "instrument_id",
+            _utc("effective_at"),
+            "units_new",
+            "units_old",
+            "target_instrument_id",
+            "basis_share",
+            "amount_per_unit_eur",
+        )
+        + " AS line FROM corporate_action"
+    ),
 }
 
 

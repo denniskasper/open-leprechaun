@@ -204,14 +204,13 @@ def _disposal(
     costs = disposals.costs(engine, source, leg, siblings, instruments, at)
     proceeds_shares = disposals.prorated(proceeds, consumed, leg.quantity)
     costs_shares = disposals.prorated(costs, consumed, leg.quantity)
-    instrument = instruments[leg.instrument_id]
     consumptions = tuple(
         _consumption(
             piece,
             at,
             proceeds_share,
             costs_share,
-            _basis(engine, source, piece, instrument, at),
+            _basis(engine, source, piece, leg.instrument_id, instruments, at),
         )
         for piece, proceeds_share, costs_share in zip(
             consumed, proceeds_shares, costs_shares, strict=True
@@ -236,7 +235,8 @@ def _basis(
     engine: Engine,
     source: ReferenceRateSource,
     piece: lots.Slice,
-    instrument: Row,
+    instrument_id: int,
+    instruments: dict[int, Row],
     disposed_at: datetime,
 ) -> Decimal | None:
     """The consumed slice's basis. A lot minted by §22 income (ticket 22)
@@ -251,8 +251,19 @@ def _basis(
         and piece.basis_source == lots.MARKET_VALUE
         and disposed_at <= _one_year_after(piece.acquired_at)
     ):
-        return fx.value_eur(
-            engine, source, instrument=instrument, quantity=piece.quantity, at=piece.acquired_at
+        # Valued as it was received: the Instrument and units the slice
+        # entered the books as, whatever a Corporate Action (ticket 52) has
+        # made of them since, and what such events left of that basis.
+        acquired_as, acquired_quantity = lots.origin(piece, instrument_id)
+        return lots.restated(
+            piece,
+            fx.value_eur(
+                engine,
+                source,
+                instrument=instruments[acquired_as],
+                quantity=acquired_quantity,
+                at=piece.acquired_at,
+            ),
         )
     return piece.basis_eur
 

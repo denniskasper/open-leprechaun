@@ -38,7 +38,7 @@ rates.
 """
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -223,21 +223,28 @@ class Schedule:
         return quantity * self.per_unit(instrument, year=year).amount_eur * twelfths / _MONTHS
 
     def accumulated(
-        self, instrument: Row, *, acquired_at: datetime, quantity: Decimal, until: datetime
+        self,
+        instruments: dict[int, Row],
+        instrument_id: int,
+        piece: lots.Slice,
+        *,
+        until: datetime,
     ) -> Decimal:
-        """Everything a quantity accrued while it was held: one amount for
-        each year from its acquisition whose accrual date it was still held
-        on — the figure a sale at `until` deducts (§19 Abs. 1 Satz 3
-        InvStG). Zero, structurally, for everything that is not a fund."""
-        if instrument.type not in FUND_TYPES:
-            return Decimal(0)
-        return sum(
-            (
-                self.lot_amount(instrument, acquired_at=acquired_at, quantity=quantity, year=year)
-                for year in _accrued_years(fx.event_date(acquired_at), fx.event_date(until))
-            ),
-            Decimal(0),
-        )
+        """Everything a slice of this Instrument accrued while it was held:
+        one amount for each year from its acquisition whose accrual date it
+        was still held on — the figure a sale at `until` deducts (§19 Abs. 1
+        Satz 3 InvStG). Each year is judged as the slice stood in it
+        (`_standing`), so a split since changes no year already accrued.
+        Zero, structurally, for everything that was not a fund."""
+        total = Decimal(0)
+        for year in _accrued_years(fx.event_date(piece.acquired_at), fx.event_date(until)):
+            stood = _standing(piece, instrument_id, year=year)
+            if stood is None or instruments[stood[0]].type not in FUND_TYPES:
+                continue
+            total += self.lot_amount(
+                instruments[stood[0]], acquired_at=piece.acquired_at, quantity=stood[1], year=year
+            )
+        return total
 
     def missing(self, instrument: Row, *, year: int) -> list[str]:
         """What stands unset for this fund's year, named — the statutory keys
@@ -277,6 +284,25 @@ def _accrued_years(acquired: date, until: date) -> Iterator[int]:
     while accrual_date(year) <= until:
         yield year
         year += 1
+
+
+def _standing(piece: lots.Slice, instrument_id: int, *, year: int) -> tuple[int, Decimal] | None:
+    """What a slice of this Instrument was at the end of a derived year: the
+    Instrument it was units of then and how many — every Corporate Action
+    (ticket 52) of a later year undone, because a fund's per-unit values for
+    a year are stated in that year's units. None where the slice did not
+    exist yet: a spun-off slice inherits its acquisition instant, but what
+    accrued before the spin-off accrued on the lot it was taken from."""
+    quantity = piece.quantity
+    for change in reversed(piece.changes):
+        if fx.event_date(change.at).year <= year:
+            break
+        if change.born:
+            return None
+        quantity = quantity * change.units_old / change.units_new
+        if change.from_instrument_id is not None:
+            instrument_id = change.from_instrument_id
+    return instrument_id, quantity
 
 
 def accruals_through(engine: Engine, *, through_year: int) -> tuple[AdvanceLumpSum, ...]:
@@ -345,17 +371,22 @@ def _held(
     held at an accrual when it was acquired by the end of the derived year
     and not finally consumed before the accrual date; a unit a confirmed
     self-transfer carried was held throughout, in transit or not, and counts
-    where it came to rest."""
+    where it came to rest. Each year holds the unit as it stood then
+    (`_standing`): in that year's units, and under the fund it was a unit of
+    before any later merger."""
     occurred_at = {row.id: row.occurred_at for row in walked.transaction_rows}
     held: dict[tuple[int, int, int], list[lots.Slice]] = {}
 
     def hold(account_id: int, instrument_id: int, piece: lots.Slice, gone_on: date | None) -> None:
-        if walked.instruments[instrument_id].type not in FUND_TYPES:
-            return
         for year in range(fx.event_date(piece.acquired_at).year, through_year):
             if gone_on is not None and gone_on < accrual_date(year):
                 return
-            held.setdefault((year, account_id, instrument_id), []).append(piece)
+            stood = _standing(piece, instrument_id, year=year)
+            if stood is None or walked.instruments[stood[0]].type not in FUND_TYPES:
+                continue
+            held.setdefault((year, account_id, stood[0]), []).append(
+                replace(piece, quantity=stood[1])
+            )
 
     for (account_id, instrument_id), pieces in walked.remaining.items():
         for piece in pieces:

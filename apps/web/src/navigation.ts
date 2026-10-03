@@ -9,6 +9,7 @@ import {
   type LucideIcon,
   Scale,
   Shapes,
+  Split,
   Vault,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/transfers", label: "Transfers", icon: ArrowLeftRight },
       { to: "/imports", label: "Imports", icon: Download },
       { to: "/instruments", label: "Instruments", icon: Shapes },
+      { to: "/corporate-actions", label: "Corporate actions", icon: Split },
     ],
   },
   {

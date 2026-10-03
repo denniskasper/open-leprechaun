@@ -240,6 +240,12 @@ review**, because their treatment is fact-specific and the app must not assert o
 Because lots are derived, reversing a Corporate Action is the removal of the event followed by a
 rebuild.
 
+A reverse split is a split whose ratio falls below one — one kind, not two. An identifier change
+that leaves the paper the same is not a Corporate Action: the **Instrument**'s identifier history
+absorbs it and no lot moves.
+
+_Avoid_: editing a lot to reflect one. The event is recorded; its effect is derived.
+
 ### Import Batch
 
 One import, recorded as a unit and reversible as a unit. Every import previews before it writes,

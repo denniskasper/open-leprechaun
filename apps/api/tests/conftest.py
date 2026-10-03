@@ -84,6 +84,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Aggregates after their member transactions; the SET NULL release
         # makes either order work, this one just deletes nothing twice.
         connection.execute(text("DELETE FROM aggregate"))
+        # Corporate Actions hold their Instruments by RESTRICT — an event is
+        # a source of truth, so it goes before the Instrument it names.
+        connection.execute(text("DELETE FROM corporate_action"))
         connection.execute(text("DELETE FROM instrument"))
         # Connections before Platforms for the same reason as Accounts; their
         # per-kind status rows follow by cascade.

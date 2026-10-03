@@ -20,6 +20,7 @@ from decimal import Decimal
 from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
+from open_leprechaun.repositories import corporate_actions as corporate_actions_repository
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import fx, lots
@@ -82,6 +83,7 @@ def replay(engine: Engine) -> Replay:
         match_rows = lots_repository.match_rows(connection)
         instrument_rows = lots_repository.instrument_rows(connection)
         futures_close_rows = futures_repository.closed_position_rows(connection)
+        corporate_actions = corporate_actions_repository.action_rows(connection)
     derived = lots.derive(
         transaction_rows,
         leg_rows,
@@ -89,6 +91,7 @@ def replay(engine: Engine) -> Replay:
         stance_rows=stance_rows,
         match_rows=match_rows,
         futures_close_rows=futures_close_rows,
+        corporate_actions=corporate_actions,
     )
     return Replay(
         transaction_rows=transaction_rows,

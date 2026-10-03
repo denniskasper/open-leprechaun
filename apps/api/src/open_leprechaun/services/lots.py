@@ -46,17 +46,32 @@ store — itself a source of truth, ADR-0009 — walk the derivation beside the
 transactions and mint a settlement lot each (`_settlement`). Their tables
 are declared input classes of this materialisation already, so a new fill
 or manual position marks it stale like a ledger edit does.
+
+And one event changes a holding with no leg at all: a **Corporate Action**
+(ticket 52). The events walk the same pass in effect order and act on what is
+open at that instant — the slices still in a queue, and those a confirmed
+transfer has in transit — never on the ledger: a split rescales each slice's
+quantity and leaves its basis and acquisition instant alone, a capital return
+takes basis off, a merger moves every slice into the target Instrument and a
+spin-off mints target slices carrying the share of basis the Admin supplied,
+both under the original acquisition instant. A minted lot stays the
+acquisition as its leg stated it; what an event did is read from the queues
+(`Derivation.remaining`), from the quantity on the books (`Derivation.held`)
+and, slice by slice, from `Derivation.effects` — the before and after a
+preview shows. Nothing is stored, so removing the event and deriving again is
+the whole of its reversal.
 """
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
+from typing import Protocol
 
 from sqlalchemy import Connection, Engine, Row
 
-from open_leprechaun.repositories import fingerprints, futures, lots
+from open_leprechaun.repositories import corporate_actions, fingerprints, futures, lots
 from open_leprechaun.repositories.lots import Lot
 from open_leprechaun.services.futures import net_figure
 from open_leprechaun.services.rounding import cents
@@ -121,13 +136,90 @@ class Slice:
     the in-leg of that original acquisition, kept across transfers and splits,
     so a report-time engine can still reach the purchase that states a basis
     the derivation could not (ticket 46); None where no leg minted it — a
-    futures settlement."""
+    futures settlement.
+
+    A Corporate Action (ticket 52) rewrites the slice and leaves its trail in
+    `changes`, oldest first, so a reader can still ask what the slice was
+    before the event (`origin`). A basis the derivation could state is
+    adjusted in `basis_eur` itself; one it could not carries the adjustment
+    forward instead — `basis_share` of the basis at acquisition, less
+    `basis_returned_eur` — for the engine that states it to apply
+    (`restated`)."""
 
     acquired_at: datetime
     quantity: Decimal
     basis_eur: Decimal | None
     basis_source: str
     minted_by_leg_id: int | None = None
+    changes: tuple[UnitChange, ...] = ()
+    basis_share: Decimal = Decimal(1)
+    basis_returned_eur: Decimal = Decimal(0)
+
+
+@dataclass(frozen=True)
+class UnitChange:
+    """One Corporate Action's mark on a slice: at this instant, `units_old`
+    of what it was became `units_new` of what it is. `from_instrument_id`
+    names the Instrument it was units of before, where the event changed
+    that — a merger or a spin-off — and `born` says the slice did not exist
+    before the event at all: a spun-off slice inherits an acquisition instant
+    but was never itself held earlier."""
+
+    at: datetime
+    units_new: Decimal
+    units_old: Decimal
+    from_instrument_id: int | None = None
+    born: bool = False
+
+
+@dataclass(frozen=True)
+class LotState:
+    """What one open lot holds at one moment. `basis_eur` is None while the
+    basis awaits a valuation the derivation cannot state."""
+
+    instrument_id: int
+    quantity: Decimal
+    basis_eur: Decimal | None
+
+
+@dataclass(frozen=True)
+class LotEffect:
+    """What one Corporate Action did to one open lot: the lot before, and
+    everything it became — two states where a spin-off left one part and
+    moved another. `excess_eur` is what a capital return exceeded the lot's
+    basis by: the basis stops at zero, and what the excess is taxed as is
+    not the application's to assert."""
+
+    account_id: int
+    acquired_at: datetime
+    basis_source: str
+    before: LotState
+    after: tuple[LotState, ...]
+    excess_eur: Decimal = Decimal(0)
+
+
+class CorporateAction(Protocol):
+    """The event as the derivation reads it — a stored row or a proposed one
+    (repositories/corporate_actions.CorporateAction), whose id is None."""
+
+    @property
+    def id(self) -> int | None: ...
+    @property
+    def kind(self) -> str: ...
+    @property
+    def instrument_id(self) -> int: ...
+    @property
+    def effective_at(self) -> datetime: ...
+    @property
+    def units_new(self) -> Decimal | None: ...
+    @property
+    def units_old(self) -> Decimal | None: ...
+    @property
+    def target_instrument_id(self) -> int | None: ...
+    @property
+    def basis_share(self) -> Decimal | None: ...
+    @property
+    def amount_per_unit_eur(self) -> Decimal | None: ...
 
 
 @dataclass(frozen=True)
@@ -136,11 +228,20 @@ class Derivation:
     leg took from its queue — the pairing the disposal engine (ticket 21)
     reads — and what remains in each (Account, Instrument) queue at the end —
     the holdings view's cost basis (ticket 20). All derived in the same pass,
-    so no two of them can disagree."""
+    so no two of them can disagree.
+
+    `held` is what the books say sits where at the end: in-legs less out-
+    and fee-legs per (Account, Instrument), what coin-margined closes settled
+    (ticket 29), and what Corporate Actions made of both (ticket 52) — the
+    quantity a queue is judged against, kept in the pass that keeps the
+    queue. `effects` names, per Corporate Action id, what it did to each lot
+    open at its instant; a proposed action answers under None."""
 
     lots: list[Lot]
     consumed: dict[int, list[Slice]]
     remaining: dict[tuple[int, int], list[Slice]]
+    held: dict[tuple[int, int], Decimal]
+    effects: dict[int | None, list[LotEffect]]
 
 
 def derive(
@@ -151,6 +252,7 @@ def derive(
     stance_rows: list[Row],
     match_rows: list[Row],
     futures_close_rows: Sequence[Row] = (),
+    corporate_actions: Sequence[CorporateAction] = (),
 ) -> Derivation:
     """Everything the ledger supports, derived pure — the rows in, the lots
     and consumptions out, nothing consulted beyond the arguments. One
@@ -162,7 +264,11 @@ def derive(
     Closed futures positions walk the same pass in close order (ticket 29):
     a coin-margined close puts its settlement asset into the books, so a
     positive net figure mints a lot at the close — enqueued before any
-    later disposal, consumed FIFO like every other acquisition."""
+    later disposal, consumed FIFO like every other acquisition.
+
+    Corporate Actions walk it too (ticket 52), in effect order: each acts on
+    what is open at its instant, before any transaction at that instant —
+    a sale on the effective day is already stated in the new units."""
     decisions_of = grouped(stance_rows, "instrument_id")
     legs_of = grouped(leg_rows, "transaction_id")
     leg_by_id = {leg.id: leg for leg in leg_rows}
@@ -174,25 +280,47 @@ def derive(
     consumed_by_leg: dict[int, list[Slice]] = {}
     consumed_out_legs: set[int] = set()
     minted = []
-    closes = sorted(futures_close_rows, key=lambda row: row.closed_at)
-    settled = 0
+    held: dict[tuple[int, int], Decimal] = {}
+    effects: dict[int | None, list[LotEffect]] = {}
+    # Closes and Corporate Actions in one order of time; the sort is stable,
+    # so each keeps the order it was handed in within an instant, and a close
+    # settles before an event of the same instant acts.
+    legless = sorted(
+        [(close.closed_at, False, close) for close in futures_close_rows]
+        + [(action.effective_at, True, action) for action in corporate_actions],
+        key=lambda event: event[:2],
+    )
+    walked = 0
     ordinals: dict[tuple[int, int, datetime], int] = {}
 
-    def settle_through(instant: datetime | None) -> None:
-        """Mint every close up to the instant — before the transaction at
-        that instant, so a disposal at the closing timestamp can already
-        consume what the close settled."""
-        nonlocal settled
-        while settled < len(closes) and (instant is None or closes[settled].closed_at <= instant):
-            minted.extend(
-                _settlement(closes[settled], decisions_of, numeraire_instruments, queues, ordinals)
-            )
-            settled += 1
+    def catch_up(instant: datetime | None) -> None:
+        """Settle every close and apply every Corporate Action up to the
+        instant — before the transaction at that instant, so a disposal at
+        the closing timestamp can already consume what the close settled,
+        and one on a split's effective day finds the rescaled queue."""
+        nonlocal walked
+        while walked < len(legless) and (instant is None or legless[walked][0] <= instant):
+            _, is_action, event = legless[walked]
+            if is_action:
+                effects[event.id] = _apply(event, queues, arriving, leg_by_id, held, decisions_of)
+            else:
+                net = net_figure(event)
+                if net > 0:
+                    key = (event.account_id, event.settlement_instrument_id)
+                    held[key] = held.get(key, Decimal(0)) + net
+                minted.extend(
+                    _settlement(event, decisions_of, numeraire_instruments, queues, ordinals)
+                )
+            walked += 1
 
     for transaction in transaction_rows:
-        settle_through(transaction.occurred_at)
+        catch_up(transaction.occurred_at)
         siblings = legs_of.get(transaction.id, [])
         for leg in sorted(siblings, key=lambda leg: (_ROLE_ORDER[leg.role], leg.id)):
+            key = (leg.account_id, leg.instrument_id)
+            held[key] = held.get(key, Decimal(0)) + (
+                leg.quantity if leg.role == "in" else -leg.quantity
+            )
             if leg.instrument_id in numeraire_instruments:
                 continue
             queue = queues.setdefault((leg.account_id, leg.instrument_id), [])
@@ -249,8 +377,34 @@ def derive(
                     )
                 ],
             )
-    settle_through(None)
-    return Derivation(lots=minted, consumed=consumed_by_leg, remaining=queues)
+    catch_up(None)
+    return Derivation(
+        lots=minted, consumed=consumed_by_leg, remaining=queues, held=held, effects=effects
+    )
+
+
+def origin(piece: Slice, instrument_id: int) -> tuple[int, Decimal]:
+    """What a slice of this Instrument was when it entered the books: the
+    Instrument it was acquired as and how many units of it — every
+    Corporate Action since undone. A report-time engine values a basis the
+    derivation could not state from exactly this, at the acquisition's own
+    instant."""
+    quantity = piece.quantity
+    for change in reversed(piece.changes):
+        quantity = quantity * change.units_old / change.units_new
+        if change.from_instrument_id is not None:
+            instrument_id = change.from_instrument_id
+    return instrument_id, quantity
+
+
+def restated(piece: Slice, basis_at_acquisition: Decimal | None) -> Decimal | None:
+    """The basis of a slice whose derivation stored none, once its engine
+    has stated what the acquisition cost: the share Corporate Actions left
+    with this slice, less what capital returns took off — never below zero,
+    as a stated basis never is."""
+    if basis_at_acquisition is None:
+        return None
+    return max(basis_at_acquisition * piece.basis_share - piece.basis_returned_eur, Decimal(0))
 
 
 def rebuild(engine: Engine) -> None:
@@ -305,18 +459,214 @@ def snapshot(engine: Engine) -> Iterator[Connection]:
         yield connection
 
 
-def _rebuild_on(connection: Connection, fingerprint: dict[str, fingerprints.InputDigest]) -> None:
+def derive_on(connection: Connection, *, proposed: Sequence[CorporateAction] = ()) -> Derivation:
+    """The derivation of the ledger as this Connection's snapshot holds it —
+    with Corporate Actions nobody has applied yet walked beside the stored
+    ones, which is how a preview shows an event's effect without writing
+    anything (ticket 52)."""
     transaction_rows, leg_rows = lots.ledger(connection)
-    derived = derive(
+    return derive(
         transaction_rows,
         leg_rows,
         numeraire_instruments=lots.numeraire_instruments(connection),
         stance_rows=lots.stance_rows(connection),
         match_rows=lots.match_rows(connection),
         futures_close_rows=futures.closed_position_rows(connection),
+        corporate_actions=[*corporate_actions.action_rows(connection), *proposed],
     )
-    lots.replace_all(connection, derived.lots)
+
+
+def _rebuild_on(connection: Connection, fingerprint: dict[str, fingerprints.InputDigest]) -> None:
+    lots.replace_all(connection, derive_on(connection).lots)
     fingerprints.record(connection, SUBJECT, fingerprint)
+
+
+def _apply(
+    action: CorporateAction,
+    queues: dict[tuple[int, int], list[Slice]],
+    arriving: dict[int, list[Slice]],
+    leg_by_id: dict[int, Row],
+    held: dict[tuple[int, int], Decimal],
+    decisions_of: dict[int, list[Row]],
+) -> list[LotEffect]:
+    """One Corporate Action, applied to every Account holding its Instrument
+    at this point of the pass. Each open slice is rewritten by the kind's own
+    rule (`_REWRITES`); the quantity on the books follows the slices, and
+    whatever part of it no lot vouches for is rescaled by the same ratio —
+    so the queue and the quantity it is judged against agree exactly, however
+    a ratio rounds.
+
+    What a merger or spin-off moves enters the target queue under the stance
+    standing there: the event is the Admin's own record, so no separate keep
+    is needed, but an ignored or dangerous target still enters no cost basis
+    — as everywhere (ADR-0012).
+
+    Slices a confirmed transfer has in transit are still held: a split
+    rescales them and a capital return reaches them, so they arrive in the
+    units their in-leg states. A merger or spin-off leaves them as they are —
+    which Account its target units belong to in transit is exactly the kind
+    of fact the application does not guess."""
+    rewrite = _REWRITES[action.kind]
+    effects = []
+    accounts = sorted(
+        {account_id for account_id, held_id in (*queues, *held) if held_id == action.instrument_id}
+    )
+    for account_id in accounts:
+        key = (account_id, action.instrument_id)
+        queue = queues.setdefault(key, [])
+        unvouched = held.get(key, Decimal(0)) - _quantity(queue)
+        outcomes = [(piece, rewrite(action, piece)) for piece in queue]
+        staying = [outcome.stays for _, outcome in outcomes if outcome.stays is not None]
+        moving = [outcome.moves for _, outcome in outcomes if outcome.moves is not None]
+        queue[:] = staying
+        if action.kind == "split":
+            held[key] = _quantity(staying) + _rescaled(action, unvouched)
+        entered = False
+        if action.target_instrument_id is not None:
+            target = (account_id, action.target_instrument_id)
+            if action.kind == "merger":
+                held[key] = Decimal(0)
+            held[target] = (
+                held.get(target, Decimal(0)) + _quantity(moving) + _rescaled(action, unvouched)
+            )
+            stance = effective_stance(decisions_of.get(action.target_instrument_id, ()), account_id)
+            entered = not never_enters_cost_basis(stance)
+            if entered:
+                _enqueue(queues.setdefault(target, []), moving)
+        effects += [
+            _effect(action, account_id, piece, outcome, entered=entered)
+            for piece, outcome in outcomes
+        ]
+    if action.target_instrument_id is None:
+        for in_leg_id, pieces in arriving.items():
+            in_leg = leg_by_id[in_leg_id]
+            if in_leg.instrument_id != action.instrument_id:
+                continue
+            outcomes = [(piece, rewrite(action, piece)) for piece in pieces]
+            pieces[:] = [outcome.stays for _, outcome in outcomes if outcome.stays is not None]
+            effects += [
+                _effect(action, in_leg.account_id, piece, outcome, entered=False)
+                for piece, outcome in outcomes
+            ]
+    return effects
+
+
+@dataclass(frozen=True)
+class _Outcome:
+    """What a Corporate Action made of one slice: the part staying in its
+    queue, the part moving to the target Instrument's, and what a capital
+    return exceeded the basis by."""
+
+    stays: Slice | None = None
+    moves: Slice | None = None
+    excess_eur: Decimal = Decimal(0)
+
+
+def _rescaled(action: CorporateAction, quantity: Decimal) -> Decimal:
+    """A quantity through the event's ratio — multiplied before it is
+    divided, so every ratio that comes out even is exact."""
+    assert action.units_new is not None and action.units_old is not None
+    return quantity * action.units_new / action.units_old
+
+
+def _changed(action: CorporateAction, piece: Slice, **mark: int | bool) -> Slice:
+    """The slice in its new units, the event added to its trail."""
+    assert action.units_new is not None and action.units_old is not None
+    change = UnitChange(action.effective_at, action.units_new, action.units_old, **mark)
+    return replace(
+        piece, quantity=_rescaled(action, piece.quantity), changes=(*piece.changes, change)
+    )
+
+
+def _split_units(action: CorporateAction, piece: Slice) -> _Outcome:
+    """A split or reverse split: quantity by the ratio, per-unit basis
+    therefore inversely — the total basis and the acquisition instant are
+    not touched, and nothing taxable happened."""
+    return _Outcome(stays=_changed(action, piece))
+
+
+def _merge(action: CorporateAction, piece: Slice) -> _Outcome:
+    """A merger: the slice becomes units of the target Instrument at the
+    exchange ratio, carrying its whole basis and its acquisition instant."""
+    return _Outcome(moves=_changed(action, piece, from_instrument_id=action.instrument_id))
+
+
+def _spin_off(action: CorporateAction, piece: Slice) -> _Outcome:
+    """A spin-off: the Admin's share of the basis leaves with new units of
+    the target Instrument, under the original acquisition instant. A stated
+    basis is divided in cents with the exact remainder staying behind, so no
+    cent is invented or lost; an awaited one divides when it is stated."""
+    assert action.basis_share is not None
+    spun = _changed(action, piece, from_instrument_id=action.instrument_id, born=True)
+    moved_returned = cents(piece.basis_returned_eur * action.basis_share)
+    if piece.basis_eur is None:
+        moved_share = piece.basis_share * action.basis_share
+        return _Outcome(
+            stays=replace(
+                piece,
+                basis_share=piece.basis_share - moved_share,
+                basis_returned_eur=piece.basis_returned_eur - moved_returned,
+            ),
+            moves=replace(spun, basis_share=moved_share, basis_returned_eur=moved_returned),
+        )
+    moved_basis = cents(piece.basis_eur * action.basis_share)
+    return _Outcome(
+        stays=replace(piece, basis_eur=piece.basis_eur - moved_basis),
+        moves=replace(spun, basis_eur=moved_basis),
+    )
+
+
+def _return_capital(action: CorporateAction, piece: Slice) -> _Outcome:
+    """A capital return: the amount per unit comes off the slice's basis
+    rather than counting as income. A stated basis stops at zero and the
+    excess is named, never taxed here; an awaited one remembers what to take
+    off when it is stated."""
+    assert action.amount_per_unit_eur is not None
+    returned = cents(piece.quantity * action.amount_per_unit_eur)
+    if piece.basis_eur is None:
+        return _Outcome(
+            stays=replace(piece, basis_returned_eur=piece.basis_returned_eur + returned)
+        )
+    return _Outcome(
+        stays=replace(piece, basis_eur=max(piece.basis_eur - returned, Decimal(0))),
+        excess_eur=max(returned - piece.basis_eur, Decimal(0)),
+    )
+
+
+_REWRITES = {
+    "split": _split_units,
+    "merger": _merge,
+    "spin_off": _spin_off,
+    "capital_return": _return_capital,
+}
+"""Each kind's rule for one open slice."""
+
+
+def _effect(
+    action: CorporateAction, account_id: int, piece: Slice, outcome: _Outcome, *, entered: bool
+) -> LotEffect:
+    after = []
+    if outcome.stays is not None:
+        after.append(
+            LotState(action.instrument_id, outcome.stays.quantity, outcome.stays.basis_eur)
+        )
+    if outcome.moves is not None and entered:
+        assert action.target_instrument_id is not None
+        after.append(
+            LotState(action.target_instrument_id, outcome.moves.quantity, outcome.moves.basis_eur)
+        )
+    return LotEffect(
+        account_id=account_id,
+        acquired_at=piece.acquired_at,
+        basis_source=piece.basis_source,
+        before=LotState(action.instrument_id, piece.quantity, piece.basis_eur),
+        after=tuple(after),
+        excess_eur=outcome.excess_eur,
+    )
+
+
+def _quantity(slices: list[Slice]) -> Decimal:
+    return sum((piece.quantity for piece in slices), Decimal(0))
 
 
 def _settlement(
@@ -467,20 +817,20 @@ def _split(piece: Slice, first_quantity: Decimal) -> tuple[Slice, Slice]:
     else:
         first_basis = cents(piece.basis_eur * first_quantity / piece.quantity)
         rest_basis = piece.basis_eur - first_basis
+    # What capital returns took off an awaited basis divides the same way.
+    first_returned = cents(piece.basis_returned_eur * first_quantity / piece.quantity)
     return (
-        Slice(
-            piece.acquired_at,
-            first_quantity,
-            first_basis,
-            piece.basis_source,
-            minted_by_leg_id=piece.minted_by_leg_id,
+        replace(
+            piece,
+            quantity=first_quantity,
+            basis_eur=first_basis,
+            basis_returned_eur=first_returned,
         ),
-        Slice(
-            piece.acquired_at,
-            piece.quantity - first_quantity,
-            rest_basis,
-            piece.basis_source,
-            minted_by_leg_id=piece.minted_by_leg_id,
+        replace(
+            piece,
+            quantity=piece.quantity - first_quantity,
+            basis_eur=rest_basis,
+            basis_returned_eur=piece.basis_returned_eur - first_returned,
         ),
     )
 
