@@ -80,6 +80,14 @@ class Settings(BaseSettings):
             "place — venue rounding — and nothing more; a run may state its own."
         ),
     )
+    scheduler_enabled: bool = Field(
+        default=True,
+        description=(
+            "Whether this process runs scheduled tasks when they fall due "
+            "(ticket 42). Off, tasks still run on demand through run-now; the "
+            "schedules themselves are the Admin's, set in the application."
+        ),
+    )
     session_ttl_hours: int = Field(
         default=720,
         gt=0,

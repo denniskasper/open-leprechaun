@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowLeftRight,
+  CalendarClock,
   Coins,
   Download,
   Gavel,
@@ -47,6 +48,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/settings/platforms", label: "Platforms", icon: Vault },
       { to: "/settings/connections", label: "Connections", icon: KeyRound },
       { to: "/settings/statutory", label: "Statutory", icon: Gavel },
+      { to: "/settings/scheduled-tasks", label: "Scheduled tasks", icon: CalendarClock },
     ],
   },
   {

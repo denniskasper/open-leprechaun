@@ -94,6 +94,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Accounts first: a Platform still holding one refuses to go.
         connection.execute(text("DELETE FROM account"))
         connection.execute(text("DELETE FROM platform"))
+        # Scheduled tasks reference nothing; a schedule one test chose or a
+        # run it recorded must not answer another test's list.
+        connection.execute(text("DELETE FROM scheduled_task"))
     return engine
 
 

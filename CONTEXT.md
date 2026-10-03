@@ -577,6 +577,27 @@ number is missing.
 _Avoid_: carrying a line number from one year's form to another's, and guessing a line where the
 form asks for a fact the ledger does not hold.
 
+## Automation
+
+### Scheduled Task
+
+Work the application repeats on its own — a price update, a **Connection** sync — on a schedule
+the Admin controls: a cron expression read on the Europe/Berlin clock, and an enabled flag, per
+task. The tasks themselves are declared in code; the Admin chooses when each runs, never what
+exists. **Run-now** runs one immediately, whatever its schedule says and whether or not it is
+enabled.
+
+A task never overlaps itself: a second run — manual or scheduled — is refused while one is in
+flight, not queued behind it. Each task states its last run alone — when it started, how long it
+took, whether it succeeded, and the sentence saying what failed. A run the process did not survive
+reads as failed, never as still running.
+
+A missed fire is answered once, not once per fire missed, and a schedule counts forward from when
+it was last chosen: enabling a long-idle task waits for its next due time.
+
+_Avoid_: "job" or "cron job" — the unit is the task; cron is only how its schedule is written.
+_Avoid_: "sync" for a task run in general — a sync is what one particular task does.
+
 ## Presentation and access
 
 ### Admin

@@ -41,7 +41,8 @@ def test_only_ciphertext_reaches_the_database(db):
     passphrase — a database dump hands over nothing."""
     register(db, exchange(db))
 
-    (row,) = db.connect().execute(text("SELECT * FROM connection")).mappings().all()
+    with db.connect() as connection:
+        (row,) = connection.execute(text("SELECT * FROM connection")).mappings().all()
     stored = bytes(row["credentials_ciphertext"])
     for material in (KEY, SECRET, PASSPHRASE):
         assert material.encode() not in stored

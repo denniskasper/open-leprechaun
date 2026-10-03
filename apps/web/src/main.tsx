@@ -13,6 +13,7 @@ import { ImportsPage } from "@/pages/imports";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
 import { PlatformsPage } from "@/pages/platforms";
+import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
 import { StatutoryPage } from "@/pages/statutory";
 import { TransactionsPage } from "@/pages/transactions";
 import { TransfersPage } from "@/pages/transfers";
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
           { path: "settings/platforms", element: <PlatformsPage /> },
           { path: "settings/connections", element: <ConnectionsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },
+          { path: "settings/scheduled-tasks", element: <ScheduledTasksPage /> },
         ],
       },
     ],

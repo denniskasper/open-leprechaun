@@ -47,17 +47,16 @@ def _fund(db, **overrides):
 
 
 def _row(db, instrument_id):
-    return (
-        db.connect()
-        .execute(
+    # Closed here, not left to the garbage collector: a connection still
+    # inside its transaction holds the lock a later schema rebuild waits on.
+    with db.connect() as connection:
+        return connection.execute(
             text(
                 "SELECT type, symbol, name, isin, fund_category, fund_category_source,"
                 " distribution_policy, needs_review FROM instrument WHERE id = :id"
             ),
             {"id": instrument_id},
-        )
-        .one()
-    )
+        ).one()
 
 
 # --- The schema holds the classification rules --------------------------------

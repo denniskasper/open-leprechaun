@@ -19,6 +19,9 @@ export default defineConfig({
       command: "apps/api/.venv/bin/python -m open_leprechaun",
       cwd: repoRoot,
       url: `http://${apiHost}:${apiPort}/api/health`,
+      // No scheduled price update or sync may reach a live provider behind a
+      // test run's back.
+      env: { SCHEDULER_ENABLED: "false" },
       reuseExistingServer: !process.env.CI,
       stdout: "pipe",
     },

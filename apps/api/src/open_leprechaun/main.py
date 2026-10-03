@@ -1,8 +1,12 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from open_leprechaun import API_PREFIX, __version__
+from open_leprechaun.db import get_engine
 from open_leprechaun.routers import (
     aggregates,
     auth,
@@ -19,15 +23,38 @@ from open_leprechaun.routers import (
     platforms,
     prices,
     reports,
+    scheduled_tasks,
     securities,
     statutory,
     transactions,
     transfer_matches,
 )
+from open_leprechaun.scheduler import Scheduler
+from open_leprechaun.settings import get_settings
+from open_leprechaun.tasks import process_scheduled_tasks
 
 
-def create_app() -> FastAPI:
+@asynccontextmanager
+async def _scheduling(app: FastAPI) -> AsyncIterator[None]:
+    """Answer scheduled tasks for as long as the app serves (ticket 42),
+    unless this instance was told not to."""
+    if not get_settings().scheduler_enabled:
+        yield
+        return
+    scheduler = Scheduler(get_engine, process_scheduled_tasks)
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.stop()
+
+
+def create_app(*, scheduling: bool = False) -> FastAPI:
+    """The API. `scheduling` starts the background scheduler alongside it —
+    only the served app asks for that, so an app built for a test never runs
+    real work behind the test's back."""
     app = FastAPI(
+        lifespan=_scheduling if scheduling else None,
         title="Open Leprechaun API",
         version=__version__,
         summary="A self-hosted ledger that produces German tax figures",
@@ -72,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(platforms.router, prefix=API_PREFIX)
     app.include_router(prices.router, prefix=API_PREFIX)
     app.include_router(reports.router, prefix=API_PREFIX)
+    app.include_router(scheduled_tasks.router, prefix=API_PREFIX)
     app.include_router(securities.router, prefix=API_PREFIX)
     app.include_router(statutory.router, prefix=API_PREFIX)
     app.include_router(transactions.router, prefix=API_PREFIX)
@@ -79,4 +107,4 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+app = create_app(scheduling=True)

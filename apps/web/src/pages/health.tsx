@@ -2,15 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth, HEALTH_URL, type Health } from "@/api/health";
 import { PageHeader } from "@/components/page-header";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Lamp, TONE, type Tone } from "@/components/patterns/lamp";
 import { formatTimestamp } from "@/lib/format";
-
-type Tone = "signal" | "caution" | "idle";
-
-const TONE: Record<Tone, { text: string; lamp: string }> = {
-  signal: { text: "text-signal", lamp: "bg-signal" },
-  caution: { text: "text-caution", lamp: "bg-caution" },
-  idle: { text: "text-muted-foreground", lamp: "bg-muted-foreground" },
-};
 
 interface Reading {
   tone: Tone;
@@ -113,14 +106,5 @@ function Readout({
         ))}
       </dl>
     </section>
-  );
-}
-
-function Lamp({ tone }: { tone: Tone }) {
-  return (
-    <span className="relative flex size-3 shrink-0" aria-hidden="true">
-      <span className={`lamp-halo absolute inset-0 rounded-full ${TONE[tone].lamp}`} />
-      <span className={`relative size-3 rounded-full ${TONE[tone].lamp}`} />
-    </span>
   );
 }
