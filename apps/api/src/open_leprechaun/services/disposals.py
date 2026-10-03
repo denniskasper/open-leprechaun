@@ -66,6 +66,12 @@ class Replay:
     instruments: dict[int, Row]
     decisions_of: dict[int, list[Row]]
     consumed: dict[int, list[lots.Slice]]
+    # What still sits in each (Account, Instrument) queue at the ledger's end,
+    # and the out-legs a confirmed self-transfer carried onward — what such a
+    # leg consumed left no one's hands, so it is no final consumption (the
+    # Vorabpauschale, ticket 53, asks who held what at an accrual).
+    remaining: dict[tuple[int, int], list[lots.Slice]]
+    carried_out_leg_ids: frozenset[int]
 
 
 def replay(engine: Engine) -> Replay:
@@ -91,6 +97,8 @@ def replay(engine: Engine) -> Replay:
         instruments={row.id: row for row in instrument_rows},
         decisions_of=lots.grouped(stance_rows, "instrument_id"),
         consumed=derived.consumed,
+        remaining=derived.remaining,
+        carried_out_leg_ids=frozenset(match.out_leg_id for match in match_rows),
     )
 
 

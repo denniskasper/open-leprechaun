@@ -483,9 +483,15 @@ _Avoid_: treating it as a deduction from tax — it exempts a share of the *inco
 
 The annual advance lump sum on an accumulating fund that distributed less than a notional minimum
 return. The base yield is the start-of-year value times the **Basiszins** times the statutory
-factor, prorated by month of acquisition; the amount is that yield less the year's distributions,
-floored at zero, then capped at the year's increase in redemption value. Zero when the fund fell in
-value, and none at all for a fund not held at the accrual moment.
+factor; the amount is that yield less the year's distributions, floored at zero, then capped at the
+year's increase in redemption value. In the year of acquisition that amount — not the base yield
+before the cap — goes down by one twelfth for each full month preceding the month of acquisition,
+which makes it a figure of the Tax Lot. Zero when the fund fell in value, and none at all for a
+fund not held at the accrual moment. It applies to every fund, distributing ones included, wherever
+the distributions fall short of the base yield.
+
+Its inputs are entered, never derived: the Basiszins and the factor per year, and per fund and year
+the first and last redemption price and the distributions per unit, in EUR, each with its source.
 
 It accrues on the first banking day of the **following** year and is therefore declared in that
 year — the year it derives from and the year it is declared in are distinct and must both be named.

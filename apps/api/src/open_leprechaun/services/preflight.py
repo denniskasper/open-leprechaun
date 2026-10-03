@@ -21,7 +21,14 @@ from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
-from open_leprechaun.services import disposals, fx, lots, statutory, transfer_matches
+from open_leprechaun.services import (
+    advance_lump_sums,
+    disposals,
+    fx,
+    lots,
+    statutory,
+    transfer_matches,
+)
 from open_leprechaun.services.stances import effective_stance, never_enters_cost_basis
 
 __all__ = ["CHECKS", "Blocker", "blockers"]
@@ -222,6 +229,28 @@ def _unclassified_funds(engine: Engine, year: int) -> Blocker | None:
     )
 
 
+def _missing_advance_lump_sum_inputs(engine: Engine, year: int) -> Blocker | None:
+    """What the Vorabpauschalen declared up to the report's year rest on and
+    nobody has entered (ticket 53): the Basiszins or the factor of a year a
+    fund was held across, or that fund's redemption values for it. These are
+    the *derived* years' inputs — the year before the report's, and earlier —
+    so the year's own statutory check cannot see them. The engine refuses to
+    compute over the first gap rather than substituting a market close; the
+    pre-flight names them all."""
+    missing = advance_lump_sums.missing_inputs(engine, through_year=year)
+    if not missing:
+        return None
+    return Blocker(
+        kind="missing_advance_lump_sum_inputs",
+        detail=(
+            f"{_count(len(missing), 'Vorabpauschale input')} up to the end of {year}"
+            f" {'is' if len(missing) == 1 else 'are'} unset: {', '.join(missing)}."
+        ),
+        resolve_path="/settings/statutory",
+        count=len(missing),
+    )
+
+
 def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
@@ -237,6 +266,7 @@ CHECKS: tuple[Check, ...] = (
     _unattributable_funding,
     _futures_derivation_issues,
     _missing_statutory_configuration,
+    _missing_advance_lump_sum_inputs,
 )
 """Every registered pre-flight check. A later ticket registers a further
 blocker by appending its check here — the finalisation flow reads only this

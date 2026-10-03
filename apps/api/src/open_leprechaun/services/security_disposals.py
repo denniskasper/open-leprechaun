@@ -23,6 +23,13 @@ engine (services/section20) reduces each disposal to one Section 20 Event
 and alone applies exemption, netting, allowance and rate — no tax is
 computed here.
 
+A fund's gain is further reduced by the Vorabpauschalen accrued on the
+consumed lots while they were held (§19 Abs. 1 Satz 3 InvStG, ticket 53) —
+before Teilfreistellung, as the Anlage KAP-INV asks in its line 53 — so the
+amount already taxed as deemed income is never taxed again as gain. The
+accumulation is the advance-lump-sum producer's own answer for the lot
+(services/advance_lump_sums.Schedule), read here and nowhere restated.
+
 A security still typed `unknown`, or a fund with no Teilfreistellung
 classification, refuses by name rather than assuming a pot or a zero rate
 (ticket 44): both are the Admin's to settle, like an unset statutory value —
@@ -38,7 +45,7 @@ from sqlalchemy import Engine, Row
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories.instruments import FUND_TYPES
-from open_leprechaun.services import disposals, fx, lots
+from open_leprechaun.services import advance_lump_sums, disposals, fx, lots
 from open_leprechaun.services.statutory import required_value
 
 __all__ = [
@@ -49,6 +56,7 @@ __all__ = [
     "SecurityDisposal",
     "UnclassifiedSecurityError",
     "disposals_through",
+    "fund_exemption_rate",
     "partial_exemption_rate",
 ]
 
@@ -100,6 +108,9 @@ class SecurityConsumption:
     basis_source: str
     proceeds_eur: Decimal | None
     costs_eur: Decimal | None
+    # The Vorabpauschalen accrued on this slice while it was held, before
+    # Teilfreistellung — deducted from its gain; zero off a fund.
+    advance_lump_sums_eur: Decimal
     gain_eur: Decimal | None
 
 
@@ -125,6 +136,9 @@ class SecurityDisposal:
     # The fund category's per-year Teilfreistellung rate (§20 InvStG) — zero
     # for everything that is not a fund.
     exemption_rate: Decimal
+    # What the consumed lots had accrued as Vorabpauschale (§19 Abs. 1 Satz 3
+    # InvStG) — already deducted in `gain_eur`.
+    advance_lump_sums_eur: Decimal
     gain_eur: Decimal | None
     consumptions: tuple[SecurityConsumption, ...]
 
@@ -137,6 +151,7 @@ def disposals_through(
     the lots its Depot holds refuses whatever year the gap sits in: every
     later consumption's FIFO position rests on it."""
     walked = disposals.replay(engine)
+    schedule = advance_lump_sums.Schedule(engine)
     sold = []
     for transaction, leg, consumed in disposals.sales(walked, families=("security",)):
         disposals.refuse_shortfall(leg, consumed, transaction, walked.instruments)
@@ -159,6 +174,9 @@ def disposals_through(
                 proceeds_share,
                 costs_share,
                 _basis(engine, source, walked, piece, instrument),
+                schedule.accumulated(
+                    instrument, acquired_at=piece.acquired_at, quantity=piece.quantity, until=at
+                ),
             )
             for piece, proceeds_share, costs_share in zip(
                 consumed, proceeds_shares, costs_shares, strict=True
@@ -178,6 +196,9 @@ def disposals_through(
                 rests_on_estimate=any(piece.basis_source == lots.ESTIMATE for piece in consumed),
                 category=category,
                 exemption_rate=partial_exemption_rate(engine, instrument, year=tax_year),
+                advance_lump_sums_eur=sum(
+                    (piece.advance_lump_sums_eur for piece in consumptions), Decimal(0)
+                ),
                 gain_eur=None
                 if awaiting
                 else sum((piece.gain_eur for piece in consumptions), Decimal(0)),
@@ -201,6 +222,14 @@ def _category(instrument: Row) -> str:
     return _CATEGORY_OF_TYPE[instrument.type]
 
 
+def fund_exemption_rate(engine: Engine, fund: Row, *, year: int) -> Decimal:
+    """The Teilfreistellung a fund's own income carries in a year — what the
+    Vorabpauschale (ticket 53) wears. A fund with no classification refuses
+    by name, as its disposal does."""
+    _category(fund)
+    return partial_exemption_rate(engine, fund, year=year)
+
+
 def partial_exemption_rate(engine: Engine, instrument: Row, *, year: int) -> Decimal:
     """The Teilfreistellung the disposal's year grants this instrument: the
     fund category's configured rate (§20 InvStG) — a year whose rate is unset
@@ -221,11 +250,12 @@ def _consumption(
     proceeds_share: Decimal | None,
     costs_share: Decimal | None,
     basis_eur: Decimal | None,
+    advance_lump_sums_eur: Decimal,
 ) -> SecurityConsumption:
     if proceeds_share is None or costs_share is None or basis_eur is None:
         gain = None
     else:
-        gain = proceeds_share - basis_eur - costs_share
+        gain = proceeds_share - basis_eur - costs_share - advance_lump_sums_eur
     return SecurityConsumption(
         quantity=piece.quantity,
         acquired_at=piece.acquired_at,
@@ -233,6 +263,7 @@ def _consumption(
         basis_source=piece.basis_source,
         proceeds_eur=proceeds_share,
         costs_eur=costs_share,
+        advance_lump_sums_eur=advance_lump_sums_eur,
         gain_eur=gain,
     )
 

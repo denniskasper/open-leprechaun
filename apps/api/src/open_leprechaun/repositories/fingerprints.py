@@ -166,6 +166,16 @@ INPUT_CLASSES: Mapping[str, str | None] = {
     # The per-country ceiling a Quellensteuer's creditability is judged
     # against; the cited source is prose, like a note.
     "treaty_limits": f"SELECT {_line('country', 'rate')} AS line FROM treaty_limit",
+    # What each fund published per unit and year (ticket 53) — the inputs of
+    # every Vorabpauschale and of the deduction a later sale takes; the cited
+    # source is prose, like a note.
+    "fund_redemption_values": (
+        "SELECT "
+        + _line(
+            "instrument_id", "year", "start_of_year_eur", "end_of_year_eur", "distributions_eur"
+        )
+        + " AS line FROM fund_redemption_value"
+    ),
     # Each Depot's effective withholding behaviour (ticket 43) — it decides
     # whether income reads as settled at source or still to declare. Only
     # Accounts with a behaviour at all, so a new exchange Account drifts

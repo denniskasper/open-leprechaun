@@ -3,10 +3,13 @@ import { CircleCheck, Pencil, Plus, X } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import {
   chooseElection,
+  enterFundRedemptionValue,
   enterTreatyLimit,
   enterValue,
+  fetchFundRedemptionValues,
   fetchStatutory,
   fetchTreatyLimits,
+  removeFundRedemptionValue,
   removeTreatyLimit,
   unsetValue,
   type ChurchTax,
@@ -70,6 +73,10 @@ export const KEY_WORDS: Record<
   advance_lump_sum_base_rate: {
     label: "Basiszins",
     gloss: "Drives the Vorabpauschale; published each January",
+  },
+  advance_lump_sum_factor: {
+    label: "Basisertrag factor",
+    gloss: "Share of the Basiszins the Vorabpauschale's base yield uses",
   },
   loss_cap_aktien: {
     label: "Loss cap — Aktien",
@@ -208,6 +215,7 @@ export function StatutoryPage() {
         <div className="space-y-12">
           <ElectionPanel election={data} />
           <TreatyLimitsPanel />
+          <FundRedemptionValuesPanel />
           {years.map((year, index) => (
             <YearSection key={year.year} keys={data.keys} year={year} index={index} />
           ))}
@@ -465,6 +473,212 @@ function TreatyLimitsPanel() {
           {enter.isPending ? "Storing…" : "Store"}
         </Button>
       </form>
+      {failure && (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          {failure.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function FundRedemptionValuesPanel() {
+  const { data, error, refetch } = useQuery({
+    queryKey: ["fund-redemption-values"],
+    queryFn: fetchFundRedemptionValues,
+  });
+  const [fund, setFund] = useState("");
+  const [year, setYear] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [distributions, setDistributions] = useState("");
+  const [source, setSource] = useState("");
+  const id = useId();
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["fund-redemption-values"] });
+
+  const funds = data?.funds ?? [];
+  const symbolOf = new Map(funds.map((known) => [known.instrument_id, known.symbol]));
+  const chosen = fund || (funds[0] ? String(funds[0].instrument_id) : "");
+
+  const enter = useMutation({
+    mutationFn: () =>
+      enterFundRedemptionValue({
+        instrument_id: Number(chosen),
+        year: Number(year),
+        start_of_year_eur: start.trim(),
+        end_of_year_eur: end.trim(),
+        distributions_eur: distributions.trim(),
+        source: source.trim(),
+      }),
+    onSuccess: async () => {
+      await refresh();
+      setYear("");
+      setStart("");
+      setEnd("");
+      setDistributions("");
+      setSource("");
+    },
+  });
+  const remove = useMutation({ mutationFn: removeFundRedemptionValue, onSuccess: refresh });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    enter.mutate();
+  }
+
+  const failure = enter.error ?? remove.error;
+  const amounts: [string, string, string, (value: string) => void, string][] = [
+    ["start", "First price (EUR)", start, setStart, "100.00"],
+    ["end", "Last price (EUR)", end, setEnd, "110.00"],
+    ["distributions", "Distributions (EUR)", distributions, setDistributions, "0"],
+  ];
+
+  return (
+    <section
+      className="rise rounded-xl border border-border p-5"
+      aria-label="Fund redemption values"
+    >
+      <p className="microlabel text-muted-foreground">Fund redemption values</p>
+      <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+        What each fund published for one unit in a calendar year: its first and last redemption
+        price and its distributions. With that year’s Basiszins they give the Vorabpauschale,
+        declared the year after. A fund held across a year with no values entered refuses to
+        compute — a market close is never substituted.
+      </p>
+      {error ? (
+        <div className="mt-4">
+          <ErrorState
+            title="The fund redemption values could not be loaded"
+            detail="The API did not answer with the per-fund values."
+            onRetry={() => void refetch()}
+          />
+        </div>
+      ) : data && data.values.length > 0 ? (
+        <ul className="mt-4 divide-y divide-border border-y border-border">
+          {data.values.map((value) => {
+            const symbol = symbolOf.get(value.instrument_id) ?? `#${value.instrument_id}`;
+            return (
+              <li
+                key={`${value.instrument_id}-${value.year}`}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5"
+              >
+                <span className="w-16 font-mono text-sm font-medium">{symbol}</span>
+                <span className="w-12 font-mono text-sm tabular-nums">{value.year}</span>
+                <span className="font-mono text-sm tabular-nums">
+                  {formatMoneyExact(value.start_of_year_eur, "EUR")}
+                  <span className="px-1.5 text-muted-foreground" aria-label="to">
+                    →
+                  </span>
+                  {formatMoneyExact(value.end_of_year_eur, "EUR")}
+                </span>
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  distributed {formatMoneyExact(value.distributions_eur, "EUR")}
+                </span>
+                <span className="min-w-48 flex-1 text-xs text-muted-foreground">
+                  {value.source}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(value)}
+                  aria-label={`Remove the ${value.year} redemption values of ${symbol}`}
+                >
+                  <X aria-hidden />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : data ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          {funds.length > 0
+            ? "No values entered yet — enter a year for each fund held across its end."
+            : "No fund in the ledger yet — values are entered per fund once one is held."}
+        </p>
+      ) : null}
+      {funds.length > 0 && (
+        <form
+          onSubmit={submit}
+          className="mt-4 flex flex-wrap items-end gap-3"
+          aria-label="Enter fund redemption values"
+        >
+          <div className="space-y-2">
+            <label htmlFor={`${id}-fund`} className="microlabel block text-muted-foreground">
+              Fund
+            </label>
+            <NativeSelect
+              id={`${id}-fund`}
+              value={chosen}
+              onChange={(event) => setFund(event.target.value)}
+              className="font-mono"
+            >
+              {funds.map((known) => (
+                <option
+                  key={known.instrument_id}
+                  value={known.instrument_id}
+                  className="bg-background text-foreground"
+                >
+                  {known.symbol}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor={`${id}-year`} className="microlabel block text-muted-foreground">
+              Year
+            </label>
+            <Input
+              id={`${id}-year`}
+              required
+              type="number"
+              // The API's regime bounds (services/statutory FIRST_YEAR, LAST_YEAR).
+              min={2009}
+              max={2100}
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
+              placeholder="2026"
+              className="w-24 font-mono tabular-nums"
+            />
+          </div>
+          {amounts.map(([name, label, value, set, placeholder]) => (
+            <div key={name} className="space-y-2">
+              <label htmlFor={`${id}-${name}`} className="microlabel block text-muted-foreground">
+                {label}
+              </label>
+              <Input
+                id={`${id}-${name}`}
+                required
+                inputMode="decimal"
+                pattern={DECIMAL_PATTERN.source}
+                value={value}
+                onChange={(event) => set(event.target.value)}
+                placeholder={placeholder}
+                className="w-36 font-mono tabular-nums"
+              />
+            </div>
+          ))}
+          <div className="min-w-64 flex-1 space-y-2">
+            <label htmlFor={`${id}-source`} className="microlabel block text-muted-foreground">
+              Source
+            </label>
+            <Input
+              id={`${id}-source`}
+              required
+              value={source}
+              onChange={(event) => setSource(event.target.value)}
+              placeholder="Fund company’s price history"
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={enter.isPending}>
+            <Plus aria-hidden />
+            {enter.isPending ? "Storing…" : "Store"}
+          </Button>
+        </form>
+      )}
       {failure && (
         <p role="alert" className="mt-3 text-sm text-alarm">
           {failure.message}

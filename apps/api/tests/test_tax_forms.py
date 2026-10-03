@@ -24,6 +24,7 @@ from open_leprechaun.main import create_app
 from open_leprechaun.rates import get_reference_rate_source
 from open_leprechaun.repositories import capital_income as capital_income_repository
 from open_leprechaun.repositories import (
+    fund_redemption_values,
     instruments,
     platforms,
     stances,
@@ -682,6 +683,42 @@ def test_each_fund_type_has_its_own_lines(db, client):
     assert sale["form_lines"] == ["17"]
     # A loss on Anlage KAP-INV is a signed Gewinn / Verlust figure.
     assert Decimal(sale["amount_eur"]) == Decimal("-100")
+
+
+def test_a_vorabpauschale_names_its_line_by_fund_type_before_teilfreistellung(db, client):
+    """The 2025 Anlage KAP-INV takes the Vorabpauschale of an Aktienfonds on
+    Zeile 9, before Teilfreistellung — and computes it, in its own lines 33
+    to 45, from the 2024 prices at 1,603 % (2.29 % Basiszins x 70 %, both
+    seeded for 2024): ten units starting 2024 at 100.00 and distributing
+    nothing accrue 10 x 1.603 = 16.03, declared in 2025."""
+    depot, eur = _depot(db), _eur(db)
+    fund = _security(db, type="etf", symbol="VWRL", isin="IE00B3RBWM25", category="aktienfonds")
+    settled = stances.classify(db, fund, stance="kept", account_id=depot)
+    assert not isinstance(settled, stances.Refusal)
+    _trade(db, depot, give=eur, given="1000", get=fund, gotten="10", occurred_at=_at(2024, 1))
+    fund_redemption_values.upsert_value(
+        db,
+        instrument_id=fund,
+        year=2024,
+        start_of_year_eur=Decimal("100"),
+        end_of_year_eur=Decimal("110"),
+        distributions_eur=Decimal("0"),
+        source="the fund's annual report",
+    )
+
+    forms = _forms(client, year=2025)
+
+    funds = _section(forms, "kapinv")
+    assert _amounts(funds) == {"kapinv.vorabpauschalen.aktienfonds": Decimal("16.03")}
+    lump_sum = _line(funds, "kapinv.vorabpauschalen.aktienfonds")
+    assert lump_sum["form_lines"] == ["9"]
+    assert lump_sum["label"].startswith("Vorabpauschalen nach § 18 InvStG aus: Aktienfonds")
+    assert lump_sum["backed_by"] == [f"advance_lump_sum:2024:account:{depot}:instrument:{fund}"]
+    kap = _section(forms, "kap")
+    assert "kap.kapitalertraege" not in _amounts(kap)
+    balances = {balance["key"]: Decimal(balance["amount_eur"]) for balance in kap["balances"]}
+    # 16.03 less the 30 % Teilfreistellung, to the cent.
+    assert balances["kap.balance.sonstige"] == Decimal("11.22")
 
 
 # --- The exports: the same form figures, each backed by its lines ------------

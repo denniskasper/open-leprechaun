@@ -38,7 +38,15 @@ from open_leprechaun.repositories import capital_income as capital_income_reposi
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import statutory as statutory_repository
-from open_leprechaun.services import capital_income, futures, fx, lots, security_disposals
+from open_leprechaun.services import (
+    advance_lump_sums,
+    capital_income,
+    futures,
+    fx,
+    lots,
+    security_disposals,
+)
+from open_leprechaun.services.advance_lump_sums import AdvanceLumpSum
 from open_leprechaun.services.capital_income import ExcludedEvent, IncomeReceipt
 from open_leprechaun.services.rounding import cents
 from open_leprechaun.services.security_disposals import SecurityDisposal
@@ -517,6 +525,10 @@ class Section20Year:
     # 46) — each naming its Depot and Instrument, which the event shape
     # deliberately does not carry and the form sections (ticket 51) turn on.
     disposals: tuple[SecurityDisposal, ...] = ()
+    # The Vorabpauschalen declared in this year (ticket 53) — each derived
+    # from the year before and naming both, with the per-unit working and
+    # the lots that accrued it.
+    advance_lump_sums: tuple[AdvanceLumpSum, ...] = ()
 
 
 FUTURES_CATEGORY = "termingeschaefte"
@@ -669,7 +681,33 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             )
         )
 
+    # Vorabpauschalen (ticket 53): each fund held at an accrual is one event
+    # dated there — the first banking day of the year after the one the
+    # amount derives from, which is what puts it in the later return —
+    # wearing the fund's Teilfreistellung rate for the year it is declared
+    # in. A year whose Basiszins, factor or redemption values are unset
+    # refuses inside the producer, by name; a zero amount is a record with no
+    # event.
+    accrued = advance_lump_sums.accruals_through(engine, through_year=year)
+    for lump_sum in accrued:
+        if not lump_sum.amount_eur:
+            continue
+        events.append(
+            Section20Event(
+                date=lump_sum.accrued_on,
+                category=security_disposals.OTHER_CATEGORY,
+                gross_eur=lump_sum.amount_eur,
+                exemption_rate=security_disposals.fund_exemption_rate(
+                    engine, instruments[lump_sum.instrument_id], year=lump_sum.declared_year
+                ),
+                german_withholding=NO_GERMAN_WITHHOLDING,
+                foreign_withholding=None,
+                source=lump_sum.source,
+            )
+        )
+
     receipts = tuple(receipt for receipt in income.counted if receipt.tax_year == year)
+    lump_sums = tuple(lump_sum for lump_sum in accrued if lump_sum.declared_year == year)
     disposals = tuple(disposal for disposal in sold if disposal.tax_year == year)
     if awaiting:
         return Section20Year(
@@ -680,6 +718,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             awaiting_valuation=tuple(awaiting),
             receipts=receipts,
             disposals=disposals,
+            advance_lump_sums=lump_sums,
         )
 
     first = min(
@@ -731,6 +770,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
         settled_at_source_eur=_gross(receipts, settled_at_source=True),
         to_declare_eur=_gross(receipts, settled_at_source=False),
         disposals=disposals,
+        advance_lump_sums=lump_sums,
     )
 
 

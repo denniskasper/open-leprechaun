@@ -16,6 +16,7 @@ export const statutoryKeySchema = z.enum([
   "church_tax_rate_bavaria_bw",
   "church_tax_rate_other_laender",
   "advance_lump_sum_base_rate",
+  "advance_lump_sum_factor",
   "loss_cap_aktien",
   "loss_cap_sonstige",
   "loss_cap_termingeschaefte",
@@ -157,5 +158,67 @@ export async function removeTreatyLimit(country: string): Promise<void> {
   const response = await fetch(`${TREATY_LIMITS_URL}/${country}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The treaty limit could not be removed.");
+  }
+}
+
+/** Relative, because the dev server proxies /api to the API on the same origin. */
+export const FUND_REDEMPTION_VALUES_URL = "/api/fund-redemption-values";
+
+/** A fund the ledger knows — what redemption values can be entered for. */
+export const fundSchema = z.object({
+  instrument_id: z.number().int(),
+  symbol: z.string(),
+  name: z.string(),
+  isin: z.string().nullable(),
+});
+
+/**
+ * What a fund published for one unit in one calendar year: its first and
+ * last redemption price and its distributions, in EUR — the inputs of the
+ * Vorabpauschale derived from that year. Decimal strings, never floats.
+ */
+export const fundRedemptionValueSchema = z.object({
+  instrument_id: z.number().int(),
+  year: z.number().int(),
+  start_of_year_eur: decimalString,
+  end_of_year_eur: decimalString,
+  distributions_eur: decimalString,
+  source: z.string(),
+});
+
+export const fundRedemptionValuesSchema = z.object({
+  funds: z.array(fundSchema),
+  values: z.array(fundRedemptionValueSchema),
+});
+
+export type Fund = z.infer<typeof fundSchema>;
+export type FundRedemptionValue = z.infer<typeof fundRedemptionValueSchema>;
+export type FundRedemptionValues = z.infer<typeof fundRedemptionValuesSchema>;
+
+export async function fetchFundRedemptionValues(): Promise<FundRedemptionValues> {
+  const response = await fetch(FUND_REDEMPTION_VALUES_URL);
+  if (!response.ok) {
+    throw new Error(`The API answered ${response.status} instead of the fund redemption values.`);
+  }
+  return fundRedemptionValuesSchema.parse(await response.json());
+}
+
+export async function enterFundRedemptionValue(value: FundRedemptionValue): Promise<void> {
+  const { instrument_id, year, ...entered } = value;
+  const response = await putJson(`${FUND_REDEMPTION_VALUES_URL}/${instrument_id}/${year}`, entered);
+  if (!response.ok) {
+    throw await refusal(response, "The redemption values could not be stored.");
+  }
+}
+
+export async function removeFundRedemptionValue(
+  value: Pick<FundRedemptionValue, "instrument_id" | "year">,
+): Promise<void> {
+  const response = await fetch(
+    `${FUND_REDEMPTION_VALUES_URL}/${value.instrument_id}/${value.year}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw await refusal(response, "The redemption values could not be removed.");
   }
 }

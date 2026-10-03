@@ -62,6 +62,10 @@ KEYS: Mapping[str, KeyDefinition] = {
     # The Basiszins driving the Vorabpauschale (§18 Abs. 4 InvStG),
     # published each January for the year just begun.
     "advance_lump_sum_base_rate": _RATE,
+    # The share of the Basiszins the base yield is computed from (§18 Abs. 1
+    # Satz 2 InvStG, ticket 53) — keyed, like the Basiszins, by the year the
+    # Vorabpauschale derives from.
+    "advance_lump_sum_factor": _RATE,
     # Per-category loss caps for the §20 engine (ticket 26).
     "loss_cap_aktien": _OPTIONAL_CAP,
     "loss_cap_sonstige": _OPTIONAL_CAP,

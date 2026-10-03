@@ -8,6 +8,7 @@ from open_leprechaun.db import EngineDep
 from open_leprechaun.rates import ReferenceRateSourceDep
 from open_leprechaun.repositories.reports import Refusal
 from open_leprechaun.services import appendix, reports
+from open_leprechaun.services.advance_lump_sums import FundValueUnsetError
 from open_leprechaun.services.fx import RateUnavailableError
 from open_leprechaun.services.section20 import TreatyLimitUnsetError
 from open_leprechaun.services.section23 import LotShortfallError, StatutoryValueUnsetError
@@ -144,6 +145,7 @@ def generate_report(
         created = reports.generate(engine, source, year=request.year)
     except (
         StatutoryValueUnsetError,
+        FundValueUnsetError,
         LotShortfallError,
         UnclassifiedSecurityError,
         TreatyLimitUnsetError,

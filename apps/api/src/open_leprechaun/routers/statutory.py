@@ -6,10 +6,12 @@ from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer, StringC
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
-from open_leprechaun.repositories import capital_income, statutory
+from open_leprechaun.repositories import capital_income, fund_redemption_values, statutory
 from open_leprechaun.routers.fixed_point import decimal_text_only
 from open_leprechaun.services.statutory import (
+    FIRST_YEAR,
     KEYS,
+    LAST_YEAR,
     StatutoryOverview,
     entry_defect,
     overview,
@@ -29,6 +31,7 @@ StatutoryKey = Literal[
     "church_tax_rate_bavaria_bw",
     "church_tax_rate_other_laender",
     "advance_lump_sum_base_rate",
+    "advance_lump_sum_factor",
     "loss_cap_aktien",
     "loss_cap_sonstige",
     "loss_cap_termingeschaefte",
@@ -230,3 +233,117 @@ def put_treaty_limit(
 def delete_treaty_limit(country: Country, admin: AdminDep, engine: EngineDep) -> None:
     if not capital_income.delete_treaty_limit(engine, country):
         raise HTTPException(status_code=404, detail="No treaty limit is entered for that country.")
+
+
+# A redemption price or a distribution per unit, in EUR — fixed-point end to
+# end like every amount in this API, and never negative.
+UnitAmount = Annotated[
+    Decimal,
+    BeforeValidator(decimal_text_only),
+    Field(ge=0, allow_inf_nan=False),
+    PlainSerializer(lambda value: format(value, "f"), return_type=str),
+]
+
+
+class FundResponse(BaseModel):
+    instrument_id: int
+    symbol: str
+    name: str
+    isin: str | None
+
+
+class FundRedemptionValueRequest(BaseModel):
+    start_of_year_eur: UnitAmount
+    end_of_year_eur: UnitAmount
+    # Stated, never assumed: a pure accumulator's distributions are zero
+    # because the Admin says so.
+    distributions_eur: UnitAmount
+    # Where the fund's figures were taken from — never entered uncited.
+    source: Source
+
+
+class FundRedemptionValueResponse(BaseModel):
+    instrument_id: int
+    year: int
+    start_of_year_eur: UnitAmount
+    end_of_year_eur: UnitAmount
+    distributions_eur: UnitAmount
+    source: str
+
+
+class FundRedemptionValuesResponse(BaseModel):
+    funds: list[FundResponse]
+    values: list[FundRedemptionValueResponse]
+
+
+@router.get(
+    "/fund-redemption-values",
+    summary="Each fund's entered redemption prices and distributions per year",
+    response_model=FundRedemptionValuesResponse,
+)
+def list_fund_redemption_values(admin: AdminDep, engine: EngineDep) -> FundRedemptionValuesResponse:
+    """What the Vorabpauschale (ticket 53) reads per fund and year: the first
+    and last redemption price of the calendar year and the distributions
+    within it, per unit in EUR, each with its source — beside the funds a
+    row can be entered for."""
+    return FundRedemptionValuesResponse(
+        funds=[
+            FundResponse(instrument_id=row.id, symbol=row.symbol, name=row.name, isin=row.isin)
+            for row in fund_redemption_values.list_funds(engine)
+        ],
+        values=[
+            FundRedemptionValueResponse(
+                instrument_id=row.instrument_id,
+                year=row.year,
+                start_of_year_eur=row.start_of_year_eur,
+                end_of_year_eur=row.end_of_year_eur,
+                distributions_eur=row.distributions_eur,
+                source=row.source,
+            )
+            for row in fund_redemption_values.list_values(engine)
+        ],
+    )
+
+
+@router.put(
+    "/fund-redemption-values/{instrument_id}/{year}",
+    summary="Enter or correct one fund's redemption prices and distributions for a year",
+    status_code=204,
+)
+def put_fund_redemption_value(
+    instrument_id: int,
+    year: int,
+    request: FundRedemptionValueRequest,
+    admin: AdminDep,
+    engine: EngineDep,
+) -> None:
+    if not FIRST_YEAR <= year <= LAST_YEAR:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Redemption values cover {FIRST_YEAR} through {LAST_YEAR}.",
+        )
+    if not fund_redemption_values.is_fund(engine, instrument_id):
+        raise HTTPException(status_code=404, detail="No such fund.")
+    fund_redemption_values.upsert_value(
+        engine,
+        instrument_id=instrument_id,
+        year=year,
+        start_of_year_eur=request.start_of_year_eur,
+        end_of_year_eur=request.end_of_year_eur,
+        distributions_eur=request.distributions_eur,
+        source=request.source,
+    )
+
+
+@router.delete(
+    "/fund-redemption-values/{instrument_id}/{year}",
+    summary="Unset one fund's redemption values for a year",
+    status_code=204,
+)
+def delete_fund_redemption_value(
+    instrument_id: int, year: int, admin: AdminDep, engine: EngineDep
+) -> None:
+    if not fund_redemption_values.delete_value(engine, instrument_id=instrument_id, year=year):
+        raise HTTPException(
+            status_code=404, detail="No redemption values are entered for that fund and year."
+        )

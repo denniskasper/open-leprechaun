@@ -34,7 +34,11 @@ from open_leprechaun.services import lots
 from open_leprechaun.services.section20 import FUTURES_CATEGORY, Section20Year, creditable_eur
 from open_leprechaun.services.section22 import Section22Year
 from open_leprechaun.services.section23 import Consumption, Section23Year, counts
-from open_leprechaun.services.security_disposals import PARTIAL_EXEMPTION_STATUTES, SHARE_CATEGORY
+from open_leprechaun.services.security_disposals import (
+    OTHER_CATEGORY,
+    PARTIAL_EXEMPTION_STATUTES,
+    SHARE_CATEGORY,
+)
 
 __all__ = [
     "AMBIGUOUS",
@@ -176,6 +180,29 @@ _KAP_INV_FIELDS = {
     ),
     "kapinv.ausschuettungen.sonstige": Field(
         ("8",), "Ausschüttungen aus: sonstigen Investmentfonds"
+    ),
+    "kapinv.vorabpauschalen.aktienfonds": Field(
+        ("9",),
+        "Vorabpauschalen nach § 18 InvStG aus: Aktienfonds i. S. d. § 2 Abs. 6 InvStG"
+        " (vor Teilfreistellung)",
+    ),
+    "kapinv.vorabpauschalen.mischfonds": Field(
+        ("10",),
+        "Vorabpauschalen nach § 18 InvStG aus: Mischfonds i. S. d. § 2 Abs. 7 InvStG"
+        " (vor Teilfreistellung)",
+    ),
+    "kapinv.vorabpauschalen.immobilienfonds": Field(
+        ("11",),
+        "Vorabpauschalen nach § 18 InvStG aus: Immobilienfonds i. S. d. § 2 Abs. 9 Satz 1"
+        " InvStG (vor Teilfreistellung und ohne Beträge laut Zeile 12)",
+    ),
+    "kapinv.vorabpauschalen.auslands_immobilienfonds": Field(
+        ("12",),
+        "Vorabpauschalen nach § 18 InvStG aus: Auslands-Immobilienfonds i. S. d. § 2 Abs. 9"
+        " Satz 2 InvStG (vor Teilfreistellung)",
+    ),
+    "kapinv.vorabpauschalen.sonstige": Field(
+        ("13",), "Vorabpauschalen nach § 18 InvStG aus: sonstigen Investmentfonds"
     ),
     "kapinv.veraeusserung.aktienfonds": Field(
         ("14",),
@@ -604,7 +631,7 @@ _FUTURES_SOURCE = "futures_position:"
 class _CapitalItem:
     """One record of the year's capital income as the forms tell it apart:
     which pot it feeds, whether a fund produced it (and of which type),
-    whether it is a disposal result or a receipt, and which side of the
+    whether it is a disposal result, a Vorabpauschale or a receipt, and which side of the
     withholding line its Depot puts it on. `gross_eur` is before any
     Teilfreistellung — the figure the forms ask for — and None while it
     awaits a valuation."""
@@ -615,6 +642,7 @@ class _CapitalItem:
     disposal: bool
     settled: bool
     gross_eur: Decimal | None
+    advance_lump_sum: bool = False
 
 
 def _capital_items(
@@ -623,8 +651,8 @@ def _capital_items(
     withholding_accounts: Set[int],
     futures_accounts: Mapping[int, int],
 ) -> tuple[_CapitalItem, ...]:
-    """The year's capital income, record by record: its receipts and
-    securities disposals as their producers stated them, and its futures
+    """The year's capital income, record by record: its receipts,
+    securities disposals and Vorabpauschalen as their producers stated them, and its futures
     closes from the pot that counted them — the event shape names their
     position, and the position its Account."""
     items = [
@@ -648,6 +676,20 @@ def _capital_items(
             gross_eur=disposal.gain_eur,
         )
         for disposal in section20.disposals
+    )
+    # A Vorabpauschale of zero is a record with no figure to transcribe.
+    items.extend(
+        _CapitalItem(
+            source=lump_sum.source,
+            category=OTHER_CATEGORY,
+            fund_category=_fund_category(instruments, lump_sum.instrument_id),
+            disposal=False,
+            settled=lump_sum.account_id in withholding_accounts,
+            gross_eur=lump_sum.amount_eur,
+            advance_lump_sum=True,
+        )
+        for lump_sum in section20.advance_lump_sums
+        if lump_sum.amount_eur
     )
     for balance in section20.balances or ():
         if balance.category != FUTURES_CATEGORY:
@@ -936,16 +978,24 @@ def _fund_income(
     """Anlage KAP-INV: fund income no German Depot taxed, per fund type and
     in full — before Teilfreistellung, which the Finanzamt applies (the
     form's own instruction). A disposal result is one signed Gewinn /
-    Verlust figure per fund type."""
+    Verlust figure per fund type, already less the Vorabpauschalen accrued
+    while the units were held (the form's line 53); the Vorabpauschalen
+    declared this year stand in their own block between the two."""
     declare = [item for item in items if not item.settled and item.fund_category is not None]
     lines = []
     awaiting = section20.balances is None
-    for block, disposal in (("ausschuettungen", False), ("veraeusserung", True)):
+    for block, disposal, advance_lump_sum in (
+        ("ausschuettungen", False, False),
+        ("vorabpauschalen", False, True),
+        ("veraeusserung", True, False),
+    ):
         for category in FUND_CATEGORIES:
             members = [
                 item
                 for item in declare
-                if item.fund_category == category and item.disposal is disposal
+                if item.fund_category == category
+                and item.disposal is disposal
+                and item.advance_lump_sum is advance_lump_sum
             ]
             if members and not awaiting:
                 lines.append(
