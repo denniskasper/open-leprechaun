@@ -73,6 +73,20 @@ export function formatQuantity(value: string, locale?: string): string {
   return grouped + separator + fraction;
 }
 
+/**
+ * A fixed-point difference with its direction in the figure itself — a plus
+ * for a surplus, a true minus for a shortfall, nothing on an exact zero — so
+ * the sign is never left to colour alone. The digits stay verbatim, as
+ * formatQuantity keeps them.
+ */
+export function formatSignedQuantity(value: string, locale?: string): string {
+  const negative = value.startsWith("-");
+  const digits = negative ? value.slice(1) : value;
+  const magnitude = formatQuantity(digits, locale);
+  if (!/[1-9]/.test(digits)) return magnitude;
+  return `${negative ? "−" : "+"}${magnitude}`;
+}
+
 /** A calendar date off the API (ISO `YYYY-MM-DD`), rendered per locale. */
 export function formatDate(isoDate: string, locale?: string): string {
   const [year, month, day] = isoDate.split("-").map(Number);

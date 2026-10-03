@@ -3,16 +3,17 @@ carries secret material in any form (ADR-0003) — the request model is the
 last time the API sees a key, a secret or a passphrase in the clear."""
 
 from datetime import datetime
-from typing import Annotated
+from decimal import Decimal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, PlainSerializer, StringConstraints
 
 from open_leprechaun.adapters import ExchangeAdaptersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.ports.venues import VENUES
-from open_leprechaun.services import connections, coverage, exchange_sync
+from open_leprechaun.services import connections, coverage, exchange_sync, reconciliation
 from open_leprechaun.services.connections import (
     ConnectionOverview,
     CredentialsUnreadableError,
@@ -335,6 +336,92 @@ def sync_connection(
     if results is None:
         raise HTTPException(status_code=404, detail="No such Connection.")
     return [KindSyncResponse.of(result) for result in results]
+
+
+# Fixed-point on the way out, as everywhere: a quantity is answered as a
+# decimal string, never a float.
+Fixed = Annotated[Decimal, PlainSerializer(lambda value: format(value, "f"), return_type=str)]
+
+
+class ReconcileRequest(BaseModel):
+    # How far live may sit from tracked, in units of the Instrument, before
+    # the line is a gap — None leaves the configured tolerance in force.
+    tolerance: Annotated[Decimal, Field(ge=0)] | None = None
+
+
+class ReconciliationLineResponse(BaseModel):
+    """One Instrument's comparison. `difference` is live less tracked. An
+    unresolved line is a venue symbol no single Instrument answers to: no
+    Instrument, nothing tracked, and `detail` saying why."""
+
+    instrument_id: int | None
+    symbol: str
+    name: str | None
+    family: str | None
+    live: Fixed
+    tracked: Fixed | None
+    difference: Fixed | None
+    status: Literal["matched", "gap", "unresolved"]
+    # The honest ways to close a gap — the app never closes one itself.
+    resolutions: list[Literal["import_history", "opening_balance"]]
+    detail: str | None
+
+
+class KindReconciliationResponse(BaseModel):
+    """One adapter kind's reconciliation against its paired Account — an
+    error means nothing was compared."""
+
+    adapter_kind: str
+    ok: bool
+    error: str | None
+    account_id: int | None
+    # The latest instant the venue's snapshot states.
+    as_of: AwareDatetime | None
+    tolerance: Fixed
+    lines: list[ReconciliationLineResponse]
+
+    @classmethod
+    def of(cls, result: reconciliation.KindReconciliation) -> KindReconciliationResponse:
+        return cls(
+            adapter_kind=result.adapter_kind,
+            ok=result.error is None,
+            error=result.error,
+            account_id=result.account_id,
+            as_of=result.as_of,
+            tolerance=result.tolerance,
+            lines=[ReconciliationLineResponse(**vars(line)) for line in result.lines],
+        )
+
+
+@router.post(
+    "/connections/{connection_id}/reconcile",
+    summary="Compare what the venue says is held against what the transactions account for",
+    response_model=list[KindReconciliationResponse],
+)
+def reconcile_connection(
+    connection_id: int,
+    admin: AdminDep,
+    engine: EngineDep,
+    settings: SettingsDep,
+    adapters: ExchangeAdaptersDep,
+    request: ReconcileRequest | None = None,
+) -> list[KindReconciliationResponse]:
+    """Reports and never repairs: a gap is left for the Admin to close by
+    importing the missing history or recording an Opening Balance — nothing
+    is written to the ledger from a venue's snapshot (ticket 39)."""
+    try:
+        results = reconciliation.reconcile_connection(
+            engine,
+            settings,
+            adapters,
+            connection_id,
+            tolerance=None if request is None else request.tolerance,
+        )
+    except CredentialsUnreadableError as sealed:
+        raise HTTPException(status_code=409, detail=str(sealed)) from sealed
+    if results is None:
+        raise HTTPException(status_code=404, detail="No such Connection.")
+    return [KindReconciliationResponse.of(result) for result in results]
 
 
 class PairAccountRequest(BaseModel):

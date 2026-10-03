@@ -303,6 +303,28 @@ forms the deduplication key. A **Normalized Fill** carries optional enrichment �
 reduce-only, per-fill realised result — populated by venues that expose it, making derivation
 exact, and left unset otherwise.
 
+A **Normalized Position** is a snapshot of what the venue says is held, never history: it travels
+apart from every record that lands in the ledger and has exactly one consumer, **Reconciliation**.
+
+### Reconciliation
+
+The comparison, per **Connection** and per **Instrument**, of the live balance a venue states
+against the tracked balance the **Transactions** account for. The difference is live less tracked,
+and one beyond the configured tolerance is a **gap**.
+
+A gap is reported and never filled: a snapshot can say that something is missing, but not what it
+cost or when it arrived, so closing one from it would invent a cost basis. The Admin closes a gap
+deliberately, by one of two honest resolutions — importing the history that explains it, or
+recording an **Opening Balance**, which declares its own uncertainty. An Opening Balance only ever
+adds a position, so it is offered where the venue holds more than is accounted for, never to
+explain quantity away.
+
+Reconciliation writes nothing, so it is not bound by the authoritative-source rule: a source that
+may not write into an Account may still reconcile against it.
+
+_Avoid_: "sync" for reconciling — a sync lands records, a reconciliation only compares.
+_Avoid_: adjusting, correcting or balancing entry — there is no transaction type that absorbs a gap.
+
 ## Market data
 
 ### Price Chain

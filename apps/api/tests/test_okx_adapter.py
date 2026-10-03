@@ -25,7 +25,7 @@ import pytest
 
 from open_leprechaun.adapters import get_exchange_adapters
 from open_leprechaun.ports import okx
-from open_leprechaun.ports.exchange import AdapterError
+from open_leprechaun.ports.exchange import AdapterError, StatesNormalizedPositions
 from open_leprechaun.ports.okx import BASE_URL, OkxFuturesAdapter, OkxSpotAdapter, _sign
 from open_leprechaun.services.connections import Credentials
 
@@ -250,6 +250,8 @@ def venue(
     fiat_deposits=(),
     fiat_withdrawals=(),
     instruments=(),
+    funding_balances=(),
+    trading_details=(),
 ):
     """A recorded OKX behind a mock transport, answering each endpoint the
     way the documented API answers it."""
@@ -277,6 +279,11 @@ def venue(
             return ok(by_fiat_window(fiat_deposits, params))
         if path == "/api/v5/fiat/withdrawal-order-history":
             return ok(by_fiat_window(fiat_withdrawals, params))
+        if path == "/api/v5/asset/balances":
+            return ok(funding_balances)
+        if path == "/api/v5/account/balance":
+            # One row for the whole trading account, its assets under details.
+            return ok([{"uTime": str(NOW_MS), "details": list(trading_details)}])
         raise AssertionError(f"Unexpected path {path}")
 
     adapter = adapter_type(
@@ -701,6 +708,77 @@ def test_the_recorded_payloads_are_json_clean():
         INVERSE_SWAP,
     ):
         assert json.loads(json.dumps(payload)) == payload
+
+
+# --- Positions: what the venue says is held, for reconciliation (ticket 39) ---
+
+# The docs print one row per endpoint; these are authored from the documented
+# field tables and abridged to the fields the adapter reads. The funding
+# account states `bal`; the trading account states `cashBal` — the asset
+# itself — beside `eq`, which also counts unrealised results.
+FUNDING_ETH = {"ccy": "ETH", "bal": "37.11827078", "availBal": "37.11827078", "frozenBal": "0"}
+FUNDING_EUR = {"ccy": "EUR", "bal": "250.5", "availBal": "250.5", "frozenBal": "0"}
+TRADING_ETH = {"ccy": "ETH", "cashBal": "2.5", "eq": "2.75", "uTime": str(NOW_MS - DAY_MS)}
+TRADING_USDT = {"ccy": "USDT", "cashBal": "4850.435693", "eq": "4992.890093", "uTime": str(NOW_MS)}
+
+
+def test_the_spot_kind_states_funding_and_trading_balances_as_positions():
+    """Deposits arrive in the funding account and trades settle in the
+    trading account — one venue account to the ledger, so both are stated,
+    each balance its own Normalized Position in the venue's symbol. Fiat is a
+    balance like any other."""
+    adapter, requests = venue(
+        funding_balances=[FUNDING_ETH, FUNDING_EUR], trading_details=[TRADING_ETH, TRADING_USDT]
+    )
+    asked_at = datetime.now(UTC)
+
+    positions = adapter.normalized_positions(CREDENTIALS)
+
+    assert sorted((position.symbol, position.quantity) for position in positions) == [
+        ("ETH", Decimal("2.5")),
+        ("ETH", Decimal("37.11827078")),
+        ("EUR", Decimal("250.5")),
+        ("USDT", Decimal("4850.435693")),
+    ]
+    # A snapshot is as of the asking, not of each balance's last change.
+    assert all(abs((position.as_of - asked_at).total_seconds()) < 60 for position in positions)
+    assert [request.url.path for request in requests] == [
+        "/api/v5/asset/balances",
+        "/api/v5/account/balance",
+    ]
+
+
+def test_trading_balances_state_the_asset_not_the_equity():
+    """`eq` counts unrealised results on open contracts — not something
+    held; the cash balance is."""
+    adapter, _ = venue(trading_details=[TRADING_ETH])
+
+    (position,) = adapter.normalized_positions(CREDENTIALS)
+
+    assert position.quantity == Decimal("2.5")
+
+
+def test_an_empty_venue_account_states_no_positions():
+    adapter, _ = venue()
+
+    assert adapter.normalized_positions(CREDENTIALS) == ()
+
+
+def test_a_balance_row_the_adapter_cannot_read_is_an_adapter_error():
+    """The port promises AdapterError and nothing else — a row without its
+    amount becomes a sentence the Admin can read, not a withheld bug."""
+    adapter, _ = venue(funding_balances=[{"ccy": "ETH", "bal": ""}])
+
+    with pytest.raises(AdapterError, match="could not read"):
+        adapter.normalized_positions(CREDENTIALS)
+
+
+def test_only_the_spot_kind_states_positions():
+    """The ledger tracks what a futures kind produces as Derived Positions
+    and results, not as balances — so only the spot kind declares the
+    capability reconciliation reads."""
+    assert isinstance(OkxSpotAdapter(), StatesNormalizedPositions)
+    assert not isinstance(OkxFuturesAdapter(), StatesNormalizedPositions)
 
 
 # --- Testing the credential ---

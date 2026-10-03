@@ -68,7 +68,7 @@ def test_connection(
         # Broad on purpose: one kind failing, however it failed, must never
         # hide another succeeding (ADR-0004).
         except Exception as failed:
-            error = _sentence(failed)
+            error = failure_sentence(failed)
             connections.record_result(engine, connection_id, adapter.kind, error=error)
             results.append(KindTest(adapter_kind=adapter.kind, detail=None, error=error))
         else:
@@ -77,7 +77,7 @@ def test_connection(
     return tuple(results)
 
 
-def _sentence(failed: Exception) -> str:
+def failure_sentence(failed: Exception) -> str:
     """An AdapterError is the adapter's own recordable sentence, promised
     free of secret material. Anything else is a bug whose message promises
     nothing — it is withheld from what gets stored and shown (ADR-0003), and
@@ -189,7 +189,7 @@ def _sync_kind(
     # another succeeding (ADR-0004).
     except Exception as failed:
         return KindSync(
-            adapter_kind=adapter.kind, error=_sentence(failed), futures=None, imported=None
+            adapter_kind=adapter.kind, error=failure_sentence(failed), futures=None, imported=None
         )
 
     futures_outcome = None

@@ -19,7 +19,7 @@ stamps its own per-kind provenance on what it imports.
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 
 class Credentials(Protocol):
@@ -120,8 +120,9 @@ class NormalizedPosition:
     stated as a snapshot, never as history. Reconciliation (ticket 39) is its
     consumer: a second source may compare this against the ledger but may not
     write from it, and no derivation ever reads it (ADR-0008 rejected venues
-    supplying finished positions). Part of the port's canonical vocabulary;
-    no adapter emits one until reconciliation asks."""
+    supplying finished positions). Deliberately no field of a Harvest: a
+    snapshot travels through `StatesNormalizedPositions.normalized_positions` alone, so nothing
+    that lands records can ever be handed one."""
 
     symbol: str
     quantity: Decimal
@@ -165,3 +166,15 @@ class ExchangeAdapter(Protocol):
     def test(self, credentials: Credentials) -> str: ...
 
     def pull(self, credentials: Credentials) -> Harvest: ...
+
+
+@runtime_checkable
+class StatesNormalizedPositions(Protocol):
+    """The capability of a kind whose venue states what is held right now
+    (ticket 39) — declared by having the method, so a kind with nothing to
+    state simply lacks it and reconciliation passes it by. One Normalized
+    Position per balance the venue shows, in its own symbols; several under
+    one symbol are summed by the reader. Raises AdapterError and nothing else
+    on failure."""
+
+    def normalized_positions(self, credentials: Credentials) -> tuple[NormalizedPosition, ...]: ...

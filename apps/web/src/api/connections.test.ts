@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchConnections,
   fetchVenues,
+  reconcileConnection,
   registerConnection,
   removeConnection,
 } from "./connections";
@@ -133,5 +134,60 @@ describe("removeConnection", () => {
     respondWith(404, { detail: "No such Connection." });
 
     await expect(removeConnection(7)).rejects.toThrow("No such Connection.");
+  });
+});
+
+describe("reconcileConnection", () => {
+  const reconciliation = {
+    adapter_kind: "spot",
+    ok: true,
+    error: null,
+    account_id: 3,
+    as_of: "2031-06-01T12:00:00Z",
+    tolerance: "0.00000001",
+    lines: [
+      {
+        instrument_id: 7,
+        symbol: "BTC",
+        name: "Bitcoin",
+        family: "crypto",
+        live: "1.5",
+        tracked: "0.6",
+        difference: "0.9",
+        status: "gap",
+        resolutions: ["import_history", "opening_balance"],
+        detail: null,
+      },
+    ],
+  };
+
+  it("asks under the configured tolerance when the run states none", async () => {
+    respondWith(200, [reconciliation]);
+
+    await expect(reconcileConnection(1, null)).resolves.toEqual([reconciliation]);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/connections/1/reconcile",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ tolerance: null }) }),
+    );
+  });
+
+  it("sends a stated tolerance as the fixed-point string it was typed as", async () => {
+    respondWith(200, []);
+
+    await reconcileConnection(1, "0.001");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/connections/1/reconcile",
+      expect.objectContaining({ body: JSON.stringify({ tolerance: "0.001" }) }),
+    );
+  });
+
+  it("carries the API's own words for a refusal", async () => {
+    respondWith(409, { detail: "The stored credentials cannot be read." });
+
+    await expect(reconcileConnection(1, null)).rejects.toThrow(
+      "The stored credentials cannot be read.",
+    );
   });
 });

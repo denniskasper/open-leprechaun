@@ -1,6 +1,7 @@
 """OKX adapters (ticket 36): the venue's v5 REST API translated into the
 port's normalized records — the spot kind emits trades, transfers and cash
-movements; the futures kind emits fills and funding.
+movements, and states the account's balances as positions for
+reconciliation (ticket 39); the futures kind emits fills and funding.
 
 Auth, as the venue documents it: Base64 of an HMAC-SHA256 over
 timestamp + METHOD + request path (query string included) + body, where the
@@ -34,6 +35,7 @@ from open_leprechaun.ports.exchange import (
     NormalizedCashMovement,
     NormalizedFill,
     NormalizedFunding,
+    NormalizedPosition,
     NormalizedTrade,
     NormalizedTransfer,
 )
@@ -48,6 +50,8 @@ _WITHDRAWALS_PATH = "/api/v5/asset/withdrawal-history"
 _FIAT_DEPOSITS_PATH = "/api/v5/fiat/deposit-order-history"
 _FIAT_WITHDRAWALS_PATH = "/api/v5/fiat/withdrawal-order-history"
 _INSTRUMENTS_PATH = "/api/v5/public/instruments"
+_FUNDING_BALANCES_PATH = "/api/v5/asset/balances"
+_TRADING_BALANCE_PATH = "/api/v5/account/balance"
 
 # The venue serves three months of trade and bill history; the adapter asks
 # for exactly that and nothing pretends to reach further (ticket 40 will say
@@ -249,6 +253,57 @@ class OkxSpotAdapter(_OkxAdapter):
         transfers = tuple(self._transfers(credentials, start_ms))
         cash_movements = tuple(self._cash_movements(credentials, start_ms))
         return Harvest(trades=trades, transfers=transfers, cash_movements=cash_movements)
+
+    def normalized_positions(self, credentials: Credentials) -> tuple[NormalizedPosition, ...]:
+        """What the venue account holds right now, for reconciliation alone
+        (ticket 39). Deposits arrive in the funding account and trades settle
+        in the trading account, and the ledger sees one Account — so both are
+        stated, a balance each, and the reader sums them.
+
+        The trading account's `cashBal` is the asset itself; `eq` would also
+        count unrealised results on open contracts. Under a unified account
+        that cash balance carries every settled derivative result, fee and
+        funding payment, of which the ledger books only a winning close as
+        an acquisition (ticket 29) — so a venue account that trades
+        contracts shows the rest as a gap in the settlement asset, which is
+        the truth about what the transactions account for.
+
+        The snapshot is stamped with the instant it was asked for: the venue
+        dates each balance by its last change, which is not when it was
+        true."""
+        as_of = datetime.now(UTC)
+        funding = self._signed_get(credentials, _FUNDING_BALANCES_PATH)
+        self._pause()
+        trading = self._signed_get(credentials, _TRADING_BALANCE_PATH)
+        try:
+            return self._balances(funding, trading, as_of)
+        except (KeyError, ArithmeticError, AttributeError) as failed:
+            raise AdapterError(
+                "OKX answered a balance the adapter could not read — a row"
+                " without its currency or its amount."
+            ) from failed
+
+    @staticmethod
+    def _balances(
+        funding: list[dict], trading: list[dict], as_of: datetime
+    ) -> tuple[NormalizedPosition, ...]:
+        return (
+            *(
+                NormalizedPosition(
+                    symbol=str(row["ccy"]), quantity=Decimal(str(row["bal"])), as_of=as_of
+                )
+                for row in funding
+            ),
+            *(
+                NormalizedPosition(
+                    symbol=str(detail["ccy"]),
+                    quantity=Decimal(str(detail["cashBal"])),
+                    as_of=as_of,
+                )
+                for account in trading
+                for detail in account.get("details") or ()
+            ),
+        )
 
     def _transfers(self, credentials: Credentials, start_ms: int) -> Iterator[NormalizedTransfer]:
         for path, normalize in (

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Scale, Trash2, X } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router";
 import { fetchInstruments, type Instrument } from "@/api/instruments";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import {
@@ -311,11 +312,53 @@ export function withToggled(selected: ReadonlySet<number>, id: number): Set<numb
   return next;
 }
 
+/** What a reconciliation gap hands the form: where, what, and how much. */
+export interface OpeningBalancePrefill {
+  accountId: string;
+  instrumentId: string;
+  quantity: string;
+}
+
+/**
+ * The Opening Balance a reconciliation gap asks for, read off the address:
+ * `?opening_balance=<account>:<instrument>:<quantity>`. Only the position is
+ * carried — what is reconstructed and the estimated basis stay the Admin's to
+ * declare. Null for anything but two ids and a positive fixed-point quantity.
+ */
+export function openingBalancePrefill(search: string): OpeningBalancePrefill | null {
+  const [accountId, instrumentId, quantity, ...rest] = (
+    new URLSearchParams(search).get("opening_balance") ?? ""
+  ).split(":");
+  if (
+    rest.length > 0 ||
+    !accountId ||
+    !instrumentId ||
+    !quantity ||
+    !/^\d+$/.test(accountId) ||
+    !/^\d+$/.test(instrumentId) ||
+    !isPositiveDecimal(quantity)
+  ) {
+    return null;
+  }
+  return { accountId, instrumentId, quantity };
+}
+
+/** The address a gap's Opening Balance travels in — openingBalancePrefill's inverse. */
+export function openingBalanceSearch(prefill: OpeningBalancePrefill): string {
+  return new URLSearchParams({
+    opening_balance: `${prefill.accountId}:${prefill.instrumentId}:${prefill.quantity}`,
+  }).toString();
+}
+
 export function TransactionsPage() {
   const transactions = useQuery({ queryKey: ["transactions"], queryFn: fetchTransactions });
   const instruments = useQuery({ queryKey: ["instruments"], queryFn: fetchInstruments });
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: fetchPlatforms });
-  const [recording, setRecording] = useState(false);
+  // A reconciliation gap links here with the position it could not account
+  // for; the form then opens on an Opening Balance for exactly that.
+  const [search] = useSearchParams();
+  const prefill = openingBalancePrefill(search.toString());
+  const [recording, setRecording] = useState(prefill !== null);
 
   const failed = transactions.error ?? instruments.error ?? platforms.error;
   const loaded = transactions.data && instruments.data && platforms.data;
@@ -338,6 +381,7 @@ export function TransactionsPage() {
         <TransactionForm
           instruments={instruments.data}
           platforms={platforms.data}
+          openingBalance={prefill ?? undefined}
           onDone={() => setRecording(false)}
         />
       )}
@@ -778,14 +822,19 @@ function TransactionForm({
   instruments,
   platforms,
   revising,
+  openingBalance,
   onDone,
 }: {
   instruments: Instrument[];
   platforms: Platform[];
   revising?: Transaction;
+  /** A reconciliation gap's position: the form opens as its Opening Balance. */
+  openingBalance?: OpeningBalancePrefill;
   onDone: () => void;
 }) {
-  const [type, setType] = useState<TransactionType>(revising?.type ?? "trade");
+  const [type, setType] = useState<TransactionType>(
+    revising?.type ?? (openingBalance ? "opening_balance" : "trade"),
+  );
   const [occurredAt, setOccurredAt] = useState(
     revising ? toInput(revising.occurred_at) : nowForInput(),
   );
@@ -801,7 +850,11 @@ function TransactionForm({
   // on a dividend, a distribution or interest.
   const [withheld, setWithheld] = useState<DraftWithheld>(() => withheldOf(revising));
   const [legs, setLegs] = useState<DraftLeg[]>(
-    revising ? draftsOf(revising) : legTemplate("trade").map(freshLeg),
+    revising
+      ? draftsOf(revising)
+      : openingBalance
+        ? [{ ...freshLeg("in"), ...openingBalance }]
+        : legTemplate("trade").map(freshLeg),
   );
   const id = useId();
   const queryClient = useQueryClient();

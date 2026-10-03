@@ -4,6 +4,7 @@ import {
   formatMoneyExact,
   formatNumber,
   formatQuantity,
+  formatSignedQuantity,
   formatTimestamp,
 } from "./format";
 
@@ -89,6 +90,20 @@ describe("formatQuantity", () => {
 
   it("survives integer digits beyond float precision", () => {
     expect(formatQuantity("123456789012345678901", "en-US")).toBe("123,456,789,012,345,678,901");
+  });
+});
+
+describe("formatSignedQuantity", () => {
+  it("signs a surplus at the venue, so the direction is never read off a colour", () => {
+    expect(formatSignedQuantity("0.9", "en-US")).toBe("+0.9");
+  });
+
+  it("keeps the minus of a shortfall and the digits verbatim", () => {
+    expect(formatSignedQuantity("-1234.50", "en-US")).toBe("−1,234.50");
+  });
+
+  it("leaves an exact agreement unsigned", () => {
+    expect(formatSignedQuantity("0.0", "en-US")).toBe("0.0");
   });
 });
 

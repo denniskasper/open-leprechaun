@@ -83,6 +83,41 @@ export const kindSyncResultSchema = z.object({
 });
 
 /**
+ * One Instrument's comparison: `difference` is live less tracked, every
+ * quantity a fixed-point decimal string. An unresolved line is a venue symbol
+ * no single Instrument answers to — no Instrument, nothing tracked, and
+ * `detail` saying why.
+ */
+export const reconciliationLineSchema = z.object({
+  instrument_id: z.number().nullable(),
+  symbol: z.string(),
+  name: z.string().nullable(),
+  family: z.string().nullable(),
+  live: z.string(),
+  tracked: z.string().nullable(),
+  difference: z.string().nullable(),
+  status: z.enum(["matched", "gap", "unresolved"]),
+  /** The honest ways to close a gap — the app never closes one itself. */
+  resolutions: z.array(z.enum(["import_history", "opening_balance"])),
+  detail: z.string().nullable(),
+});
+
+/**
+ * One adapter kind's reconciliation against its paired Account — an error
+ * means nothing was compared.
+ */
+export const kindReconciliationSchema = z.object({
+  adapter_kind: z.string(),
+  ok: z.boolean(),
+  error: z.string().nullable(),
+  account_id: z.number().nullable(),
+  /** The latest instant the venue's snapshot states. */
+  as_of: z.string().nullable(),
+  tolerance: z.string(),
+  lines: z.array(reconciliationLineSchema),
+});
+
+/**
  * One venue account whose synced coverage begins after the earliest activity
  * recorded elsewhere — a silent history gap, named so the Admin can close it
  * by importing the older history.
@@ -106,6 +141,8 @@ export type AccountPairing = z.infer<typeof accountPairingSchema>;
 export type Connection = z.infer<typeof connectionSchema>;
 export type KindTestResult = z.infer<typeof kindTestResultSchema>;
 export type KindSyncResult = z.infer<typeof kindSyncResultSchema>;
+export type ReconciliationLine = z.infer<typeof reconciliationLineSchema>;
+export type KindReconciliation = z.infer<typeof kindReconciliationSchema>;
 
 export interface NewConnection {
   platform_id: number;
@@ -168,6 +205,23 @@ export async function syncConnection(connectionId: number): Promise<KindSyncResu
     throw await refusal(response, "The Connection could not be synced.");
   }
   return z.array(kindSyncResultSchema).parse(await response.json());
+}
+
+/**
+ * Compare what the venue says is held against what the transactions account
+ * for. `tolerance` is a fixed-point decimal string in units of each
+ * Instrument; null leaves the configured tolerance in force. Nothing is ever
+ * written to the ledger by this call.
+ */
+export async function reconcileConnection(
+  connectionId: number,
+  tolerance: string | null,
+): Promise<KindReconciliation[]> {
+  const response = await postJson(`${CONNECTIONS_URL}/${connectionId}/reconcile`, { tolerance });
+  if (!response.ok) {
+    throw await refusal(response, "The Connection could not be reconciled.");
+  }
+  return z.array(kindReconciliationSchema).parse(await response.json());
 }
 
 export async function pairAccount(

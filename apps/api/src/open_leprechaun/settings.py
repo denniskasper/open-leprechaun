@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -67,6 +68,16 @@ class Settings(BaseSettings):
         description=(
             "Which provider quotes and backfills security prices per Listing "
             "(ticket 45). The default works without a paid plan."
+        ),
+    )
+    reconciliation_tolerance: Decimal = Field(
+        default=Decimal("0.00000001"),
+        ge=0,
+        description=(
+            "How far a venue's stated balance may sit from the tracked one, in "
+            "units of the Instrument, before reconciliation reports a gap "
+            "(ticket 39). The default forgives one unit of the eighth decimal "
+            "place — venue rounding — and nothing more; a run may state its own."
         ),
     )
     session_ttl_hours: int = Field(

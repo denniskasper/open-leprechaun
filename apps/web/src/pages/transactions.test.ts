@@ -6,6 +6,8 @@ import {
   isPositiveDecimal,
   legTemplate,
   occurredAtWords,
+  openingBalancePrefill,
+  openingBalanceSearch,
   RECONSTRUCTED_WORDS,
   signOf,
   TYPE_VOCABULARY,
@@ -231,5 +233,31 @@ describe("withheldWords", () => {
 
   it("says so where a declaration took nothing", () => {
     expect(withheldWords(nothing, "EUR")).toBe("nothing withheld");
+  });
+});
+
+describe("openingBalancePrefill", () => {
+  it("reads the Account, the Instrument and the quantity a reconciliation gap names", () => {
+    expect(openingBalancePrefill("?opening_balance=3%3A7%3A0.9")).toEqual({
+      accountId: "3",
+      instrumentId: "7",
+      quantity: "0.9",
+    });
+  });
+
+  it("reads back exactly what openingBalanceSearch wrote", () => {
+    const prefill = { accountId: "3", instrumentId: "7", quantity: "0.90000000" };
+
+    expect(openingBalancePrefill(`?${openingBalanceSearch(prefill)}`)).toEqual(prefill);
+  });
+
+  it("answers nothing for a page opened without one", () => {
+    expect(openingBalancePrefill("")).toBeNull();
+  });
+
+  it("refuses anything that is not two ids and a positive quantity", () => {
+    expect(openingBalancePrefill("?opening_balance=3%3A7%3A-0.9")).toBeNull();
+    expect(openingBalancePrefill("?opening_balance=3%3A7")).toBeNull();
+    expect(openingBalancePrefill("?opening_balance=x%3A7%3A1")).toBeNull();
   });
 });

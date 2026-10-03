@@ -1,18 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fingerprint, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2, Zap } from "lucide-react";
+import {
+  Fingerprint,
+  KeyRound,
+  Plus,
+  RefreshCw,
+  Scale,
+  ShieldCheck,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
+import { Link } from "react-router";
 import {
   fetchConnections,
   fetchVenues,
   pairAccount,
+  reconcileConnection,
   registerConnection,
   removeConnection,
   syncConnection,
   testConnection,
   type AdapterStatus,
   type Connection,
+  type KindReconciliation,
   type KindSyncResult,
   type KindTestResult,
+  type ReconciliationLine,
   type Venue,
 } from "@/api/connections";
 import { fetchPlatforms, type Account, type Platform } from "@/api/platforms";
@@ -22,7 +35,9 @@ import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatNumber, formatTimestamp } from "@/lib/format";
+import { DECIMAL_PATTERN } from "@/api/transactions";
+import { formatNumber, formatQuantity, formatSignedQuantity, formatTimestamp } from "@/lib/format";
+import { openingBalanceSearch } from "@/pages/transactions";
 
 /**
  * The standing rule, stated wherever a credential is entered: every scope in
@@ -131,6 +146,42 @@ export function describeSyncResult(result: KindSyncResult, locale?: string): str
       : `Nothing to pull — the last ${count(result.covered_days, "day", locale)} are covered.`;
   }
   return landed || "Nothing to pull for this kind.";
+}
+
+/** One kind's reconciliation in a line: what is unaccounted for, then what agrees. */
+export function describeReconciliation(result: KindReconciliation, locale?: string): string {
+  if (result.error) return result.error;
+  if (result.lines.length === 0) return "Nothing held at the venue and nothing tracked.";
+  const tally = (status: ReconciliationLine["status"]) =>
+    result.lines.filter((entry) => entry.status === status).length;
+  const matched = `${formatNumber(tally("matched"), locale)} matched`;
+  const open = [
+    tally("gap") > 0 ? count(tally("gap"), "gap", locale) : null,
+    tally("unresolved") > 0 ? count(tally("unresolved"), "unresolved symbol", locale) : null,
+  ].filter((part) => part !== null);
+  if (open.length === 0) return `${matched} — nothing unaccounted for.`;
+  return [...open, ...(tally("matched") > 0 ? [matched] : [])].join(" · ");
+}
+
+/**
+ * Where a gap's Opening Balance is recorded: the ledger's own form, opened on
+ * the Account, the Instrument and the unaccounted quantity — the Admin still
+ * declares what is reconstructed and estimates the basis there. Null where an
+ * Opening Balance is not an honest resolution for the line.
+ */
+export function openingBalanceHref(line: ReconciliationLine, accountId: number): string | null {
+  if (
+    !line.resolutions.includes("opening_balance") ||
+    line.instrument_id === null ||
+    line.difference === null
+  ) {
+    return null;
+  }
+  return `/transactions?${openingBalanceSearch({
+    accountId: String(accountId),
+    instrumentId: String(line.instrument_id),
+    quantity: line.difference,
+  })}`;
 }
 
 export function ConnectionsPage() {
@@ -286,7 +337,18 @@ function ConnectionRow({
     onSuccess: recordOutcomes((result: KindSyncResult) => describeSyncResult(result)),
   });
 
-  const busy = test.isPending || sync.isPending;
+  // Blank leaves the configured tolerance in force; a typed one is sent as
+  // the fixed-point string it is.
+  const [tolerance, setTolerance] = useState("");
+  const toleranceValid = tolerance.trim() === "" || DECIMAL_PATTERN.test(tolerance.trim());
+  const reconcile = useMutation({
+    mutationFn: () => reconcileConnection(connection.id, tolerance.trim() || null),
+    // Nothing in the ledger changed — but the credential was used, and the
+    // row states when it last was.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["connections"] }),
+  });
+
+  const busy = test.isPending || sync.isPending || reconcile.isPending;
 
   return (
     <article className="py-4" aria-label={connection.label}>
@@ -322,6 +384,17 @@ function ConnectionRow({
               >
                 <RefreshCw aria-hidden className={sync.isPending ? "animate-spin" : undefined} />
                 {sync.isPending ? "Syncing…" : "Sync"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                disabled={busy || !toleranceValid}
+                title="Compare what the venue says is held against what the transactions account for. Nothing is written."
+                onClick={() => reconcile.mutate()}
+              >
+                <Scale aria-hidden />
+                {reconcile.isPending ? "Reconciling…" : "Reconcile"}
               </Button>
             </>
           )}
@@ -374,10 +447,21 @@ function ConnectionRow({
           No adapter ships for this venue yet — testing and syncing arrive with it.
         </p>
       )}
-      {(remove.error || test.error || sync.error) && (
+      {(remove.error || test.error || sync.error || reconcile.error) && (
         <p role="alert" className="mt-2 text-sm text-alarm">
-          {(remove.error ?? test.error ?? sync.error)?.message}
+          {(remove.error ?? test.error ?? sync.error ?? reconcile.error)?.message}
         </p>
+      )}
+      {reconcile.data && (
+        <ReconciliationPanel
+          results={reconcile.data}
+          accounts={accounts}
+          tolerance={tolerance}
+          toleranceValid={toleranceValid}
+          onTolerance={setTolerance}
+          onReconcile={() => reconcile.mutate()}
+          pending={reconcile.isPending}
+        />
       )}
     </article>
   );
@@ -465,6 +549,207 @@ function KindLine({
         )
       ) : null}
     </li>
+  );
+}
+
+/**
+ * What reconciling answered, per kind: a ledger of live against tracked with
+ * the difference signed, and under every gap the two honest ways to close it.
+ * The panel reports and never repairs — there is no control here that writes.
+ */
+function ReconciliationPanel({
+  results,
+  accounts,
+  tolerance,
+  toleranceValid,
+  onTolerance,
+  onReconcile,
+  pending,
+}: {
+  results: KindReconciliation[];
+  accounts: Account[];
+  tolerance: string;
+  toleranceValid: boolean;
+  onTolerance: (value: string) => void;
+  onReconcile: () => void;
+  pending: boolean;
+}) {
+  const id = useId();
+  return (
+    <section className="rise mt-4 border-t border-border pt-4" aria-label="Reconciliation">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div>
+          <p className="microlabel text-muted-foreground">Reconciliation</p>
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            What the venue says is held against what the transactions account for. A gap is
+            reported, never filled in — close it by importing the history that explains it, or
+            by recording an Opening Balance that says it is an estimate.
+          </p>
+        </div>
+        <form
+          className="ml-auto flex items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (toleranceValid) onReconcile();
+          }}
+        >
+          <div className="space-y-1">
+            <label htmlFor={`${id}-tolerance`} className="microlabel block text-muted-foreground">
+              Tolerance
+            </label>
+            <Input
+              id={`${id}-tolerance`}
+              inputMode="decimal"
+              value={tolerance}
+              onChange={(event) => onTolerance(event.target.value)}
+              placeholder={results[0]?.tolerance ?? "configured"}
+              aria-invalid={!toleranceValid}
+              title="How far live may sit from tracked, in units of each Instrument, before the line is a gap. Blank uses the configured tolerance."
+              className="h-8 w-36 font-mono text-xs tabular-nums"
+            />
+          </div>
+          <Button type="submit" variant="outline" size="sm" disabled={pending || !toleranceValid}>
+            {pending ? "Reconciling…" : "Reconcile again"}
+          </Button>
+        </form>
+      </div>
+
+      {results.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No kind of this venue states what is held, so there is nothing to compare against.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-6">
+          {results.map((result) => (
+            <KindReconciliationTable
+              key={result.adapter_kind}
+              result={result}
+              account={accounts.find((account) => account.id === result.account_id)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const DIFFERENCE_TONE: Record<ReconciliationLine["status"], string> = {
+  matched: "text-muted-foreground",
+  gap: "text-caution",
+  unresolved: "text-caution",
+};
+
+function KindReconciliationTable({
+  result,
+  account,
+}: {
+  result: KindReconciliation;
+  account: Account | undefined;
+}) {
+  return (
+    <div>
+      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-xs">
+        <span>{result.adapter_kind}</span>
+        {account && <span className="text-muted-foreground">against {account.name}</span>}
+        <span className={result.ok ? "text-muted-foreground" : "text-alarm"}>
+          {describeReconciliation(result)}
+        </span>
+        {result.ok && (
+          <span className="ml-auto tabular-nums text-muted-foreground">
+            {result.as_of && `as of ${formatTimestamp(Date.parse(result.as_of))} · `}
+            tolerance ±{formatQuantity(result.tolerance)}
+          </span>
+        )}
+      </p>
+      {result.lines.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-xl text-sm">
+            <thead>
+              <tr className="border-y border-border text-left">
+                <th scope="col" className="microlabel py-2 pr-4 font-normal text-muted-foreground">
+                  Instrument
+                </th>
+                {["Live", "Tracked", "Difference"].map((heading) => (
+                  <th
+                    key={heading}
+                    scope="col"
+                    className="microlabel py-2 pl-4 text-right font-normal text-muted-foreground"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {result.lines.map((line) => (
+                <ReconciliationRow
+                  key={line.instrument_id ?? `unresolved-${line.symbol}`}
+                  line={line}
+                  accountId={result.account_id}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReconciliationRow({
+  line,
+  accountId,
+}: {
+  line: ReconciliationLine;
+  accountId: number | null;
+}) {
+  const openingBalance = accountId === null ? null : openingBalanceHref(line, accountId);
+  const figure = "py-2 pl-4 text-right font-mono text-xs tabular-nums";
+  return (
+    <tr className="align-top">
+      <th scope="row" className="py-2 pr-4 text-left font-normal">
+        <span className="font-mono text-xs">{line.symbol}</span>
+        {line.name && <span className="ml-2 text-xs text-muted-foreground">{line.name}</span>}
+        {line.status !== "matched" && (
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            {line.status === "unresolved" ? (
+              <>
+                {line.detail}{" "}
+                <Link to="/instruments" className="underline underline-offset-2">
+                  Instruments
+                </Link>
+              </>
+            ) : (
+              <>
+                {line.difference?.startsWith("-")
+                  ? "The ledger tracks more than the venue shows — an outflow the history lacks, or what fees, funding and losing futures closes took from the balance. "
+                  : "The venue holds more than the transactions account for. "}
+                <Link to="/imports" className="underline underline-offset-2">
+                  Import the missing history
+                </Link>
+                {openingBalance && (
+                  <>
+                    {" or "}
+                    <Link to={openingBalance} className="underline underline-offset-2">
+                      record an Opening Balance
+                    </Link>
+                    {" — marked as an estimate"}
+                  </>
+                )}
+                .
+              </>
+            )}
+          </p>
+        )}
+      </th>
+      <td className={figure}>{formatQuantity(line.live)}</td>
+      <td className={`${figure} ${line.tracked === null ? "text-muted-foreground" : ""}`}>
+        {line.tracked === null ? "—" : formatQuantity(line.tracked)}
+      </td>
+      <td className={`${figure} ${DIFFERENCE_TONE[line.status]}`}>
+        {line.difference === null ? "unresolved" : formatSignedQuantity(line.difference)}
+      </td>
+    </tr>
   );
 }
 

@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { AdapterStatus, Connection, KindSyncResult, Venue } from "@/api/connections";
+import type {
+  AdapterStatus,
+  Connection,
+  KindReconciliation,
+  KindSyncResult,
+  ReconciliationLine,
+  Venue,
+} from "@/api/connections";
 import type { Platform } from "@/api/platforms";
 import {
   describeLastUse,
   describeLookback,
+  describeReconciliation,
   describeSyncResult,
   describeTestResult,
   groupByPlatform,
   kindsOf,
+  openingBalanceHref,
   READ_ONLY_RULE,
   statusTone,
 } from "./connections";
@@ -224,5 +233,80 @@ describe("describeSyncResult", () => {
     expect(describeSyncResult(partial)).toBe(
       "Another source is authoritative. (2 new fills · 0 new funding payments before the refusal)",
     );
+  });
+});
+
+function line(overrides: Partial<ReconciliationLine>): ReconciliationLine {
+  return {
+    instrument_id: 7,
+    symbol: "BTC",
+    name: "Bitcoin",
+    family: "crypto",
+    live: "1.5",
+    tracked: "0.6",
+    difference: "0.9",
+    status: "gap",
+    resolutions: ["import_history", "opening_balance"],
+    detail: null,
+    ...overrides,
+  };
+}
+
+function reconciliation(overrides: Partial<KindReconciliation>): KindReconciliation {
+  return {
+    adapter_kind: "spot",
+    ok: true,
+    error: null,
+    account_id: 3,
+    as_of: "2031-06-01T12:00:00Z",
+    tolerance: "0.00000001",
+    lines: [],
+    ...overrides,
+  };
+}
+
+describe("describeReconciliation", () => {
+  it("counts the gaps and the symbols nothing answers to", () => {
+    const result = reconciliation({
+      lines: [
+        line({}),
+        line({ status: "matched", difference: "0", resolutions: [] }),
+        line({ instrument_id: null, status: "unresolved", tracked: null, difference: null }),
+      ],
+    });
+
+    expect(describeReconciliation(result)).toBe("1 gap · 1 unresolved symbol · 1 matched");
+  });
+
+  it("says so when everything agrees", () => {
+    const result = reconciliation({
+      lines: [line({ status: "matched", difference: "0", resolutions: [] })],
+    });
+
+    expect(describeReconciliation(result)).toBe("1 matched — nothing unaccounted for.");
+  });
+
+  it("says so when neither side holds anything", () => {
+    expect(describeReconciliation(reconciliation({}))).toBe(
+      "Nothing held at the venue and nothing tracked.",
+    );
+  });
+
+  it("answers the kind's own error when nothing was compared", () => {
+    expect(
+      describeReconciliation(reconciliation({ ok: false, error: "The venue is down." })),
+    ).toBe("The venue is down.");
+  });
+});
+
+describe("openingBalanceHref", () => {
+  it("carries the Account, the Instrument and the unaccounted quantity to the ledger form", () => {
+    expect(openingBalanceHref(line({}), 3)).toBe("/transactions?opening_balance=3%3A7%3A0.9");
+  });
+
+  it("offers nothing where an Opening Balance is not an honest resolution", () => {
+    expect(
+      openingBalanceHref(line({ difference: "-0.9", resolutions: ["import_history"] }), 3),
+    ).toBeNull();
   });
 });
