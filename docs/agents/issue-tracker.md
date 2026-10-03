@@ -2,14 +2,15 @@
 
 Issues and specs for this repo live as markdown files in `.scratch/`.
 
-This repo has no git remote — work is tracked in-tree rather than in a hosted tracker.
+The repo is pushed to a public GitHub remote, but GitHub Issues is disabled there — work is tracked in-tree rather than in a hosted tracker.
 
 ## Conventions
 
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- Triage state is recorded as a `**Status:**` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- A ticket whose work has landed is set to `**Status:** done`, with its acceptance checkboxes ticked and the implementation notes under `## Comments` — in the same commit as the work
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
@@ -33,6 +34,6 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 
 ## Repo-specific caution
 
-This repo is intended to be public and forbids personal financial data in anything pushed
-(see `AGENTS.md` § Git). Issue files under `.scratch/` are in-tree — describe work technically
-and keep account-derived numbers out of them.
+This repo is public and forbids personal financial data in anything pushed (see `AGENTS.md`
+§ Git). Issue files under `.scratch/` are tracked and pushed with everything else — describe
+work technically and keep account-derived numbers out of them.
