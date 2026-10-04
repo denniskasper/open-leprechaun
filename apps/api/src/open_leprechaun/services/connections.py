@@ -14,22 +14,17 @@ using it is what moves last_used_at.
 
 import hashlib
 import json
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import Engine
 
 from open_leprechaun.ports.venues import VENUES
 from open_leprechaun.repositories import connections as repository
+from open_leprechaun.services import sealing
 from open_leprechaun.settings import Settings
 
-_NONCE_BYTES = 12
 # Fixed derivation context: the same application secret may one day feed other
 # keys, and this string keeps this one its own.
 _KEY_CONTEXT = b"open-leprechaun venue credentials v1"
@@ -229,14 +224,7 @@ def record_result(
     )
 
 
-def _encryption_key(settings: Settings) -> bytes:
-    return HKDF(algorithm=SHA256(), length=32, salt=None, info=_KEY_CONTEXT).derive(
-        settings.application_secret.encode()
-    )
-
-
 def _encrypt(settings: Settings, credentials: Credentials) -> bytes:
-    nonce = os.urandom(_NONCE_BYTES)
     plaintext = json.dumps(
         {
             "key": credentials.key,
@@ -244,14 +232,13 @@ def _encrypt(settings: Settings, credentials: Credentials) -> bytes:
             "passphrase": credentials.passphrase,
         }
     ).encode()
-    return nonce + AESGCM(_encryption_key(settings)).encrypt(nonce, plaintext, None)
+    return sealing.seal(settings, _KEY_CONTEXT, plaintext)
 
 
 def _decrypt(settings: Settings, stored: bytes) -> Credentials:
-    nonce, ciphertext = stored[:_NONCE_BYTES], stored[_NONCE_BYTES:]
     try:
-        plaintext = AESGCM(_encryption_key(settings)).decrypt(nonce, ciphertext, None)
-    except InvalidTag as sealed:
+        plaintext = sealing.unseal(settings, _KEY_CONTEXT, stored)
+    except sealing.UnreadableError as sealed:
         raise CredentialsUnreadableError(
             "The stored credential does not open under the current application"
             " secret; it must be entered again."

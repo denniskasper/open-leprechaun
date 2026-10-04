@@ -65,6 +65,11 @@ dialog afterwards. A value the panel reports is a fixed-pitch figure with a
 `ErrorState` or a `role="alert"` line, and one that succeeded with a
 `role="status"` line.
 
+An authenticator code is asked for with `CodeField`
+(`components/patterns/code-field.tsx`) wherever one is owed — login included —
+and a QR code is drawn with `QrCode` (`components/patterns/qr-code.tsx`), whose
+plate stays light in both themes because a scanner needs dark on light.
+
 A panel registers in `navigation.ts` under Settings as `/settings/<panel>`.
 Settings has no index page: a bare `/settings` redirects to the first panel
 declared there (`SETTINGS_INDEX`), so adding a panel is the one entry plus its

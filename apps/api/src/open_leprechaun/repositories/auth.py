@@ -1,9 +1,11 @@
-"""Queries over the admin row, its sessions and the login failures. Decisions live in the service.
+"""Queries over the admin row, its sessions, its second factor and the login
+failures. Decisions live in the service.
 
 Reads of the admin row are ordered deterministically as defence in depth, per
 ADR-0006 — the schema already guarantees at most one row exists.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import Engine, text
@@ -141,6 +143,19 @@ def claim_login_attempt(
         return delayed_until or now
 
 
+def release_login_delay(engine: Engine, address: str, now: datetime) -> None:
+    """Let the address attempt again at once, keeping its failures counted.
+
+    For an attempt that was admitted and neither failed nor finished: the
+    count it added stands, so the delays that follow are no shorter for it.
+    """
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE login_failure SET delayed_until = :now WHERE address = :address"),
+            {"address": address, "now": now},
+        )
+
+
 def clear_login_failures(engine: Engine, address: str) -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -166,3 +181,95 @@ def count_live_sessions(engine: Engine, now: datetime) -> int:
         return connection.execute(
             text("SELECT count(*) FROM admin_session WHERE expires_at > :now"), {"now": now}
         ).scalar_one()
+
+
+@dataclass(frozen=True)
+class TotpSecrets:
+    """The admin row's two sealed secrets: the active one and the one
+    enrollment issued but no code has proven. Either may be absent."""
+
+    active: bytes | None
+    pending: bytes | None
+
+
+def read_totp_secrets(engine: Engine) -> TotpSecrets | None:
+    """None when there is no admin to have any."""
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT totp_secret, totp_pending_secret FROM admin_user ORDER BY id LIMIT 1")
+        ).one_or_none()
+    if row is None:
+        return None
+    return TotpSecrets(
+        active=None if row.totp_secret is None else bytes(row.totp_secret),
+        pending=None if row.totp_pending_secret is None else bytes(row.totp_pending_secret),
+    )
+
+
+def store_pending_totp_secret(engine: Engine, sealed: bytes) -> bool:
+    """Replace whatever enrollment was under way; False while a secret is
+    active, or with no admin — the statement decides, so a racing activation
+    cannot be enrolled over."""
+    with engine.begin() as connection:
+        stored = connection.execute(
+            text("UPDATE admin_user SET totp_pending_secret = :sealed WHERE totp_secret IS NULL"),
+            {"sealed": sealed},
+        )
+        return stored.rowcount == 1
+
+
+def activate_totp_secret(
+    engine: Engine, pending: bytes, step: int, keep_token_hash: str | None
+) -> bool:
+    """Promote the pending secret that was just proven and revoke every
+    session but the one kept, atomically; False when that enrollment is no
+    longer the pending one.
+
+    The proving code's step is recorded as spent in the same statement.
+    """
+    with engine.begin() as connection:
+        activated = connection.execute(
+            text(
+                "UPDATE admin_user SET totp_secret = totp_pending_secret, "
+                "  totp_pending_secret = NULL, totp_last_step = :step "
+                "WHERE totp_pending_secret = :pending AND totp_secret IS NULL"
+            ),
+            {"pending": pending, "step": step},
+        )
+        if activated.rowcount != 1:
+            return False
+        connection.execute(
+            text("DELETE FROM admin_session WHERE token_hash IS DISTINCT FROM :keep"),
+            {"keep": keep_token_hash},
+        )
+        return True
+
+
+def spend_totp_step(engine: Engine, step: int) -> bool:
+    """Record the step of a code being accepted; False when that step, or a
+    later one, was already spent. One statement, so the same code presented
+    twice at once is accepted once."""
+    with engine.begin() as connection:
+        spent = connection.execute(
+            text(
+                "UPDATE admin_user SET totp_last_step = :step "
+                "WHERE totp_secret IS NOT NULL "
+                "AND (totp_last_step IS NULL OR totp_last_step < :step)"
+            ),
+            {"step": step},
+        )
+        return spent.rowcount == 1
+
+
+def clear_totp(engine: Engine) -> bool:
+    """Remove the second factor, active and pending both; False when there
+    was none to remove."""
+    with engine.begin() as connection:
+        cleared = connection.execute(
+            text(
+                "UPDATE admin_user SET totp_secret = NULL, totp_pending_secret = NULL, "
+                "  totp_last_step = NULL "
+                "WHERE totp_secret IS NOT NULL OR totp_pending_secret IS NOT NULL"
+            )
+        )
+        return cleared.rowcount == 1

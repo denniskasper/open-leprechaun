@@ -22,6 +22,7 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down --volumes && pnpm db:up",
     "db:logs": "docker compose logs --follow postgres",
+    "auth:disable-two-factor": "apps/api/.venv/bin/python -m open_leprechaun.disable_two_factor",
     "test": "pnpm test:api && pnpm test:web",
     "test:api": "pnpm db:up && apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml",
     "test:web": "pnpm --filter @open-leprechaun/web test",

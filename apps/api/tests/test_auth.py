@@ -366,7 +366,7 @@ def test_setup_and_change_share_one_minimum_password_length(production_client):
     assert accepted.status_code == 204
 
 
-def test_changing_the_password_refuses_a_wrong_current_password(production_client):
+def test_changing_the_password_refuses_a_wrong_current_password(production_client, clock):
     _set_up_and_log_in(production_client)
 
     refused = production_client.post(
@@ -375,6 +375,7 @@ def test_changing_the_password_refuses_a_wrong_current_password(production_clien
     )
 
     assert refused.status_code == 403
+    clock.advance(seconds=1)  # the refused attempt's delay
     # Nothing changed: the old password still logs in, the new one does not.
     assert production_client.post("/api/auth/login", json={"password": PASSWORD}).status_code == 200
     assert (

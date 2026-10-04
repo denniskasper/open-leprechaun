@@ -3,6 +3,7 @@ import { Clover } from "lucide-react";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { fetchSetupStatus, logIn, MINIMUM_PASSWORD_LENGTH, runSetup } from "@/api/auth";
+import { CodeField } from "@/components/patterns/code-field";
 import { ErrorState } from "@/components/patterns/error-state";
 import { PasswordField } from "@/components/patterns/password-field";
 import { EnvironmentBadge } from "@/components/shell/instance";
@@ -36,7 +37,7 @@ export function SetupPage() {
     const differs = password !== confirmation;
     setMismatch(differs);
     if (!differs) {
-      enter.mutate(password);
+      enter.mutate({ password });
     }
   }
 
@@ -80,8 +81,14 @@ export function SetupPage() {
 export function LoginPage() {
   const { data: status } = useQuery({ queryKey: ["auth", "setup"], queryFn: fetchSetupStatus });
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const enter = useEnter();
   const passwordId = useId();
+  const codeId = useId();
+  // The API said the password was right and a code is owed. The password
+  // stays in memory for the second request — login is one endpoint, and it
+  // judges both factors together.
+  const [codeOwed, setCodeOwed] = useState(false);
 
   // No admin yet means there is nothing to log in to; setup comes first.
   if (status?.required) {
@@ -90,7 +97,47 @@ export function LoginPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    enter.mutate(password);
+    enter.mutate(codeOwed ? { password, code } : { password }, {
+      onSuccess: (outcome) => {
+        if (outcome === "code_required") {
+          setCodeOwed(true);
+        }
+      },
+    });
+  }
+
+  function startOver() {
+    setCodeOwed(false);
+    setCode("");
+    setPassword("");
+    enter.reset();
+  }
+
+  if (codeOwed) {
+    return (
+      <AuthScreen
+        eyebrow="Two-factor is on"
+        title="Enter the code"
+        description="The password was right. This instance also asks for the current code from your authenticator app."
+      >
+        <form onSubmit={submit} className="space-y-5">
+          <CodeField
+            id={codeId}
+            hint="Lost the authenticator? There are no recovery codes — two-factor is turned off on the server, as docs/runbook.md describes."
+            value={code}
+            onChange={setCode}
+            autoFocus
+          />
+          {enter.isError && <ErrorState title="Login failed" detail={enter.error.message} />}
+          <Button type="submit" className="w-full" disabled={enter.isPending}>
+            {enter.isPending ? "Checking…" : "Verify and log in"}
+          </Button>
+          <Button type="button" variant="ghost" className="w-full" onClick={startOver}>
+            Start over
+          </Button>
+        </form>
+      </AuthScreen>
+    );
   }
 
   return (
@@ -129,13 +176,17 @@ function useEnter({ setUpFirst = false }: { setUpFirst?: boolean } = {}) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (password: string) => {
+    mutationFn: async ({ password, code }: { password: string; code?: string }) => {
       if (setUpFirst) {
         await runSetup(password);
       }
-      await logIn(password);
+      return logIn(password, code);
     },
-    onSuccess: async () => {
+    onSuccess: async (outcome) => {
+      if (outcome === "code_required") {
+        // Not in yet: the login screen asks for the code and comes back.
+        return;
+      }
       // Setup state and session both changed; let every reader see it fresh.
       await queryClient.invalidateQueries();
       // A fresh instance opens on the walk to its first report (ticket 58).

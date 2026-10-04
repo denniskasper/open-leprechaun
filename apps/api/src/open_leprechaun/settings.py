@@ -45,10 +45,11 @@ class Settings(BaseSettings):
     application_secret: str = Field(
         min_length=16,
         description=(
-            "Root secret venue-credential encryption keys derive from (ADR-0003). "
-            "Held outside the database and backed up separately; losing it means "
-            "re-entering every venue credential. Deliberately without a default: "
-            "ciphertext under an ad-hoc key would be unrecoverable."
+            "Root secret the encryption keys for venue credentials and the "
+            "two-factor secret derive from (ADR-0003, ADR-0005). Held outside the "
+            "database and backed up separately; losing it means re-entering every "
+            "venue credential and disabling two-factor from the host. Deliberately "
+            "without a default: ciphertext under an ad-hoc key would be unrecoverable."
         ),
     )
     api_host: str = Field(default="127.0.0.1", description="Address the dev server binds to")

@@ -8,6 +8,8 @@ import {
   MINIMUM_PASSWORD_LENGTH,
 } from "@/api/auth";
 import { fetchMeta } from "@/api/meta";
+import { TWO_FACTOR_QUERY } from "@/api/two-factor";
+import { CodeField } from "@/components/patterns/code-field";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { PasswordField } from "@/components/patterns/password-field";
@@ -15,6 +17,7 @@ import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-pan
 import { useSignOut } from "@/components/shell/sign-out";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
+import { TwoFactorGroup } from "@/pages/security-two-factor";
 
 /** "1 session open", "3 sessions open" — the words beside the figure. */
 export function describeSessionCount(active: number): string {
@@ -41,7 +44,7 @@ export function SecurityPage() {
   return (
     <SettingsPanel
       title="Security"
-      description="The Admin's password and the Sessions it has opened. Changing the one or ending the others takes effect at once."
+      description="The Admin's password, the second factor beside it, and the Sessions they have opened. A change to any of them takes effect at once."
     >
       {meta.data?.environment === "development" ? (
         <div className="py-8">
@@ -54,7 +57,11 @@ export function SecurityPage() {
       ) : (
         // Once the instance has said what it is — or failed to, in which
         // case the groups show their own unreachable states.
-        !meta.isPending && [<SessionsGroup key="sessions" />, <PasswordGroup key="password" />]
+        !meta.isPending && [
+          <SessionsGroup key="sessions" />,
+          <TwoFactorGroup key="two-factor" />,
+          <PasswordGroup key="password" />,
+        ]
       )}
     </SettingsPanel>
   );
@@ -122,17 +129,24 @@ function PasswordGroup() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [code, setCode] = useState("");
   const [mismatch, setMismatch] = useState(false);
   const currentId = useId();
   const nextId = useId();
   const confirmationId = useId();
+  const codeId = useId();
+  // Reads what the two-factor group above already asked for. Unknown reads
+  // as off: the API refuses a change that owed a code, in words, so nothing
+  // is lost by not asking for one it might not want.
+  const { data: twoFactor } = useQuery(TWO_FACTOR_QUERY);
 
   const change = useMutation({
-    mutationFn: () => changePassword(current, next),
+    mutationFn: () => changePassword(current, next, twoFactor ? code : undefined),
     onSuccess: () => {
       setCurrent("");
       setNext("");
       setConfirmation("");
+      setCode("");
       // The other Sessions are gone; the count above should say so.
       return queryClient.invalidateQueries({ queryKey: ["auth", "sessions"] });
     },
@@ -180,6 +194,14 @@ function PasswordGroup() {
           autoComplete="new-password"
           error={mismatch ? "The two entries differ." : undefined}
         />
+        {twoFactor && (
+          <CodeField
+            id={codeId}
+            hint="Two-factor is on, so a change of password takes a current code as well."
+            value={code}
+            onChange={setCode}
+          />
+        )}
         {change.isError && (
           <ErrorState title="The password was not changed" detail={change.error.message} />
         )}

@@ -38,15 +38,39 @@ export async function runSetup(password: string): Promise<void> {
   }
 }
 
+const loginRefusalSchema = z.object({ result: z.literal("code_required") });
+
+/**
+ * What a login came to when it was not refused: a session, or the API asking
+ * for the authenticator's code before it will issue one.
+ */
+export type LoginOutcome = "entered" | "code_required";
+
 /**
  * The browser's half of the session is the httpOnly cookie this response
  * sets; the bearer copy in the body is for non-browser clients, so it is
  * deliberately not read here — nothing token-shaped ever touches page state.
+ *
+ * While two-factor is on, the password alone is answered `code_required`:
+ * not a failure to show, but the cue to ask for the code and call again with
+ * both.
  */
-export async function logIn(password: string): Promise<void> {
-  const response = await postJson(LOGIN_URL, { password });
-  if (!response.ok) {
-    throw await refusal(response, "Login failed.");
+export async function logIn(password: string, code?: string): Promise<LoginOutcome> {
+  const response = await postJson(LOGIN_URL, code === undefined ? { password } : { password, code });
+  if (response.ok) {
+    return "entered";
+  }
+  if (response.status === 401 && (await owesCode(response.clone()))) {
+    return "code_required";
+  }
+  throw await refusal(response, "Login failed.");
+}
+
+async function owesCode(response: Response): Promise<boolean> {
+  try {
+    return loginRefusalSchema.safeParse(await response.json()).success;
+  } catch {
+    return false;
   }
 }
 
@@ -83,11 +107,19 @@ export async function logOutEverywhere(): Promise<void> {
   }
 }
 
-/** Every other session is revoked by the API; this browser's stays alive. */
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+/**
+ * Every other session is revoked by the API; this browser's stays alive.
+ * While two-factor is on the API wants a current `code` as well.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  code?: string,
+): Promise<void> {
   const response = await postJson(PASSWORD_URL, {
     current_password: currentPassword,
     new_password: newPassword,
+    ...(code === undefined ? {} : { code }),
   });
   if (!response.ok) {
     throw await refusal(response, "Changing the password failed.");

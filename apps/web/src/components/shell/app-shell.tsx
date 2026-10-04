@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { EnvironmentBadge, VersionLine } from "@/components/shell/instance";
 import { SignOutButton } from "@/components/shell/sign-out";
+import { TwoFactorReminder } from "@/components/shell/two-factor-reminder";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -44,6 +45,7 @@ export function AppShell() {
             <ThemeToggle />
             <SignOutButton />
           </header>
+          <TwoFactorReminder />
 
           <main id="content" tabIndex={-1} className="flex-1 px-4 py-8 outline-none sm:px-8 sm:py-10">
             <Outlet />

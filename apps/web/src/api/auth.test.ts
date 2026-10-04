@@ -73,7 +73,36 @@ describe("logIn", () => {
   it("resolves without exposing the token to the caller", async () => {
     respondWith(200, { token: "should-never-surface", expires_at: "2026-09-07T00:00:00Z" });
 
-    await expect(logIn("correct horse battery staple")).resolves.toBeUndefined();
+    await expect(logIn("correct horse battery staple")).resolves.toBe("entered");
+  });
+
+  it("reports that a code is owed instead of failing, when the password came alone", async () => {
+    respondWith(401, {
+      detail: "Enter the code from your authenticator app.",
+      result: "code_required",
+    });
+
+    await expect(logIn("correct horse battery staple")).resolves.toBe("code_required");
+  });
+
+  it("sends the code beside the password once there is one", async () => {
+    respondWith(200, { token: "should-never-surface", expires_at: "2026-09-07T00:00:00Z" });
+
+    await logIn("correct horse battery staple", "287082");
+
+    expect(fetch).toHaveBeenCalledWith("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct horse battery staple", code: "287082" }),
+    });
+  });
+
+  it("surfaces a wrong code as the API's refusal", async () => {
+    respondWith(401, { detail: "Wrong code, or one already used.", result: "wrong_code" });
+
+    await expect(logIn("correct horse battery staple", "000000")).rejects.toThrow(
+      "Wrong code, or one already used.",
+    );
   });
 
   it("surfaces a wrong password as the API's refusal", async () => {
@@ -156,6 +185,22 @@ describe("changePassword", () => {
       body: JSON.stringify({
         current_password: "correct horse battery staple",
         new_password: "a rather different passphrase",
+      }),
+    });
+  });
+
+  it("adds the two-factor code when one is given", async () => {
+    respondWithNothing();
+
+    await changePassword("correct horse battery staple", "a rather different passphrase", "287082");
+
+    expect(fetch).toHaveBeenCalledWith("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: "correct horse battery staple",
+        new_password: "a rather different passphrase",
+        code: "287082",
       }),
     });
   });

@@ -70,6 +70,7 @@ leak they exist to prevent. After a fresh clone, recreate them by hand. See
 | `pnpm db:down`      | Stop Postgres, keeping its data                                   |
 | `pnpm db:reset`     | Destroy the Postgres volume and start fresh                       |
 | `pnpm db:logs`      | Follow the Postgres log                                           |
+| `pnpm auth:disable-two-factor` | Turn the Admin's two-factor off from the host — the anti-lockout path ([runbook](docs/runbook.md)) |
 
 `pnpm test:e2e` needs a Playwright browser once: `pnpm --filter @open-leprechaun/web exec
 playwright install chromium`.
@@ -109,6 +110,18 @@ Sessions are ended from the app: the header signs out of the current one, and Se
 shows how many are open and signs out of all of them (`DELETE /api/auth/sessions`). The password is
 changed there too — `POST /api/auth/password` takes the current password and the new one, revokes
 every other session and keeps the caller's. Setup and change share one 12-character minimum.
+
+Two-factor is optional and set up in Settings → Security: the panel shows a QR code with the raw
+URI and secret beside it, and nothing is enforced until a code from the authenticator proves the
+enrollment works. From then on `POST /api/auth/login` answers a password that came alone with a
+401 whose body carries `"result": "code_required"`; the same request repeated with `code` issues
+the unchanged token, cookie and bearer alike. Changing the password and disabling two-factor both
+take a current code as well. A production instance shows a reminder on every page while
+two-factor is off.
+
+**There are no recovery codes** (ADR-0005). An Admin who has lost their authenticator turns
+two-factor off from the host with `pnpm auth:disable-two-factor` — see the
+[runbook](docs/runbook.md).
 
 ## Testing
 
