@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from open_leprechaun.ports.address_indexer import AddressIndexer
+from open_leprechaun.ports.broker import BrokerAdapter
 from open_leprechaun.ports.connectors import CONNECTORS
 from open_leprechaun.ports.csv_connector import CsvConnector
 from open_leprechaun.ports.exchange import ExchangeAdapter
@@ -26,12 +27,14 @@ from open_leprechaun.settings import get_settings
 
 
 @lru_cache
-def get_exchange_adapters() -> Mapping[str, Sequence[ExchangeAdapter]]:
+def get_venue_adapters() -> Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]]:
+    """Every venue's account-authenticating adapters — an exchange's kinds or
+    a broker's, both reached through one Connection (ADR-0004)."""
     return {venue.venue: venue.adapters for venue in VENUES.values()}
 
 
-ExchangeAdaptersDep = Annotated[
-    Mapping[str, Sequence[ExchangeAdapter]], Depends(get_exchange_adapters)
+VenueAdaptersDep = Annotated[
+    Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]], Depends(get_venue_adapters)
 ]
 
 

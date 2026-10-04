@@ -183,6 +183,17 @@ fee a cost of acquiring that currency rather than a transaction cost of the trad
 
 _Avoid_: "both legs" as though two were the maximum.
 
+### Original Amount
+
+What a trade settled in another currency than it was priced in states beside its legs: the amount
+as priced, the currency it was priced in, the rate the broker applied and the date that rate is
+of. The legs stay what moved through the **Depot** — the security and the cash actually debited or
+credited — so the cash balance matches the broker's. The rate is the broker's own, kept so the
+settled amount can show its working; no tax figure is computed from it.
+
+_Avoid_: a foreign-currency leg for a currency the Depot never held — its disposal would be a
+private sale that never happened.
+
 ### Windfall
 
 What keeping an unsolicited inflow settles it as when it was received for **no
@@ -305,6 +316,12 @@ exact, and left unset otherwise.
 
 A **Normalized Position** is a snapshot of what the venue says is held, never history: it travels
 apart from every record that lands in the ledger and has exactly one consumer, **Reconciliation**.
+A broker states a security's position by its ISIN; the symbol beside it is only a label.
+
+A **Broker Adapter**'s records name a security by its ISIN — the ledger's own identity for it — so
+a paper the ledger has never seen arrives flagged for review instead of refusing the sync. What a
+broker's history states that is no transaction — a split, a return of capital — is **passed over
+by name**: reported for the Admin to record, never landed and never dropped.
 
 An **Address Indexer**'s Normalized Transfer names what moved by the chain's own identity — its
 coin, or a token's contract — never by a bare symbol, which is what lets an Instrument the ledger

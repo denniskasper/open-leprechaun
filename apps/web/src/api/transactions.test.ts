@@ -15,6 +15,7 @@ const buy = {
   reconstructed: null,
   estimated_basis_eur: null,
   capital_income: null,
+  original_amount: null,
   import_batch_id: null,
   import_source: null,
   manually_overridden: false,

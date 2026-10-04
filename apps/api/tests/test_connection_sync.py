@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from open_leprechaun.adapters import get_exchange_adapters
+from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.ports import exchange as port
@@ -42,7 +42,7 @@ def client(db: Engine, adapters: dict) -> Iterator[TestClient]:
     registry."""
     app = create_app()
     app.dependency_overrides[get_engine] = lambda: db
-    app.dependency_overrides[get_exchange_adapters] = lambda: adapters
+    app.dependency_overrides[get_venue_adapters] = lambda: adapters
     with TestClient(app) as client:
         yield client
 

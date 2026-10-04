@@ -11,10 +11,12 @@ more.
 
 from dataclasses import dataclass
 
+from open_leprechaun.ports.broker import BrokerAdapter
 from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
 from open_leprechaun.ports.exchange import ExchangeAdapter
 from open_leprechaun.ports.okx import OkxFuturesAdapter, OkxSpotAdapter
 from open_leprechaun.ports.pionex import PionexFuturesAdapter
+from open_leprechaun.ports.trading_212 import Trading212Adapter
 
 
 @dataclass(frozen=True)
@@ -33,9 +35,11 @@ class Venue:
     requires_secret: bool
     # A third factor some venues attach to the key itself.
     requires_passphrase: bool
-    # Empty until the venue's adapters ship (tickets 48-49) —
-    # registration works ahead of them; testing and syncing answer nothing.
-    adapters: tuple[ExchangeAdapter, ...] = ()
+    # Of either account-authenticating port — an exchange's kinds or a
+    # broker's; the sync service routes by what a kind pulls, never by name.
+    # Empty until the venue's adapters ship (ticket 49) — registration works
+    # ahead of them; testing and syncing answer nothing.
+    adapters: tuple[ExchangeAdapter | BrokerAdapter, ...] = ()
 
 
 # Keyed by the registry string a Connection stores. Adding a venue is adding
@@ -80,10 +84,14 @@ VENUES: dict[str, Venue] = {
             venue="trading_212",
             name="Trading 212",
             required_scope=(
-                "Generate the API key with read scopes only — orders and trading stay unticked."
+                "Generate the API key with exactly these scopes ticked: account, portfolio,"
+                " history:orders, history:dividends and history:transactions. Leave"
+                " orders:execute, orders:read, pies:read, pies:write and metadata unticked."
+                " The secret is the API secret shown once beside the key."
             ),
-            requires_secret=False,
+            requires_secret=True,
             requires_passphrase=False,
+            adapters=(Trading212Adapter(),),
         ),
         Venue(
             venue="bitpanda",

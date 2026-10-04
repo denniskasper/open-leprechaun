@@ -20,9 +20,9 @@ from open_leprechaun.ports.crypto_prices import CryptoPriceProvider
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.ports.security_prices import SecurityPriceProvider
 from open_leprechaun.repositories import connections as connections_repository
-from open_leprechaun.services import crypto_prices, exchange_sync, import_prices, security_prices
+from open_leprechaun.services import connection_sync, crypto_prices, import_prices, security_prices
+from open_leprechaun.services.connection_sync import Adapters
 from open_leprechaun.services.connections import CredentialsUnreadableError
-from open_leprechaun.services.exchange_sync import Adapters
 from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.price_reports import PriceReport
 from open_leprechaun.services.scheduled_tasks import Task, TaskFailedError
@@ -110,14 +110,14 @@ def _sync_every_connection(
     connections = kinds = 0
     for connection in connections_repository.list_connections(engine):
         try:
-            results = exchange_sync.sync_connection(
+            results = connection_sync.sync_connection(
                 engine, settings, adapters, connection.id, prices=prices
             )
         except CredentialsUnreadableError as sealed:
             failures.append(f"{connection.label}: {sealed}")
             continue
         except Exception as failed:
-            failures.append(f"{connection.label}: {exchange_sync.failure_sentence(failed)}")
+            failures.append(f"{connection.label}: {connection_sync.failure_sentence(failed)}")
             continue
         if results is None:
             # Removed since the list was read — nothing left to sync.

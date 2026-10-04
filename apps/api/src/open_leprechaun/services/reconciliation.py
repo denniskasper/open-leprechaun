@@ -26,6 +26,7 @@ from decimal import Decimal
 
 from sqlalchemy import Engine, Row
 
+from open_leprechaun.ports.broker import BrokerAdapter
 from open_leprechaun.ports.exchange import (
     Credentials,
     ExchangeAdapter,
@@ -33,13 +34,14 @@ from open_leprechaun.ports.exchange import (
     StatesNormalizedPositions,
 )
 from open_leprechaun.repositories import connections as repository
+from open_leprechaun.repositories import imports as imports_repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import connections, lots
-from open_leprechaun.services.exchange_sync import failure_sentence
+from open_leprechaun.services.connection_sync import failure_sentence
 from open_leprechaun.settings import Settings
 
-Adapters = Mapping[str, Sequence[ExchangeAdapter]]
+Adapters = Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]]
 
 MATCHED = "matched"
 GAP = "gap"
@@ -124,7 +126,7 @@ def reconcile_connection(
 def _reconcile_kind(
     engine: Engine,
     connection: Row,
-    adapter: ExchangeAdapter,
+    adapter: StatesNormalizedPositions,
     credentials: Credentials,
     tolerance: Decimal,
 ) -> KindReconciliation:
@@ -216,18 +218,45 @@ def _by_instrument(
     where a venue states one asset in several places, and the symbols that
     name no single Instrument as unresolved lines.
 
-    A symbol is a resolution hint, never an identity (ADR-0010): exactly one
-    crypto or cash Instrument may wear it. Where several do, the one this
+    A security states its ISIN, which is its identity. A symbol is a
+    resolution hint, never an identity (ADR-0010): exactly one crypto or cash
+    Instrument may wear it. Where several do, the one this
     Account already tracks answers — the transactions that put it there said
     which was meant; otherwise the line stays unresolved rather than guessed.
     """
-    by_symbol: dict[str, Decimal] = {}
+    # A security is keyed on its ISIN and everything else on its symbol —
+    # the label a venue gives a security is never what identifies it.
+    stated_as: dict[tuple[str | None, str], Decimal] = {}
+    labels: dict[str, str] = {}
     for position in stated:
-        by_symbol[position.symbol] = by_symbol.get(position.symbol, Decimal(0)) + position.quantity
+        key = (position.isin, position.symbol if position.isin is None else "")
+        stated_as[key] = stated_as.get(key, Decimal(0)) + position.quantity
+        if position.isin is not None:
+            labels.setdefault(position.isin, position.symbol)
 
     live: dict[int, Decimal] = {}
     unresolved: list[Line] = []
-    for symbol, quantity in sorted(by_symbol.items()):
+    for (isin, symbol), quantity in sorted(
+        stated_as.items(), key=lambda entry: (entry[0][0] or "", entry[0][1])
+    ):
+        if isin is not None:
+            # The ISIN is the identity (ADR-0010): it names one Instrument or
+            # none, and never needs the Account's history to choose.
+            instrument_id = imports_repository.find_instrument(
+                engine, kind="security", symbol=labels[isin], isin=isin
+            )
+            if instrument_id is not None:
+                live[instrument_id] = live.get(instrument_id, Decimal(0)) + quantity
+            elif abs(quantity) > tolerance:
+                unresolved.append(
+                    _unresolved(
+                        labels[isin],
+                        quantity,
+                        f"No Instrument carries the ISIN {isin} — sync or import the"
+                        " history that acquired it, then reconcile again.",
+                    )
+                )
+            continue
         wearing = instruments_repository.wearing_symbol(engine, symbol, families=("crypto", "cash"))
         shared = len(wearing) > 1
         if shared:
@@ -240,23 +269,29 @@ def _by_instrument(
             # difference — and one within tolerance is no gap here either.
             continue
         unresolved.append(
-            Line(
-                instrument_id=None,
-                symbol=symbol,
-                name=None,
-                family=None,
-                live=quantity,
-                tracked=None,
-                difference=None,
-                status=UNRESOLVED,
-                resolutions=(),
-                detail=(
-                    f"{symbol!r} names several Instruments and this Account tracks"
-                    " none or several of them — the venue states only a symbol,"
-                    " so the ledger cannot choose."
-                    if shared
-                    else f"No Instrument answers to {symbol!r} — create it, then reconcile again."
-                ),
+            _unresolved(
+                symbol,
+                quantity,
+                f"{symbol!r} names several Instruments and this Account tracks"
+                " none or several of them — the venue states only a symbol,"
+                " so the ledger cannot choose."
+                if shared
+                else f"No Instrument answers to {symbol!r} — create it, then reconcile again.",
             )
         )
     return live, unresolved
+
+
+def _unresolved(symbol: str, quantity: Decimal, detail: str) -> Line:
+    return Line(
+        instrument_id=None,
+        symbol=symbol,
+        name=None,
+        family=None,
+        live=quantity,
+        tracked=None,
+        difference=None,
+        status=UNRESOLVED,
+        resolutions=(),
+        detail=detail,
+    )

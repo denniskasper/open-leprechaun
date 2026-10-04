@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
-from open_leprechaun.adapters import get_exchange_adapters
+from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import coinbase
 from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
 from open_leprechaun.ports.exchange import AdapterError, Harvest
@@ -797,7 +797,7 @@ def test_coinbase_ships_as_one_adapter_plus_a_registry_entry():
     """Adding the venue changed no service, router or screen: the registry
     answers its one kind, which declares that the venue's history has no
     lookback cap."""
-    (adapter,) = get_exchange_adapters()["coinbase"]
+    (adapter,) = get_venue_adapters()["coinbase"]
 
     assert isinstance(adapter, CoinbaseSpotAdapter)
     assert adapter.kind == "spot"

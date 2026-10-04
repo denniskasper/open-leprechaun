@@ -8,7 +8,7 @@ records naming assets by the venue's symbols alone: an adapter never touches
 the database, never converts to EUR and never computes tax, so it cannot know
 an Instrument id or an Account. Resolving symbols against the ledger and
 routing records into the futures pipeline and the import framework is the
-sync service's job (services/exchange_sync).
+sync service's job (services/connection_sync).
 
 One venue account serves several adapter kinds through one Connection
 (ADR-0004); each kind is its own adapter instance, tested and synced
@@ -127,6 +127,10 @@ class NormalizedPosition:
     symbol: str
     quantity: Decimal
     as_of: datetime
+    # A security states its ISIN — the ledger's own identity for it
+    # (ADR-0010), beside which the symbol is only a label. None for crypto
+    # and cash, which a venue can name by symbol alone.
+    isin: str | None = None
 
 
 @dataclass(frozen=True)

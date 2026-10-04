@@ -9,13 +9,13 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import AwareDatetime, BaseModel, Field, PlainSerializer, StringConstraints
 
-from open_leprechaun.adapters import ExchangeAdaptersDep
+from open_leprechaun.adapters import VenueAdaptersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.ports.venues import VENUES
 from open_leprechaun.prices import PriceSourcesDep
 from open_leprechaun.routers.imports import PriceConditionResponse, UnpricedRowResponse
-from open_leprechaun.services import connections, coverage, exchange_sync, reconciliation
+from open_leprechaun.services import connection_sync, connections, coverage, reconciliation
 from open_leprechaun.services.connections import (
     ConnectionOverview,
     CredentialsUnreadableError,
@@ -241,7 +241,7 @@ class KindTestResponse(BaseModel):
     error: str | None
 
     @classmethod
-    def of(cls, result: exchange_sync.KindTest) -> KindTestResponse:
+    def of(cls, result: connection_sync.KindTest) -> KindTestResponse:
         return cls(
             adapter_kind=result.adapter_kind,
             ok=result.error is None,
@@ -260,10 +260,10 @@ def test_connection(
     admin: AdminDep,
     engine: EngineDep,
     settings: SettingsDep,
-    adapters: ExchangeAdaptersDep,
+    adapters: VenueAdaptersDep,
 ) -> list[KindTestResponse]:
     try:
-        results = exchange_sync.test_connection(engine, settings, adapters, connection_id)
+        results = connection_sync.test_connection(engine, settings, adapters, connection_id)
     except CredentialsUnreadableError as sealed:
         raise HTTPException(status_code=409, detail=str(sealed)) from sealed
     if results is None:
@@ -286,6 +286,11 @@ class ImportOutcomeResponse(BaseModel):
     price_conditions: list[PriceConditionResponse]
 
 
+class CoveredPeriodResponse(BaseModel):
+    start: AwareDatetime | None
+    end: AwareDatetime
+
+
 class KindSyncResponse(BaseModel):
     """One adapter kind's sync outcome. What landed stays reported beside an
     error where part of the kind refused — stored is never unreported."""
@@ -298,14 +303,26 @@ class KindSyncResponse(BaseModel):
     # The adapter's declared lookback the pull reached over — None where
     # nothing was pulled.
     covered_days: int | None
+    # The period a broker's pull reports having covered — `start` null where
+    # the venue served the Depot's history from its beginning.
+    covered_period: CoveredPeriodResponse | None
+    # What the venue stated that is no transaction — passed over by name,
+    # for the Admin to record.
+    passed_over: list[str]
 
     @classmethod
-    def of(cls, result: exchange_sync.KindSync) -> KindSyncResponse:
+    def of(cls, result: connection_sync.KindSync) -> KindSyncResponse:
         return cls(
             adapter_kind=result.adapter_kind,
             ok=result.error is None,
             error=result.error,
             covered_days=result.covered_days,
+            covered_period=None
+            if result.covered_period is None
+            else CoveredPeriodResponse(
+                start=result.covered_period.start, end=result.covered_period.end
+            ),
+            passed_over=list(result.passed_over),
             futures=None
             if result.futures is None
             else FuturesOutcomeResponse(
@@ -336,11 +353,11 @@ def sync_connection(
     admin: AdminDep,
     engine: EngineDep,
     settings: SettingsDep,
-    adapters: ExchangeAdaptersDep,
+    adapters: VenueAdaptersDep,
     prices: PriceSourcesDep,
 ) -> list[KindSyncResponse]:
     try:
-        results = exchange_sync.sync_connection(
+        results = connection_sync.sync_connection(
             engine, settings, adapters, connection_id, prices=prices
         )
     except CredentialsUnreadableError as sealed:
@@ -415,7 +432,7 @@ def reconcile_connection(
     admin: AdminDep,
     engine: EngineDep,
     settings: SettingsDep,
-    adapters: ExchangeAdaptersDep,
+    adapters: VenueAdaptersDep,
     request: ReconcileRequest | None = None,
 ) -> list[KindReconciliationResponse]:
     """Reports and never repairs: a gap is left for the Admin to close by

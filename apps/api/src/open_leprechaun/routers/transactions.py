@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -159,6 +160,15 @@ class LegResponse(BaseModel):
     charged_against_leg_id: int | None
 
 
+class OriginalAmountResponse(BaseModel):
+    """`rate` is units of `currency` per one unit of the settled currency."""
+
+    amount: Quantity
+    currency: str
+    rate: Quantity
+    rate_date: date
+
+
 class TransactionResponse(BaseModel):
     id: int
     type: TransactionType
@@ -167,6 +177,9 @@ class TransactionResponse(BaseModel):
     reconstructed: Reconstructed | None
     estimated_basis_eur: EstimatedBasis | None
     capital_income: CapitalIncomePayload | None
+    # A trade settled in another currency than it was priced in (ticket 48):
+    # the amount as priced, the broker's rate and its date.
+    original_amount: OriginalAmountResponse | None
     # The dust-sweep aggregate this event belongs to (ticket 30) — the
     # marker the summary presentation collapses on.
     aggregate_id: int | None
@@ -189,6 +202,9 @@ class TransactionResponse(BaseModel):
             estimated_basis_eur=transaction.estimated_basis_eur,
             capital_income=CapitalIncomePayload(**asdict(transaction.capital_income))
             if transaction.capital_income is not None
+            else None,
+            original_amount=OriginalAmountResponse(**asdict(transaction.original_amount))
+            if transaction.original_amount is not None
             else None,
             aggregate_id=transaction.aggregate_id,
             import_batch_id=transaction.import_batch_id,

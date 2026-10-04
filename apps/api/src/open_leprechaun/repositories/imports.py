@@ -14,7 +14,12 @@ from enum import Enum
 
 from sqlalchemy import Engine, Row, text
 
-from open_leprechaun.repositories.transactions import Leg, insert_transaction
+from open_leprechaun.repositories.transactions import (
+    CapitalIncome,
+    Leg,
+    OriginalAmount,
+    insert_transaction,
+)
 
 
 class Refusal(Enum):
@@ -37,6 +42,10 @@ class WriteRow:
     occurred_at: datetime
     note: str | None
     legs: list[Leg]
+    # What the source states beside the legs: an income row's payer and
+    # withholding (ticket 47), a trade's amount as it was priced (ticket 48).
+    capital_income: CapitalIncome | None = None
+    original_amount: OriginalAmount | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +159,8 @@ def commit_batch(
                 occurred_at=row.occurred_at,
                 note=row.note,
                 legs=row.legs,
+                capital_income=row.capital_income,
+                original_amount=row.original_amount,
             )
             claimed = connection.execute(
                 text(

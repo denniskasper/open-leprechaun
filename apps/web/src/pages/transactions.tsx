@@ -13,6 +13,7 @@ import {
   removeTransaction,
   reviseTransaction,
   type CapitalIncome,
+  type OriginalAmount,
   type LegRole,
   type NewTransaction,
   type Reconstructed,
@@ -24,7 +25,7 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatDate, formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
 
 interface TypeWords {
   /** The event as the ledger and the form both speak it. */
@@ -232,6 +233,33 @@ export function withheldWords(declared: CapitalIncome, currency: string): string
     .filter(([, amount]) => isPositiveDecimal(amount))
     .map(([name, amount]) => `${name} ${formatQuantity(amount)} ${currency}`);
   return taken.length === 0 ? "nothing withheld" : `withheld · ${taken.join(" · ")}`;
+}
+
+/**
+ * A trade as its broker priced it, in a line: the amount in the currency it
+ * was priced in, the rate applied to settle it and the date that rate is of.
+ */
+export function originalAmountWords(
+  original: OriginalAmount,
+  settledCurrency: string,
+  locale?: string,
+): string {
+  return [
+    `priced ${formatMoneyExact(original.amount, original.currency, locale)}`,
+    `${formatQuantity(original.rate, locale)} ${original.currency} per ${settledCurrency}`,
+    `rate of ${formatDate(original.rate_date, locale)}`,
+  ].join(" · ");
+}
+
+/** The currency a trade settled in: its one cash leg that is no fee. */
+function settledSymbol(
+  transaction: Transaction,
+  instrumentById: ReadonlyMap<number, Instrument>,
+): string {
+  const settled = transaction.legs.find(
+    (leg) => leg.role !== "fee" && instrumentById.get(leg.instrument_id)?.family === "cash",
+  );
+  return instrumentById.get(settled?.instrument_id ?? -1)?.symbol ?? "settled unit";
 }
 
 /** The symbol of the one leg an income event received — what its withheld amounts are in. */
@@ -675,6 +703,17 @@ function LedgerRow({
               {withheldWords(
                 transaction.capital_income,
                 receivedSymbol(transaction, instrumentById),
+              )}
+            </p>
+          )}
+          {transaction.original_amount && (
+            <p
+              className="mt-0.5 font-mono text-xs tabular-nums text-muted-foreground"
+              title="The trade as the broker priced it, and the rate it applied to settle in the Depot's currency."
+            >
+              {originalAmountWords(
+                transaction.original_amount,
+                settledSymbol(transaction, instrumentById),
               )}
             </p>
           )}

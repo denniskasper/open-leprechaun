@@ -1,5 +1,5 @@
 """Testing and syncing a Connection through its venue's adapters (ticket 35,
-ADR-0004, ADR-0008).
+ADR-0004, ADR-0008) — an exchange's and a broker's alike (ticket 48).
 
 This is the only place adapter output meets the ledger, and it is where the
 venue's symbols become the ledger's identities: each symbol is resolved
@@ -25,16 +25,20 @@ from dataclasses import dataclass
 
 from sqlalchemy import Engine, Row
 
+from open_leprechaun.ports.broker import BrokerAdapter, BrokerHarvest, CoveredPeriod
 from open_leprechaun.ports.exchange import AdapterError, Credentials, ExchangeAdapter, Harvest
 from open_leprechaun.repositories import connections as repository
 from open_leprechaun.repositories import instruments as instruments_repository
-from open_leprechaun.services import connections, futures, imports
+from open_leprechaun.services import broker_sync, connections, futures, imports
 from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.imports import CommitRefused, ImportLeg, ImportRow
 from open_leprechaun.services.price_reports import ProviderCondition
 from open_leprechaun.settings import Settings
 
-Adapters = Mapping[str, Sequence[ExchangeAdapter]]
+# Both account-authenticating ports reach the ledger here (ADR-0008): an
+# exchange's kinds and a broker's hang off the same Connection, and what a
+# kind pulled — not which port it implements — decides how it lands.
+Adapters = Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]]
 
 
 @dataclass(frozen=True)
@@ -131,6 +135,12 @@ class KindSync:
     # (ADR-0008), stated only once the pull succeeded, so "nothing found" is
     # never mistaken for "nothing exists". None where nothing was pulled.
     covered_days: int | None = None
+    # The period a broker's pull reports having covered (ticket 48) — None
+    # beside an error, and for a kind whose port reports none.
+    covered_period: CoveredPeriod | None = None
+    # What the venue stated that is no transaction — a split, a return of
+    # capital — each a sentence naming what the Admin records by hand.
+    passed_over: tuple[str, ...] = ()
 
 
 def sync_connection(
@@ -167,6 +177,7 @@ def sync_connection(
             # The days the pull reached over — already None beside an error,
             # so a failed kind claims no coverage (ticket 40).
             covered_lookback_days=result.covered_days,
+            covered_from=None if result.covered_period is None else result.covered_period.start,
         )
         results.append(result)
     return tuple(results)
@@ -180,7 +191,7 @@ class _UnresolvableError(Exception):
 def _sync_kind(
     engine: Engine,
     connection: Row,
-    adapter: ExchangeAdapter,
+    adapter: ExchangeAdapter | BrokerAdapter,
     credentials: Credentials,
     prices: PriceSources,
 ) -> KindSync:
@@ -196,7 +207,11 @@ def _sync_kind(
         )
     try:
         harvest = adapter.pull(credentials)
-        resolved, resolved_cash = _resolve_symbols(engine, harvest)
+        # A broker names every Instrument by identity, so nothing of its
+        # harvest waits on a symbol being resolved.
+        resolved, resolved_cash = (
+            ({}, {}) if isinstance(harvest, BrokerHarvest) else _resolve_symbols(engine, harvest)
+        )
     except _UnresolvableError as unresolved:
         return KindSync(
             adapter_kind=adapter.kind, error=str(unresolved), futures=None, imported=None
@@ -206,6 +221,20 @@ def _sync_kind(
     except Exception as failed:
         return KindSync(
             adapter_kind=adapter.kind, error=failure_sentence(failed), futures=None, imported=None
+        )
+
+    if isinstance(harvest, BrokerHarvest):
+        imported_outcome, error = _commit(
+            engine, connection, adapter.kind, account_id, broker_sync.import_rows(harvest), prices
+        )
+        return KindSync(
+            adapter_kind=adapter.kind,
+            error=error,
+            futures=None,
+            imported=imported_outcome,
+            covered_days=None if error else adapter.lookback_days,
+            covered_period=None if error else harvest.covered,
+            passed_over=broker_sync.passed_over(harvest),
         )
 
     futures_outcome = None
@@ -246,29 +275,14 @@ def _sync_kind(
         )
         futures_outcome = FuturesOutcome(new_fills=synced.new_fills, new_funding=synced.new_funding)
 
-    imported_outcome = None
-    error = None
-    rows = _import_rows(harvest, resolved, resolved_cash)
-    if rows:
-        committed = imports.commit(
-            engine,
-            prices=prices,
-            source=source,
-            label=f"{connection.venue} {adapter.kind} sync",
-            account_id=account_id,
-            rows=rows,
-        )
-        if isinstance(committed, CommitRefused):
-            error = committed.sentence
-        else:
-            imported_outcome = ImportOutcome(
-                batch_id=committed.batch_id,
-                created=committed.created,
-                duplicates=committed.duplicates,
-                skipped=committed.skipped,
-                unpriced=committed.unpriced,
-                price_conditions=committed.price_conditions,
-            )
+    imported_outcome, error = _commit(
+        engine,
+        connection,
+        adapter.kind,
+        account_id,
+        _import_rows(harvest, resolved, resolved_cash),
+        prices,
+    )
     return KindSync(
         adapter_kind=adapter.kind,
         error=error,
@@ -277,6 +291,43 @@ def _sync_kind(
         # A refused commit means the account does not hold the period the
         # pull reached — an error and a coverage claim would contradict.
         covered_days=None if error else adapter.lookback_days,
+    )
+
+
+def _commit(
+    engine: Engine,
+    connection: Row,
+    adapter_kind: str,
+    account_id: int,
+    rows: Sequence[ImportRow],
+    prices: PriceSources,
+) -> tuple[ImportOutcome | None, str | None]:
+    """Land one kind's ledger-bound rows through the import framework under
+    the kind's own provenance string. Answers what landed, or the sentence
+    the commit was refused with — and neither where there was nothing to
+    land."""
+    if not rows:
+        return None, None
+    committed = imports.commit(
+        engine,
+        prices=prices,
+        source=f"{connection.venue}:{adapter_kind}",
+        label=f"{connection.venue} {adapter_kind} sync",
+        account_id=account_id,
+        rows=rows,
+    )
+    if isinstance(committed, CommitRefused):
+        return None, committed.sentence
+    return (
+        ImportOutcome(
+            batch_id=committed.batch_id,
+            created=committed.created,
+            duplicates=committed.duplicates,
+            skipped=committed.skipped,
+            unpriced=committed.unpriced,
+            price_conditions=committed.price_conditions,
+        ),
+        None,
     )
 
 

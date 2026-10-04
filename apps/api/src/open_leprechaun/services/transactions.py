@@ -16,7 +16,7 @@ from typing import Protocol
 from sqlalchemy import Engine
 
 from open_leprechaun.repositories import capital_income, imports, transactions
-from open_leprechaun.repositories.transactions import CapitalIncome, Leg
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg, OriginalAmount
 
 
 class LegShape(Protocol):
@@ -201,6 +201,10 @@ class TransactionOverview:
     # What an income event declares beyond its legs (ticket 47): the payer
     # and everything withheld at source; None where nothing was declared.
     capital_income: CapitalIncome | None
+    # What a trade settled in another currency than it was priced in states
+    # beside its legs (ticket 48): the amount as priced, the broker's rate
+    # and its date; None everywhere else.
+    original_amount: OriginalAmount | None
     # The dust-sweep Aggregate this event belongs to (ticket 30) — a
     # presentation marker the summary collapses on, never a tax input.
     aggregate_id: int | None
@@ -239,6 +243,12 @@ def overview(engine: Engine) -> list[TransactionOverview]:
         )
         for row in _declaration_rows(engine)
     }
+    priced = {
+        row.transaction_id: OriginalAmount(
+            amount=row.amount, currency=row.currency, rate=row.rate, rate_date=row.rate_date
+        )
+        for row in transactions.list_original_amounts(engine)
+    }
     ledger = []
     for row in transactions.list_transactions(engine):
         imported = provenance.get(row.id)
@@ -251,6 +261,7 @@ def overview(engine: Engine) -> list[TransactionOverview]:
                 reconstructed=row.reconstructed,
                 estimated_basis_eur=row.estimated_basis_eur,
                 capital_income=declared.get(row.id),
+                original_amount=priced.get(row.id),
                 aggregate_id=row.aggregate_id,
                 import_batch_id=imported.batch_id if imported else None,
                 import_source=imported.source if imported else None,
@@ -317,6 +328,7 @@ __all__ = [
     "Leg",
     "LegRules",
     "LegShape",
+    "OriginalAmount",
     "declaration_defect",
     "income_defect",
     "overview",

@@ -1,0 +1,220 @@
+{
+  "_provenance": "Authored from the schemas of Trading 212's published OpenAPI document (docs.trading212.com, Public API v0) — AccountSummary, Position, HistoricalOrder, HistoryDividendItem, HistoryTransactionItem. The document prints no example responses and no account was available to record from, so every value is invented and every field name and enum value is the document's own.",
+  "summary": {
+    "id": 10000001,
+    "currency": "EUR",
+    "totalValue": 520.4,
+    "cash": {"availableToTrade": 412.07, "inPies": 10.0, "reservedForOrders": 25.0},
+    "investments": {
+      "currentValue": 483.33,
+      "totalCost": 419.64,
+      "realizedProfitLoss": 12.5,
+      "unrealizedProfitLoss": 63.69
+    }
+  },
+  "positions": [
+    {
+      "instrument": {"ticker": "AAPL_US_EQ", "name": "Apple", "isin": "US0378331005", "currency": "USD"},
+      "createdAt": "2024-03-04T14:31:07.000Z",
+      "quantity": 2,
+      "quantityAvailableForTrading": 2,
+      "quantityInPies": 0,
+      "averagePricePaid": 180.0,
+      "currentPrice": 201.5,
+      "walletImpact": {
+        "currency": "EUR",
+        "totalCost": 333.33,
+        "currentValue": 373.15,
+        "unrealizedProfitLoss": 39.82,
+        "fxImpact": -4.1
+      }
+    },
+    {
+      "instrument": {"ticker": "VODl_EQ", "name": "Vodafone Group", "isin": "GB00BH4HKS39", "currency": "GBX"},
+      "createdAt": "2024-05-02T08:00:12.000Z",
+      "quantity": 100,
+      "quantityAvailableForTrading": 100,
+      "quantityInPies": 0,
+      "averagePricePaid": 72.5,
+      "currentPrice": 74.1,
+      "walletImpact": {
+        "currency": "EUR",
+        "totalCost": 86.31,
+        "currentValue": 88.21,
+        "unrealizedProfitLoss": 1.9,
+        "fxImpact": 0.2
+      }
+    }
+  ],
+  "orders": [
+    {
+      "items": [
+        {
+          "order": {
+            "id": 40000000003,
+            "strategy": "QUANTITY",
+            "type": "MARKET",
+            "ticker": "VODl_EQ",
+            "instrument": {"ticker": "VODl_EQ", "name": "Vodafone Group", "isin": "GB00BH4HKS39", "currency": "GBX"},
+            "quantity": 100,
+            "filledQuantity": 100,
+            "side": "BUY",
+            "status": "FILLED",
+            "currency": "EUR",
+            "extendedHours": false,
+            "initiatedFrom": "WEB",
+            "timeInForce": "DAY",
+            "createdAt": "2024-05-02T08:00:11.000Z"
+          },
+          "fill": {
+            "id": 50000000003,
+            "quantity": 100,
+            "price": 72.5,
+            "type": "TRADE",
+            "tradingMethod": "TOTV",
+            "filledAt": "2024-05-02T08:00:12.000Z",
+            "walletImpact": {
+              "currency": "EUR",
+              "netValue": 86.87,
+              "fxRate": 84.0,
+              "realisedProfitLoss": 0,
+              "taxes": [
+                {"name": "STAMP_DUTY_RESERVE_TAX", "quantity": -0.43, "currency": "EUR", "chargedAt": "2024-05-02T08:00:12.000Z"},
+                {"name": "CURRENCY_CONVERSION_FEE", "quantity": -0.13, "currency": "EUR", "chargedAt": "2024-05-02T08:00:12.000Z"}
+              ]
+            }
+          }
+        },
+        {
+          "order": {
+            "id": 40000000002,
+            "strategy": "QUANTITY",
+            "type": "LIMIT",
+            "ticker": "SAPd_EQ",
+            "instrument": {"ticker": "SAPd_EQ", "name": "SAP", "isin": "DE0007164600", "currency": "EUR"},
+            "quantity": -1,
+            "limitPrice": 200.0,
+            "side": "SELL",
+            "status": "CANCELLED",
+            "currency": "EUR",
+            "extendedHours": false,
+            "initiatedFrom": "IOS",
+            "timeInForce": "GOOD_TILL_CANCEL",
+            "createdAt": "2024-04-10T09:15:00.000Z"
+          }
+        }
+      ],
+      "nextPagePath": "/api/v0/equity/history/orders?limit=50&cursor=1712000000000"
+    },
+    {
+      "items": [
+        {
+          "order": {
+            "id": 40000000001,
+            "strategy": "QUANTITY",
+            "type": "MARKET",
+            "ticker": "SAPd_EQ",
+            "instrument": {"ticker": "SAPd_EQ", "name": "SAP", "isin": "DE0007164600", "currency": "EUR"},
+            "quantity": -1,
+            "filledQuantity": -1,
+            "side": "SELL",
+            "status": "FILLED",
+            "currency": "EUR",
+            "extendedHours": false,
+            "initiatedFrom": "ANDROID",
+            "timeInForce": "DAY",
+            "createdAt": "2024-03-20T10:02:00.000Z"
+          },
+          "fill": {
+            "id": 50000000002,
+            "quantity": -1,
+            "price": 170.0,
+            "type": "TRADE",
+            "tradingMethod": "TOTV",
+            "filledAt": "2024-03-20T10:02:01.000Z",
+            "walletImpact": {
+              "currency": "EUR",
+              "netValue": 170.0,
+              "fxRate": 1,
+              "realisedProfitLoss": 12.5,
+              "taxes": []
+            }
+          }
+        },
+        {
+          "order": {
+            "id": 40000000000,
+            "strategy": "QUANTITY",
+            "type": "MARKET",
+            "ticker": "AAPL_US_EQ",
+            "instrument": {"ticker": "AAPL_US_EQ", "name": "Apple", "isin": "US0378331005", "currency": "USD"},
+            "quantity": 2,
+            "filledQuantity": 2,
+            "side": "BUY",
+            "status": "FILLED",
+            "currency": "EUR",
+            "extendedHours": false,
+            "initiatedFrom": "WEB",
+            "timeInForce": "DAY",
+            "createdAt": "2024-03-04T14:31:06.000Z"
+          },
+          "fill": {
+            "id": 50000000000,
+            "quantity": 2,
+            "price": 180.0,
+            "type": "TRADE",
+            "tradingMethod": "TOTV",
+            "filledAt": "2024-03-04T14:31:07.000Z",
+            "walletImpact": {
+              "currency": "EUR",
+              "netValue": 333.83,
+              "fxRate": 1.08,
+              "realisedProfitLoss": 0,
+              "taxes": [
+                {"name": "CURRENCY_CONVERSION_FEE", "quantity": -0.5, "currency": "EUR", "chargedAt": "2024-03-04T14:31:07.000Z"}
+              ]
+            }
+          }
+        }
+      ],
+      "nextPagePath": null
+    }
+  ],
+  "dividends": [
+    {
+      "items": [
+        {
+          "reference": "c1f0e6a2-0001",
+          "ticker": "AAPL_US_EQ",
+          "instrument": {"ticker": "AAPL_US_EQ", "name": "Apple", "isin": "US0378331005", "currency": "USD"},
+          "type": "ORDINARY",
+          "quantity": 2,
+          "grossAmountPerShare": 0.25,
+          "tickerCurrency": "USD",
+          "amount": 0.39,
+          "amountInEuro": 0.39,
+          "currency": "EUR",
+          "paidOn": "2024-05-16T11:20:00.000Z"
+        }
+      ],
+      "nextPagePath": null
+    }
+  ],
+  "transactions": [
+    {
+      "items": [
+        {"reference": "t-0005", "type": "INTEREST_ON_FREE_CASH", "amount": 0.42, "currency": "EUR", "dateTime": "2024-06-01T02:00:00.000Z"},
+        {"reference": "t-0004", "type": "FEE", "amount": -1.0, "currency": "EUR", "dateTime": "2024-05-20T09:00:00.000Z"},
+        {"reference": "t-0003", "type": "TRANSFER", "amount": -50.0, "currency": "EUR", "dateTime": "2024-05-10T09:00:00.000Z"}
+      ],
+      "nextPagePath": "/api/v0/equity/history/transactions?limit=50&cursor=abc123"
+    },
+    {
+      "items": [
+        {"reference": "t-0002", "type": "WITHDRAW", "amount": -200.0, "currency": "EUR", "dateTime": "2024-04-02T12:00:00.000Z"},
+        {"reference": "t-0001", "type": "DEPOSIT", "amount": 1000.0, "currency": "EUR", "dateTime": "2024-03-01T08:30:00.000Z"}
+      ],
+      "nextPagePath": null
+    }
+  ]
+}

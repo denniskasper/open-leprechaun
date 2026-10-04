@@ -13,7 +13,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from open_leprechaun.adapters import get_exchange_adapters
+from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import pionex
 from open_leprechaun.ports.exchange import AdapterError
 from open_leprechaun.ports.pionex import BASE_URL, PionexFuturesAdapter, _sign
@@ -368,7 +368,7 @@ def test_no_secret_material_ever_reaches_an_error_sentence():
 def test_pionex_ships_as_one_adapter_plus_a_registry_entry():
     """Adding the venue changed no service, router or screen: the registry
     answers its credential shape and its one futures adapter."""
-    adapters = get_exchange_adapters()["pionex"]
+    adapters = get_venue_adapters()["pionex"]
 
     assert [adapter.kind for adapter in adapters] == ["futures"]
     assert isinstance(adapters[0], PionexFuturesAdapter)

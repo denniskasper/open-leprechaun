@@ -8,7 +8,7 @@ race, and the constraint that failed decides which answer is given.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -42,6 +42,19 @@ class CapitalIncome:
     kapitalertragsteuer: Decimal = Decimal(0)
     solidarity_surcharge: Decimal = Decimal(0)
     church_tax: Decimal = Decimal(0)
+
+
+@dataclass(frozen=True)
+class OriginalAmount:
+    """What a trade settled in another currency than it was priced in states
+    beside its legs (ticket 48, ADR-0025): the amount as priced, its
+    currency, and the rate the broker applied — units of that currency per
+    one unit of the settled currency — with the date the rate is of."""
+
+    amount: Decimal
+    currency: str
+    rate: Decimal
+    rate_date: date
 
 
 class Refusal(Enum):
@@ -102,6 +115,7 @@ def insert_transaction(
     reconstructed: str | None = None,
     estimated_basis_eur: Decimal | None = None,
     capital_income: CapitalIncome | None = None,
+    original_amount: OriginalAmount | None = None,
 ) -> int:
     """The insert itself, on the caller's connection — for a caller that
     writes many events atomically, as an import commit does."""
@@ -122,6 +136,20 @@ def insert_transaction(
     ).scalar_one()
     _insert_legs(connection, transaction_id, legs)
     _insert_capital_income(connection, transaction_id, capital_income)
+    if original_amount is not None:
+        connection.execute(
+            text(
+                "INSERT INTO original_amount (transaction_id, amount, currency, rate, rate_date)"
+                " VALUES (:transaction_id, :amount, :currency, :rate, :rate_date)"
+            ),
+            {
+                "transaction_id": transaction_id,
+                "amount": original_amount.amount,
+                "currency": original_amount.currency,
+                "rate": original_amount.rate,
+                "rate_date": original_amount.rate_date,
+            },
+        )
     return transaction_id
 
 
@@ -168,6 +196,7 @@ def replace_transaction(
                 {"transaction_id": transaction_id},
             )
             _insert_legs(connection, transaction_id, legs)
+            _drop_original_amount_unless_trade(connection, [transaction_id], type)
             connection.execute(
                 text("DELETE FROM capital_income WHERE transaction_id = :transaction_id"),
                 {"transaction_id": transaction_id},
@@ -229,8 +258,21 @@ def retype(engine: Engine, transaction_ids: list[int], *, type: str) -> Refusal 
             text("UPDATE transaction SET type = :type WHERE id = ANY(:ids)"),
             {"type": type, "ids": transaction_ids},
         )
+        _drop_original_amount_unless_trade(connection, transaction_ids, type)
         _mark_overridden(connection, transaction_ids)
         return None
+
+
+def _drop_original_amount_unless_trade(
+    connection: Connection, transaction_ids: list[int], type: str
+) -> None:
+    # Only a trade states an amount as it was priced (ADR-0025); an event
+    # revised into anything else no longer has a trade for it to describe.
+    if type != "trade":
+        connection.execute(
+            text("DELETE FROM original_amount WHERE transaction_id = ANY(:ids)"),
+            {"ids": transaction_ids},
+        )
 
 
 def _any_unset_depot(connection: Connection, account_ids: list[int]) -> bool:
@@ -279,6 +321,18 @@ def list_transactions(engine: Engine) -> list[Row]:
                 text(
                     f"SELECT {_TRANSACTION_COLUMNS} FROM transaction"
                     " ORDER BY occurred_at DESC, id DESC"
+                )
+            ).all()
+        )
+
+
+def list_original_amounts(engine: Engine) -> list[Row]:
+    """Every original amount, keyed by the trade it is stated beside."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT transaction_id, amount, currency, rate, rate_date FROM original_amount"
                 )
             ).all()
         )

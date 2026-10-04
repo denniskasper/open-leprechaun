@@ -20,13 +20,14 @@ from sqlalchemy import Engine
 
 from open_leprechaun.repositories import imports, instruments
 from open_leprechaun.repositories.imports import Refusal, WriteRow
-from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg, OriginalAmount
 from open_leprechaun.services import import_prices
 from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.price_reports import ProviderCondition
 from open_leprechaun.services.transactions import (
     TRANSACTION_TYPES,
     declaration_defect,
+    income_defect,
     structural_defect,
 )
 
@@ -82,12 +83,40 @@ class ImportLeg:
 
 
 @dataclass(frozen=True)
+class ImportCapitalIncome:
+    """What an imported dividend, distribution or interest declares beyond
+    its legs (ADR-0022), as far as its source states it: the security that
+    paid — named by identity, since the import may be the first the ledger
+    hears of it — a Quellensteuer with its source country, and the German
+    tax withheld at source in its three components."""
+
+    paying_instrument: InstrumentSpec | None = None
+    foreign_withholding: Decimal = Decimal(0)
+    source_country: str | None = None
+    kapitalertragsteuer: Decimal = Decimal(0)
+    solidarity_surcharge: Decimal = Decimal(0)
+    church_tax: Decimal = Decimal(0)
+
+
+@dataclass(frozen=True)
 class ImportRow:
     external_id: str
     type: str
     occurred_at: datetime
     note: str | None = None
     legs: tuple[ImportLeg, ...] = ()
+    capital_income: ImportCapitalIncome | None = None
+    # A trade's amount as it was priced, where it settled in another
+    # currency (ADR-0025).
+    original_amount: OriginalAmount | None = None
+
+    def instrument_specs(self) -> tuple[InstrumentSpec, ...]:
+        """Every Instrument this row names by identity — its legs' and its
+        payer's alike, so either may be the one an import creates."""
+        specs = [leg.instrument for leg in self.legs if leg.instrument is not None]
+        if self.capital_income is not None and self.capital_income.paying_instrument is not None:
+            specs.append(self.capital_income.paying_instrument)
+        return tuple(specs)
 
 
 @dataclass(frozen=True)
@@ -164,9 +193,9 @@ def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[Imp
             skipped.append(SkippedRow(row.external_id, defect))
             continue
         creatable.append(row)
-        for leg in row.legs:
-            if leg.instrument is not None and resolved[leg.instrument.identity()] is None:
-                new_instruments.setdefault(leg.instrument.identity(), leg.instrument)
+        for spec in row.instrument_specs():
+            if resolved[spec.identity()] is None:
+                new_instruments.setdefault(spec.identity(), spec)
 
     warnings: list[str] = []
     if new_instruments:
@@ -317,6 +346,37 @@ def _row_defect(
             if spec_defect is not None:
                 return spec_defect
             _resolve(engine, leg.instrument, resolved)
+    if row.original_amount is not None and row.type != "trade":
+        return "Only a trade states an amount as it was priced in another currency."
+    declared = row.capital_income
+    if declared is None:
+        return None
+    payer = declared.paying_instrument
+    defect = income_defect(
+        row.type,
+        row.legs,
+        CapitalIncome(
+            # Only whether a payer is named is judged here; which Instrument
+            # it resolves to is settled when the row is written.
+            paying_instrument_id=None if payer is None else 0,
+            foreign_withholding=declared.foreign_withholding,
+            source_country=declared.source_country,
+        ),
+    )
+    if defect is not None:
+        return defect
+    withheld = (
+        declared.foreign_withholding,
+        declared.kapitalertragsteuer,
+        declared.solidarity_surcharge,
+        declared.church_tax,
+    )
+    if any(amount < 0 for amount in withheld):
+        return "A withheld amount is never negative."
+    if payer is not None:
+        if payer.defect() is not None:
+            return payer.defect()
+        _resolve(engine, payer, resolved)
     return None
 
 
@@ -389,22 +449,33 @@ def _write_row(
     account_id: int,
     instrument_ids: dict[tuple[str, ...], int],
 ) -> WriteRow:
-    legs = []
-    for leg in row.legs:
-        if leg.instrument_id is not None:
-            instrument_id = leg.instrument_id
-        elif leg.instrument.identity() in instrument_ids:
-            instrument_id = instrument_ids[leg.instrument.identity()]
-        else:
-            instrument_id = _resolve(engine, leg.instrument, {})
-        legs.append(
-            Leg(
-                account_id=account_id,
-                instrument_id=instrument_id,
-                role=leg.role,
-                quantity=leg.quantity,
-                charged_against=leg.charged_against,
-            )
+    def instrument_id_of(spec: InstrumentSpec) -> int:
+        if spec.identity() in instrument_ids:
+            return instrument_ids[spec.identity()]
+        return _resolve(engine, spec, {})
+
+    legs = [
+        Leg(
+            account_id=account_id,
+            instrument_id=leg.instrument_id
+            if leg.instrument_id is not None
+            else instrument_id_of(leg.instrument),
+            role=leg.role,
+            quantity=leg.quantity,
+            charged_against=leg.charged_against,
+        )
+        for leg in row.legs
+    ]
+    capital_income = None
+    if row.capital_income is not None:
+        payer = row.capital_income.paying_instrument
+        capital_income = CapitalIncome(
+            paying_instrument_id=None if payer is None else instrument_id_of(payer),
+            foreign_withholding=row.capital_income.foreign_withholding,
+            source_country=row.capital_income.source_country,
+            kapitalertragsteuer=row.capital_income.kapitalertragsteuer,
+            solidarity_surcharge=row.capital_income.solidarity_surcharge,
+            church_tax=row.capital_income.church_tax,
         )
     return WriteRow(
         external_id=row.external_id,
@@ -412,4 +483,6 @@ def _write_row(
         occurred_at=row.occurred_at,
         note=row.note,
         legs=legs,
+        capital_income=capital_income,
+        original_amount=row.original_amount,
     )

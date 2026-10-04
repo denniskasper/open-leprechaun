@@ -26,6 +26,8 @@ export const accountSchema = z.object({
   chain: z.string().nullable(),
   external_reference: z.string().nullable(),
   access_software: z.string().nullable(),
+  /** The one ingestion source that may write here; null until one declares itself. */
+  authoritative_source: z.string().nullable(),
   /** This Account's exception to its Platform's withholding; null means the Platform's word stands. */
   withholding_override: withholdingSchema.nullable(),
   base_currency: z.string().nullable(),

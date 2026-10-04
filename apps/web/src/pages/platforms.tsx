@@ -20,6 +20,7 @@ import {
   type PlatformKind,
   type Withholding,
 } from "@/api/platforms";
+import { fetchConnections, type Connection } from "@/api/connections";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
@@ -76,6 +77,39 @@ export const WITHHOLDING_LABEL: Record<Withholding, string> = {
 export function effectiveWithholding(platform: Platform, account: Account): Withholding | null {
   return account.withholding_override ?? platform.withholding;
 }
+
+/** How a broker's history reaches the ledger, and so what keeping it current takes. */
+export type ServedBy = "sync" | "import" | "manual";
+
+/**
+ * Which ingestion mode serves a Platform: a Connection with a kind paired to
+ * one of its Accounts means its adapters sync it — an unpaired Connection
+ * lands nothing; failing that, a Depot some import declared itself authoritative
+ * for is kept current by importing; otherwise everything is entered by hand.
+ */
+export function servedBy(platform: Platform, connections: Connection[]): ServedBy {
+  const syncing = connections.some(
+    (connection) => connection.platform_id === platform.id && connection.pairings.length > 0,
+  );
+  if (syncing) return "sync";
+  if (platform.accounts.some((account) => account.authoritative_source !== null)) return "import";
+  return "manual";
+}
+
+export const SERVED_BY_WORDS: Record<ServedBy, { label: string; upkeep: string }> = {
+  sync: {
+    label: "Served by sync",
+    upkeep: "its Connection pulls trades, dividends and cash movements; positions reconcile only.",
+  },
+  import: {
+    label: "Served by import",
+    upkeep: "it stays current only as far as the last statement imported.",
+  },
+  manual: {
+    label: "Served by manual entry",
+    upkeep: "every event is recorded by hand until a Connection or an import takes over.",
+  },
+};
 
 export interface KindGroup {
   kind: PlatformKind;
@@ -286,6 +320,7 @@ function PlatformRow({ platform }: { platform: Platform }) {
       </div>
 
       {platform.kind === "broker" && <WithholdingLine platform={platform} />}
+      {platform.kind === "broker" && <ServedByLine platform={platform} />}
 
       {platform.accounts.length > 0 && (
         <ul className="mt-3 space-y-2">
@@ -302,6 +337,26 @@ function PlatformRow({ platform }: { platform: Platform }) {
 
       {adding && <AddAccountForm platform={platform} onDone={() => setAdding(false)} />}
     </article>
+  );
+}
+
+/**
+ * States what maintaining this broker requires. The Connections it reads are
+ * a second query: while they load or if they fail the line stays silent
+ * rather than claim "manual entry" for a broker that syncs.
+ */
+function ServedByLine({ platform }: { platform: Platform }) {
+  const { data: connections } = useQuery({ queryKey: ["connections"], queryFn: fetchConnections });
+  if (!connections) return null;
+  const served = servedBy(platform, connections);
+  const words = SERVED_BY_WORDS[served];
+  return (
+    <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+      <span className={`microlabel ${served === "sync" ? "text-signal" : "text-muted-foreground"}`}>
+        {words.label}
+      </span>
+      <span className="text-muted-foreground">— {words.upkeep}</span>
+    </p>
   );
 }
 

@@ -63,6 +63,18 @@ export const capitalIncomeSchema = z.object({
   church_tax: decimalString,
 });
 
+/**
+ * A trade settled in another currency than it was priced in: the amount as
+ * priced, and the broker's rate — units of `currency` per one unit of the
+ * settled currency — with the date that rate is of.
+ */
+export const originalAmountSchema = z.object({
+  amount: decimalString,
+  currency: z.string(),
+  rate: decimalString,
+  rate_date: z.iso.date(),
+});
+
 export const transactionSchema = z.object({
   id: z.number(),
   type: transactionTypeSchema,
@@ -74,6 +86,8 @@ export const transactionSchema = z.object({
   estimated_basis_eur: decimalString.nullable(),
   // What was withheld at source; null where the event declared nothing.
   capital_income: capitalIncomeSchema.nullable(),
+  // The amount as priced, on a trade settled in another currency.
+  original_amount: originalAmountSchema.nullable(),
   // Import provenance (ticket 31): the batch and source that created this
   // row, null on a hand-recorded event. An imported row the Admin edited by
   // hand is manually overridden — a re-import never silently reverts it.
@@ -88,6 +102,7 @@ export type LegRole = z.infer<typeof legRoleSchema>;
 export type Reconstructed = z.infer<typeof reconstructedSchema>;
 export type Leg = z.infer<typeof legSchema>;
 export type CapitalIncome = z.infer<typeof capitalIncomeSchema>;
+export type OriginalAmount = z.infer<typeof originalAmountSchema>;
 export type Transaction = z.infer<typeof transactionSchema>;
 
 export interface NewLeg {

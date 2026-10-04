@@ -12,6 +12,7 @@ import {
   describeLastUse,
   describeLookback,
   describeReconciliation,
+  describeCoveredPeriod,
   describeSyncResult,
   describeTestResult,
   groupByPlatform,
@@ -77,6 +78,8 @@ function syncResult(overrides: Partial<KindSyncResult>): KindSyncResult {
     futures: null,
     imported: null,
     covered_days: null,
+    covered_period: null,
+    passed_over: [],
     ...overrides,
   };
 }
@@ -233,6 +236,20 @@ describe("describeSyncResult", () => {
     ).toBe(
       "3 rows imported · 1 awaiting a price · coingecko is rate-limiting — the next price update asks again",
     );
+  });
+
+  it("states the period a broker's pull covered, from the beginning where its history is whole", () => {
+    const whole = describeSyncResult(
+      syncResult({ covered_period: { start: null, end: "2031-06-02T12:00:00Z" } }),
+      "en-GB",
+    );
+    expect(whole).toMatch(/^Nothing new to pull — covering the whole history up to .*2031/);
+
+    const windowed = describeCoveredPeriod(
+      { start: "2031-03-04T12:00:00Z", end: "2031-06-02T12:00:00Z" },
+      "en-GB",
+    );
+    expect(windowed).toMatch(/^covering .*Mar.* to .*Jun/);
   });
 
   it("says so when a kind had nothing to pull", () => {

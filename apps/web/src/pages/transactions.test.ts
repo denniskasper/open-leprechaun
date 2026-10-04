@@ -13,6 +13,7 @@ import {
   TYPE_VOCABULARY,
   withLegRemoved,
   withheldDefect,
+  originalAmountWords,
   withheldWords,
   withToggled,
   type DraftLeg,
@@ -233,6 +234,20 @@ describe("withheldWords", () => {
 
   it("says so where a declaration took nothing", () => {
     expect(withheldWords(nothing, "EUR")).toBe("nothing withheld");
+  });
+});
+
+describe("originalAmountWords", () => {
+  it("states the amount as priced, the rate beside both currencies and the rate's date", () => {
+    const words = originalAmountWords(
+      { amount: "360.00", currency: "USD", rate: "1.08", rate_date: "2031-03-04" },
+      "EUR",
+      "en-GB",
+    );
+
+    expect(words).toMatch(/^priced (US\$|\$)360\.00/);
+    expect(words).toContain("1.08 USD per EUR");
+    expect(words).toMatch(/rate of .*2031/);
   });
 });
 

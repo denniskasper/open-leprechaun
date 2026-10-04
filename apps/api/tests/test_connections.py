@@ -105,13 +105,11 @@ def test_a_passphrase_is_required_exactly_where_the_venue_requires_one(db):
 
 
 def test_a_key_only_venue_needs_no_secret(db):
-    """Trading 212 authenticates with a single API key — the registry knows,
+    """Bitpanda authenticates with a single API key — the registry knows,
     and the missing secret is not an error there."""
-    broker = platforms.create_platform(db, name="Trading 212", kind="broker")
+    broker = platforms.create_platform(db, name="Bitpanda", kind="broker")
 
-    created = register(
-        db, broker, venue="trading_212", label="Invest", secret=None, passphrase=None
-    )
+    created = register(db, broker, venue="bitpanda", label="Invest", secret=None, passphrase=None)
 
     assert isinstance(created, int)
 

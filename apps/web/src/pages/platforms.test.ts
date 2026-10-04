@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { Connection } from "@/api/connections";
 import type { Account, Platform } from "@/api/platforms";
 import {
   accountCount,
   effectiveWithholding,
   groupByKind,
   KIND_VOCABULARY,
+  servedBy,
+  SERVED_BY_WORDS,
   WITHHOLDING_LABEL,
 } from "./platforms";
 
@@ -27,6 +30,7 @@ function account(overrides: Partial<Account>): Account {
     chain: null,
     external_reference: null,
     access_software: null,
+    authoritative_source: null,
     withholding_override: null,
     base_currency: null,
     ...overrides,
@@ -113,6 +117,48 @@ describe("effectiveWithholding", () => {
 
   it("answers null while nothing has been declared", () => {
     expect(effectiveWithholding(platform({ kind: "broker" }), account({}))).toBeNull();
+  });
+});
+
+describe("servedBy", () => {
+  const connection: Connection = {
+    id: 9,
+    platform_id: 1,
+    venue: "trading_212",
+    label: "Invest",
+    fingerprint: "abc",
+    last_used_at: null,
+    statuses: [],
+    pairings: [{ adapter_kind: "securities", account_id: 1 }],
+  };
+
+  it("does not call a broker synced whose Connection has no kind paired yet", () => {
+    const broker = platform({ id: 1, kind: "broker", accounts: [account({})] });
+
+    expect(servedBy(broker, [{ ...connection, pairings: [] }])).toBe("manual");
+  });
+
+  it("says sync where a Connection's kind lands in one of its Depots", () => {
+    const broker = platform({ id: 1, kind: "broker", accounts: [account({})] });
+
+    expect(servedBy(broker, [connection])).toBe("sync");
+    expect(SERVED_BY_WORDS.sync.label).toBe("Served by sync");
+  });
+
+  it("says import where only a statement import writes into one of its Depots", () => {
+    const broker = platform({
+      id: 2,
+      kind: "broker",
+      accounts: [account({ authoritative_source: "csv:etoro" })],
+    });
+
+    expect(servedBy(broker, [connection])).toBe("import");
+  });
+
+  it("says manual entry where nothing feeds it", () => {
+    expect(servedBy(platform({ id: 2, kind: "broker", accounts: [account({})] }), [])).toBe(
+      "manual",
+    );
   });
 });
 

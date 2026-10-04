@@ -23,7 +23,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from open_leprechaun.adapters import get_exchange_adapters
+from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import okx
 from open_leprechaun.ports.exchange import AdapterError, StatesNormalizedPositions
 from open_leprechaun.ports.okx import BASE_URL, OkxFuturesAdapter, OkxSpotAdapter, _sign
@@ -685,7 +685,7 @@ def test_okx_ships_as_two_adapters_plus_a_registry_entry():
     """Adding the venue changed no service, router or screen: the registry
     answers its credential shape — secret and passphrase both — and its two
     kinds."""
-    adapters = get_exchange_adapters()["okx"]
+    adapters = get_venue_adapters()["okx"]
 
     assert [adapter.kind for adapter in adapters] == ["spot", "futures"]
     assert isinstance(adapters[0], OkxSpotAdapter)

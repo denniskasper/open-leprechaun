@@ -145,12 +145,30 @@ export function describeSyncResult(result: KindSyncResult, locale?: string): str
   if (result.error) {
     return landed ? `${result.error} (${landed} before the refusal)` : result.error;
   }
+  if (result.covered_period) {
+    const covered = describeCoveredPeriod(result.covered_period, locale);
+    return landed ? `${landed} · ${covered}` : `Nothing new to pull — ${covered}.`;
+  }
   if (result.covered_days !== null) {
     return landed
       ? `${landed} · covering the last ${count(result.covered_days, "day", locale)}`
       : `Nothing to pull — the last ${count(result.covered_days, "day", locale)} are covered.`;
   }
   return landed || "Nothing to pull for this kind.";
+}
+
+/**
+ * The period a broker's pull reports having covered, in words — from the
+ * Depot's beginning where the venue serves its whole history.
+ */
+export function describeCoveredPeriod(
+  period: NonNullable<KindSyncResult["covered_period"]>,
+  locale?: string,
+): string {
+  const until = formatTimestamp(Date.parse(period.end), locale);
+  return period.start === null
+    ? `covering the whole history up to ${until}`
+    : `covering ${formatTimestamp(Date.parse(period.start), locale)} to ${until}`;
 }
 
 /** One kind's reconciliation in a line: what is unaccounted for, then what agrees. */
@@ -297,6 +315,16 @@ function PlatformSection({
   );
 }
 
+/**
+ * What one kind's last test or sync answered: a line, and — from a broker's
+ * sync — what the venue stated that is no transaction and so was not imported.
+ */
+interface KindOutcome {
+  ok: boolean;
+  text: string;
+  passedOver: string[];
+}
+
 function ConnectionRow({
   connection,
   accounts,
@@ -307,7 +335,7 @@ function ConnectionRow({
   venue: Venue | undefined;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [outcomes, setOutcomes] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [outcomes, setOutcomes] = useState<Record<string, KindOutcome>>({});
   const queryClient = useQueryClient();
   const kinds = kindsOf(connection, venue);
 
@@ -318,13 +346,14 @@ function ConnectionRow({
 
   function recordOutcomes<Result extends { adapter_kind: string; ok: boolean }>(
     describe: (result: Result) => string,
+    passedOverOf: (result: Result) => string[] = () => [],
   ) {
     return (results: Result[]) => {
       setOutcomes(
         Object.fromEntries(
           results.map((result) => [
             result.adapter_kind,
-            { ok: result.ok, text: describe(result) },
+            { ok: result.ok, text: describe(result), passedOver: passedOverOf(result) },
           ]),
         ),
       );
@@ -339,7 +368,10 @@ function ConnectionRow({
 
   const sync = useMutation({
     mutationFn: () => syncConnection(connection.id),
-    onSuccess: recordOutcomes((result: KindSyncResult) => describeSyncResult(result)),
+    onSuccess: recordOutcomes(
+      (result: KindSyncResult) => describeSyncResult(result),
+      (result) => result.passed_over,
+    ),
   });
 
   // Blank leaves the configured tolerance in force; a typed one is sent as
@@ -489,7 +521,7 @@ function KindLine({
   kind: string;
   connection: Connection;
   accounts: Account[];
-  outcome: { ok: boolean; text: string } | undefined;
+  outcome: KindOutcome | undefined;
   lookbackDays?: number | null;
 }) {
   const queryClient = useQueryClient();
@@ -511,7 +543,7 @@ function KindLine({
           tone === "signal" ? "bg-signal" : tone === "alarm" ? "bg-alarm" : "bg-border"
         }`}
       />
-      <span className="w-16">{kind}</span>
+      <span className="w-20">{kind}</span>
       {accounts.length > 0 ? (
         <NativeSelect
           aria-label={`Account for ${kind}`}
@@ -553,6 +585,13 @@ function KindLine({
           )
         )
       ) : null}
+      {outcome && outcome.passedOver.length > 0 && (
+        <ul className="basis-full space-y-0.5 pl-4 text-caution" aria-label="Passed over">
+          {outcome.passedOver.map((sentence, index) => (
+            <li key={index}>{sentence}</li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

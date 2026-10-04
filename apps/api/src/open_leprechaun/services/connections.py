@@ -210,15 +210,19 @@ def record_result(
     *,
     error: str | None,
     covered_lookback_days: int | None = None,
+    covered_from: datetime | None = None,
 ) -> bool:
     """One kind's test or sync outcome, kept apart from every other kind's —
     one failing must never hide another succeeding (ADR-0004). A successful
     sync passes the days its window reached over (ticket 40), claiming
     coverage from that instant; a test passes nothing, because proving a
-    credential opens the venue pulls no history."""
+    credential opens the venue pulls no history. A kind whose pull reports
+    the period it covered (ticket 48) passes where that period began
+    instead."""
     at = datetime.now(UTC)
-    covered_from = None
-    if error is None and covered_lookback_days is not None:
+    if error is not None:
+        covered_from = None
+    elif covered_from is None and covered_lookback_days is not None:
         covered_from = at - timedelta(days=covered_lookback_days)
     return repository.record_result(
         engine, connection_id, adapter_kind, error=error, at=at, covered_from=covered_from

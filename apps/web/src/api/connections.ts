@@ -72,6 +72,15 @@ export const kindSyncResultSchema = z.object({
   error: z.string().nullable(),
   /** How far back the pull reached — null where nothing was pulled. */
   covered_days: z.number().nullable(),
+  /**
+   * The period a broker's pull reports having covered — `start` null where
+   * the venue served the Depot's history from its beginning.
+   */
+  covered_period: z
+    .object({ start: z.string().nullable(), end: z.string() })
+    .nullable(),
+  /** What the venue stated that is no transaction — passed over by name, for the Admin to record. */
+  passed_over: z.array(z.string()),
   futures: z.object({ new_fills: z.number(), new_funding: z.number() }).nullable(),
   imported: z
     .object({

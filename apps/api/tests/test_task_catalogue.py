@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from open_leprechaun.adapters import get_exchange_adapters
+from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.market_data import get_security_prices
@@ -87,7 +87,7 @@ def client(db: Engine, ports: dict) -> Iterator[TestClient]:
     app.dependency_overrides[get_crypto_price_chain] = lambda: ports["chain"]
     app.dependency_overrides[get_security_prices] = lambda: ports["security"]()
     app.dependency_overrides[get_reference_rate_source] = NoRates
-    app.dependency_overrides[get_exchange_adapters] = lambda: ports["adapters"]
+    app.dependency_overrides[get_venue_adapters] = lambda: ports["adapters"]
     with TestClient(app) as client:
         yield client
 
