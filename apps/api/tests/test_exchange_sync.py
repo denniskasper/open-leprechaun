@@ -80,7 +80,9 @@ def test_the_venue_registry_names_its_adapter_kinds_and_their_lookback(client):
         {"kind": "spot", "lookback_days": 90},
         {"kind": "futures", "lookback_days": 90},
     ]
-    assert venues["coinbase"]["adapters"] == []
+    # A venue serving its whole history declares no cap.
+    assert venues["coinbase"]["adapters"] == [{"kind": "spot", "lookback_days": None}]
+    assert venues["bitpanda"]["adapters"] == []
 
 
 # --- Account pairing: which Account each kind writes into (ADR-0004) ---

@@ -11,6 +11,7 @@ more.
 
 from dataclasses import dataclass
 
+from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
 from open_leprechaun.ports.exchange import ExchangeAdapter
 from open_leprechaun.ports.okx import OkxFuturesAdapter, OkxSpotAdapter
 from open_leprechaun.ports.pionex import PionexFuturesAdapter
@@ -32,7 +33,7 @@ class Venue:
     requires_secret: bool
     # A third factor some venues attach to the key itself.
     requires_passphrase: bool
-    # Empty until the venue's adapters ship (tickets 35-37, 48-49) —
+    # Empty until the venue's adapters ship (tickets 48-49) —
     # registration works ahead of them; testing and syncing answer nothing.
     adapters: tuple[ExchangeAdapter, ...] = ()
 
@@ -66,9 +67,14 @@ VENUES: dict[str, Venue] = {
         Venue(
             venue="coinbase",
             name="Coinbase",
-            required_scope="Create the API key with the View (read-only) permission only.",
+            required_scope=(
+                "Create the API key with the View (read-only) permission only — no Trade,"
+                " no Transfer — and the ECDSA signature algorithm. The API key is the key's"
+                " name (organizations/…/apiKeys/…); the secret is its private key."
+            ),
             requires_secret=True,
             requires_passphrase=False,
+            adapters=(CoinbaseSpotAdapter(),),
         ),
         Venue(
             venue="trading_212",
