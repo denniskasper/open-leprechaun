@@ -67,3 +67,7 @@ Notes and deviations:
 - The Playwright journeys were extended in `e2e/security.spec.ts` against the same production
   stand-in ticket 60 used, but **were not run**: the browser cannot launch on the machine this was
   built on. The behaviour is covered at the API seam against Postgres.
+
+**Update (2026-10-04).** The Playwright journeys noted above as not run have since been run, once
+the browser's system libraries were installed: the whole e2e suite passes, the two-factor journeys
+included.

@@ -20,7 +20,7 @@ test("the health panel states providers, Connections, tasks and storage", async 
   await expect(tasks.getByText(/does not answer schedules/)).toBeVisible();
 
   const storage = page.getByRole("region", { name: "Storage" });
-  await expect(storage.getByText("Database")).toBeVisible();
+  await expect(storage.getByText("Database", { exact: true })).toBeVisible();
   await expect(storage.getByText("Reference rates")).toBeVisible();
 });
 
