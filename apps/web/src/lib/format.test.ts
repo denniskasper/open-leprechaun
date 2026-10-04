@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatEur,
   formatMoney,
   formatMoneyExact,
   formatNumber,
@@ -60,6 +61,17 @@ describe("formatMoneyExact", () => {
   it("keeps the recorded scale, trailing zeros included", () => {
     expect(formatMoneyExact("700.00", "EUR", "en-US")).toBe("€700.00");
     expect(formatMoneyExact("0", "EUR", "en-US")).toBe("€0");
+  });
+});
+
+describe("formatEur", () => {
+  it("states a whole amount to the cent, so a column of figures aligns", () => {
+    expect(formatEur("2000", "de-DE")).toBe("2.000,00\u00a0€");
+    expect(formatEur("131.9", "de-DE")).toBe("131,90\u00a0€");
+  });
+
+  it("keeps digits beyond the cent verbatim rather than rounding them away", () => {
+    expect(formatEur("0.125", "de-DE")).toBe("0,125\u00a0€");
   });
 });
 

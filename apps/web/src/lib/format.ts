@@ -49,6 +49,16 @@ export function formatMoneyExact(value: string, currency: string, locale?: strin
   return pattern.replace(/\0+/, formatQuantity(value, locale));
 }
 
+/**
+ * An EUR figure off the API stated to the cent, so a column of them aligns —
+ * the digits never pass through a float, and any beyond the cent are kept
+ * rather than rounded away.
+ */
+export function formatEur(value: string, locale?: string): string {
+  const [integer = "0", fraction = ""] = value.split(".");
+  return formatMoneyExact(`${integer}.${fraction.padEnd(2, "0")}`, "EUR", locale);
+}
+
 /** Quantities of an asset, not money: up to eight fraction digits, no unit. */
 export function formatNumber(value: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 8 }).format(value);

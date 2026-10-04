@@ -2,6 +2,7 @@ import {
   Activity,
   ArrowLeftRight,
   CalendarClock,
+  CalendarRange,
   Coins,
   Download,
   Gavel,
@@ -41,6 +42,10 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/instruments", label: "Instruments", icon: Shapes },
       { to: "/corporate-actions", label: "Corporate actions", icon: Split },
     ],
+  },
+  {
+    label: "Tax",
+    items: [{ to: "/tax/overview", label: "Multi-year overview", icon: CalendarRange }],
   },
   {
     label: "Settings",

@@ -12,6 +12,7 @@ import { HoldingsPage } from "@/pages/holdings";
 import { ImportsPage } from "@/pages/imports";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
+import { MultiYearOverviewPage } from "@/pages/multi-year-overview";
 import { PlatformsPage } from "@/pages/platforms";
 import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
 import { StatutoryPage } from "@/pages/statutory";
@@ -49,6 +50,7 @@ const router = createBrowserRouter([
           { path: "imports", element: <ImportsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "corporate-actions", element: <CorporateActionsPage /> },
+          { path: "tax/overview", element: <MultiYearOverviewPage /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
           { path: "settings/connections", element: <ConnectionsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },

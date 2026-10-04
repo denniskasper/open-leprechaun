@@ -21,6 +21,7 @@ from open_leprechaun.routers import (
     imports,
     instruments,
     meta,
+    multi_year_overview,
     platforms,
     prices,
     reports,
@@ -98,6 +99,7 @@ def create_app(*, scheduling: bool = False) -> FastAPI:
     app.include_router(holdings.router, prefix=API_PREFIX)
     app.include_router(imports.router, prefix=API_PREFIX)
     app.include_router(instruments.router, prefix=API_PREFIX)
+    app.include_router(multi_year_overview.router, prefix=API_PREFIX)
     app.include_router(platforms.router, prefix=API_PREFIX)
     app.include_router(prices.router, prefix=API_PREFIX)
     app.include_router(reports.router, prefix=API_PREFIX)
