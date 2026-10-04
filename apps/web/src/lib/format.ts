@@ -74,6 +74,23 @@ export function formatPercent(share: number, locale?: string): string {
   );
 }
 
+const BYTE_UNITS = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"] as const;
+
+/** A size on disk, in the largest unit that keeps the figure at one or above. */
+export function formatBytes(bytes: number, locale?: string): string {
+  let unit = 0;
+  let size = bytes;
+  while (size >= 1024 && unit < BYTE_UNITS.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit: BYTE_UNITS[unit],
+    maximumFractionDigits: 1,
+  }).format(size);
+}
+
 /**
  * A fixed-point decimal string — the shape quantities cross the API in —
  * formatted for reading without ever passing through a float: the integer

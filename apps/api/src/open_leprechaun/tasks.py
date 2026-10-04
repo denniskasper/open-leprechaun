@@ -6,28 +6,19 @@ binds the app to fakes of those gets tasks that drive the fakes, and a test
 of the scheduling itself overrides this one to hand over tasks of its own.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends
 
 from open_leprechaun.adapters import VenueAdaptersDep, get_venue_adapters
 from open_leprechaun.db import EngineDep, get_engine
-from open_leprechaun.market_data import get_security_prices
-from open_leprechaun.ports.security_prices import SecurityPriceProvider
+from open_leprechaun.market_data import UnresolvedSecurityPricesDep, get_security_prices
 from open_leprechaun.prices import CryptoPriceChainDep, get_crypto_price_chain
 from open_leprechaun.rates import ReferenceRateSourceDep, get_reference_rate_source
 from open_leprechaun.services.scheduled_tasks import Task
 from open_leprechaun.services.task_catalogue import catalogue
 from open_leprechaun.settings import SettingsDep, get_settings
-
-
-def _security_provider(request: Request) -> Callable[[], SecurityPriceProvider]:
-    """The security price provider, unresolved: naming an unknown provider in
-    configuration must fail the one task that needs it when it runs, not
-    every request that lists the tasks. Still read through the app's
-    overrides, so a test's fake provider is the one the task drives."""
-    return request.app.dependency_overrides.get(get_security_prices, get_security_prices)
 
 
 def get_scheduled_tasks(
@@ -36,7 +27,7 @@ def get_scheduled_tasks(
     crypto_chain: CryptoPriceChainDep,
     rate_source: ReferenceRateSourceDep,
     adapters: VenueAdaptersDep,
-    security_provider: Annotated[Callable[[], SecurityPriceProvider], Depends(_security_provider)],
+    security_provider: UnresolvedSecurityPricesDep,
 ) -> Sequence[Task]:
     return catalogue(
         engine=engine,

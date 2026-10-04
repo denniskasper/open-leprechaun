@@ -12,7 +12,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from open_leprechaun.ports.security_prices import SecurityPriceProvider
 from open_leprechaun.ports.security_resolution import SecurityResolutionProvider
@@ -51,5 +51,16 @@ def _configured[Provider](registry: dict[str, Callable[[], Provider]], name: str
         raise ValueError(f"No market-data provider named {name!r} — one of: {known}.") from None
 
 
+def unresolved_security_prices(request: Request) -> Callable[[], SecurityPriceProvider]:
+    """The security price provider, unresolved: naming an unknown provider in
+    configuration must fail the one thing that needs it when it asks, not
+    every request that merely lists what is configured. Still read through
+    the app's overrides, so a test's fake provider is the one handed over."""
+    return request.app.dependency_overrides.get(get_security_prices, get_security_prices)
+
+
 SecurityResolutionDep = Annotated[SecurityResolutionProvider, Depends(get_security_resolution)]
 SecurityPricesDep = Annotated[SecurityPriceProvider, Depends(get_security_prices)]
+UnresolvedSecurityPricesDep = Annotated[
+    Callable[[], SecurityPriceProvider], Depends(unresolved_security_prices)
+]

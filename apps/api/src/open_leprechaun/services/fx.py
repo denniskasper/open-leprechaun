@@ -32,6 +32,7 @@ from sqlalchemy import Engine
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import crypto_prices, reference_rates
+from open_leprechaun.services import provider_calls
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
@@ -39,6 +40,11 @@ BERLIN = ZoneInfo("Europe/Berlin")
 # through Monday, and Christmas 2025's Thursday through Sunday. Seven keeps a
 # margin without ever letting a real data gap resolve to a stale rate.
 PUBLICATION_LOOKBACK_DAYS = 7
+
+REFERENCE_RATE_PROVIDER = "ecb"
+"""Who publishes the reference rate (ADR-0017) — the name its fetches are
+recorded under for the health panel (ticket 55), whichever source object a
+process binds to fetch them."""
 
 
 class RateUnavailableError(Exception):
@@ -194,7 +200,9 @@ def _fetch_window(
     """Fill the store for [floor, on]: publications as published, and a
     checked absence for every already-past day the source answered nothing
     for — so the store, not the source, answers next time."""
-    published = source.daily_rates(currency, floor, on)
+    published = provider_calls.ask(
+        engine, REFERENCE_RATE_PROVIDER, lambda: source.daily_rates(currency, floor, on)
+    )
     reference_rates.store(engine, published)
     final_through = min(on, datetime.now(BERLIN).date() - timedelta(days=1))
     published_dates = {rate.rate_date for rate in published}

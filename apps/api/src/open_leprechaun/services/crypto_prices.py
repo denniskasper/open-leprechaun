@@ -33,7 +33,7 @@ from open_leprechaun.ports.crypto_prices import (
 )
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import crypto_prices as stored_prices
-from open_leprechaun.services import fx
+from open_leprechaun.services import fx, provider_calls
 from open_leprechaun.services.price_reports import (
     BackfillReport,
     NamedInstrument,
@@ -76,7 +76,11 @@ def refresh_prices(
         if not remaining:
             break
         try:
-            quotes = provider.quotes(list(remaining.values()))
+            quotes = provider_calls.ask(
+                engine,
+                provider.name,
+                lambda provider=provider: provider.quotes(list(remaining.values())),
+            )
         except RateLimitedError:
             conditions.append(ProviderCondition(provider.name, "rate_limited"))
             continue
@@ -111,6 +115,11 @@ def refresh_prices(
                 source=provider.name,
                 as_of=quote.as_of,
             )
+    failing = {condition.provider for condition in conditions}
+    provider_calls.state_affected(
+        engine,
+        {provider.name: remaining if provider.name in failing else () for provider in providers},
+    )
     entries = list(fresh.values()) + [
         served_from_store(instrument, stored_prices.last_known(engine, instrument.id))
         for instrument in remaining.values()
@@ -140,7 +149,12 @@ def backfill_daily_closes(
     conditions: list[ProviderCondition] = []
     for provider in providers:
         try:
-            closes = provider.daily_closes(instrument, start, end)
+            closes = provider_calls.ask(
+                engine,
+                provider.name,
+                lambda provider=provider: provider.daily_closes(instrument, start, end),
+                about_one_instrument=True,
+            )
         except RateLimitedError:
             conditions.append(ProviderCondition(provider.name, "rate_limited"))
             continue
@@ -188,18 +202,25 @@ def resolve_daily_closes(
             start, end = min(missing), max(missing)
             try:
                 closes = provider.daily_closes(instrument, start, end)
-            except RateLimitedError:
+            except RateLimitedError as limited:
                 paused.add(provider.name)
                 conditions[ProviderCondition(provider.name, "rate_limited")] = None
+                provider_calls.failed(engine, provider.name, limited)
                 continue
             # Broad on purpose — see the docstring: nothing may escape.
-            except Exception:
+            except Exception as failure:
                 conditions[ProviderCondition(provider.name, "outage")] = None
                 outages_in_a_row[provider.name] = outages_in_a_row.get(provider.name, 0) + 1
                 if outages_in_a_row[provider.name] >= OUTAGE_PATIENCE:
                     paused.add(provider.name)
+                    # Only now is it the provider's failure on record: a lone
+                    # failure may be one Instrument's, and the health panel
+                    # must not call a provider down over a contract it does
+                    # not know.
+                    provider_calls.failed(engine, provider.name, failure)
                 continue
             outages_in_a_row[provider.name] = 0
+            provider_calls.answered(engine, provider.name)
             _store_closes(engine, rate_source, instrument.id, provider.name, closes)
             missing -= {
                 row.close_date

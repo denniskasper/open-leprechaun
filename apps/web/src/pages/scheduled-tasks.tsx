@@ -24,7 +24,7 @@ const RESTING_MS = 30_000;
  * ended. Disabling a task does not quiet a failure — it stays in alarm until
  * a run succeeds.
  */
-export function taskTone(task: ScheduledTask): Tone {
+export function taskTone(task: Pick<ScheduledTask, "running" | "outcome">): Tone {
   if (task.running) {
     return "caution";
   }
@@ -34,7 +34,7 @@ export function taskTone(task: ScheduledTask): Tone {
   return task.outcome === "ok" ? "signal" : "idle";
 }
 
-export function describeStatus(task: ScheduledTask): string {
+export function describeStatus(task: Pick<ScheduledTask, "running" | "outcome">): string {
   if (task.running) {
     return "Running";
   }
@@ -59,7 +59,7 @@ export function describeDuration(seconds: number | null, locale?: string): strin
 
 /** When the schedule next fires, in words where an instant would mislead. */
 export function describeNextDue(
-  task: ScheduledTask,
+  task: Pick<ScheduledTask, "enabled" | "next_due_at">,
   now: number,
   locale?: string,
   timeZone?: string,

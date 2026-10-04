@@ -128,6 +128,10 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Snapshots reference nothing either; a day one test measured must
         # not appear in another test's series.
         connection.execute(text("DELETE FROM portfolio_snapshot"))
+        # What asking a provider last came to is keyed by its name alone; a
+        # failure one test provoked must not be another test's outage. The
+        # Instruments it named went with the Instruments above.
+        connection.execute(text("DELETE FROM provider_status"))
     return engine
 
 

@@ -675,6 +675,18 @@ it was last chosen: enabling a long-idle task waits for its next due time.
 _Avoid_: "job" or "cron job" — the unit is the task; cron is only how its schedule is written.
 _Avoid_: "sync" for a task run in general — a sync is what one particular task does.
 
+### Provider Condition
+
+What asking a data provider last came to: `rate_limited` or `outage`, never conflated — one asks
+for patience, the other for a look — and over as soon as the provider answers again. Recorded by
+whatever asked, beside the provider's last answer and last failure, so the health panel reads it
+without asking anyone. A failing provider **affects** the Instruments the latest price refresh
+left without a fresh price while it was failing — named one by one; one that another provider
+answered for affects nothing.
+
+_Avoid_: "outage" for the application, or for prices as a whole — one provider failing is that
+provider's condition and the staleness of the Instruments it names.
+
 ## Presentation and access
 
 ### Admin
