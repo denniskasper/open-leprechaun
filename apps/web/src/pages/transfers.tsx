@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Link2, Undo2, X } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import {
   decideMatch,
   fetchMatching,
@@ -70,7 +71,17 @@ export function TransfersPage() {
         <EmptyState
           icon={ArrowLeftRight}
           title="No transfers to match"
-          description="Record a transfer out where assets left and a transfer in where they arrived, and the pair will be proposed here for your decision."
+          description="Record a transfer out where assets left and a transfer in where they arrived — by hand or through an import — and the pair will be proposed here for your decision."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/transactions">Record a transfer</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/imports">Go to Imports</Link>
+              </Button>
+            </div>
+          }
         />
       ) : data ? (
         <div className="space-y-10">

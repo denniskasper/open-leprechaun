@@ -597,7 +597,7 @@ function FundRedemptionValuesPanel() {
         <p className="mt-4 text-sm text-muted-foreground">
           {funds.length > 0
             ? "No values entered yet — enter a year for each fund held across its end."
-            : "No fund in the ledger yet — values are entered per fund once one is held."}
+            : "No fund is in the ledger yet — add the fund on Instruments or import a purchase first; its redemption values are then entered here per year."}
         </p>
       ) : null}
       {funds.length > 0 && (

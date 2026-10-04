@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal, request } from "@/api/http";
 import { priceConditionSchema, unpricedRowSchema } from "@/api/imports";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -166,7 +166,7 @@ export interface NewConnection {
 }
 
 export async function fetchVenues(): Promise<Venue[]> {
-  const response = await fetch(`${CONNECTIONS_URL}/venues`);
+  const response = await request(`${CONNECTIONS_URL}/venues`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing venues.`);
   }
@@ -174,7 +174,7 @@ export async function fetchVenues(): Promise<Venue[]> {
 }
 
 export async function fetchConnections(): Promise<Connection[]> {
-  const response = await fetch(CONNECTIONS_URL);
+  const response = await request(CONNECTIONS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing connections.`);
   }
@@ -182,7 +182,7 @@ export async function fetchConnections(): Promise<Connection[]> {
 }
 
 export async function fetchCoverageWarnings(): Promise<CoverageWarning[]> {
-  const response = await fetch(`${CONNECTIONS_URL}/coverage-warnings`);
+  const response = await request(`${CONNECTIONS_URL}/coverage-warnings`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing coverage warnings.`);
   }
@@ -197,7 +197,7 @@ export async function registerConnection(connection: NewConnection): Promise<voi
 }
 
 export async function removeConnection(connectionId: number): Promise<void> {
-  const response = await fetch(`${CONNECTIONS_URL}/${connectionId}`, { method: "DELETE" });
+  const response = await request(`${CONNECTIONS_URL}/${connectionId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Connection could not be removed.");
   }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { putJson, refusal } from "@/api/http";
+import { putJson, refusal, request } from "@/api/http";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -40,7 +40,7 @@ export interface Classification {
 }
 
 export async function fetchInbox(): Promise<InboxItem[]> {
-  const response = await fetch(INBOX_URL);
+  const response = await request(INBOX_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing the inbox.`);
   }

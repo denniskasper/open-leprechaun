@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, refusal } from "@/api/http";
+import { postJson, refusal, request } from "@/api/http";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -54,7 +54,7 @@ export const matchingOverviewSchema = z.object({
 export type MatchingOverview = z.infer<typeof matchingOverviewSchema>;
 
 export async function fetchMatching(): Promise<MatchingOverview> {
-  const response = await fetch(TRANSFER_MATCHES_URL);
+  const response = await request(TRANSFER_MATCHES_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the matching state.`);
   }
@@ -69,7 +69,7 @@ export async function decideMatch(decision: {
 }): Promise<number> {
   const response = await postJson(TRANSFER_MATCHES_URL, decision);
   if (!response.ok) {
-    throw await refusal(response, "The pair could not be decided.");
+    throw await refusal(response, "The proposed transfer match could not be decided.");
   }
   const { id } = z.object({ id: z.number() }).parse(await response.json());
   return id;
@@ -77,8 +77,8 @@ export async function decideMatch(decision: {
 
 /** Undo a decision: unlink a match, or make a rejected pair proposable again. */
 export async function undoDecision(decisionId: number): Promise<void> {
-  const response = await fetch(`${TRANSFER_MATCHES_URL}/${decisionId}`, { method: "DELETE" });
+  const response = await request(`${TRANSFER_MATCHES_URL}/${decisionId}`, { method: "DELETE" });
   if (!response.ok) {
-    throw await refusal(response, "The decision could not be undone.");
+    throw await refusal(response, "The transfer-match decision could not be undone.");
   }
 }

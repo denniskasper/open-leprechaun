@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const LEDGER_EXPORT_URL = "/api/ledger-export";
@@ -30,7 +31,7 @@ export type LeftOut = z.infer<typeof leftOutSchema>;
 export type LedgerExport = z.infer<typeof ledgerExportSchema>;
 
 export async function fetchLedgerExport(): Promise<LedgerExport> {
-  const response = await fetch(LEDGER_EXPORT_URL);
+  const response = await request(LEDGER_EXPORT_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the ledger export.`);
   }

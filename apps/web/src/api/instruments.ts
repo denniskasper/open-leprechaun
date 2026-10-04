@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } from "./securities";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -44,7 +45,7 @@ export type AccountStance = z.infer<typeof accountStanceSchema>;
 export type Instrument = z.infer<typeof instrumentSchema>;
 
 export async function fetchInstruments(): Promise<Instrument[]> {
-  const response = await fetch(INSTRUMENTS_URL);
+  const response = await request(INSTRUMENTS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing instruments.`);
   }

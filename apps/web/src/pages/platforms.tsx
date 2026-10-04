@@ -331,7 +331,7 @@ function PlatformRow({ platform }: { platform: Platform }) {
       )}
       {platform.accounts.length === 0 && !adding && (
         <p className="mt-2 text-sm text-muted-foreground">
-          No {noun}s yet — the holdings under this Platform appear here once added.
+          No {noun}s yet — use Add {noun} above to record the first holding under this Platform.
         </p>
       )}
 

@@ -7,6 +7,7 @@ read from the error, because "there is no such Platform" and "that label is
 taken" are different answers to the Admin.
 """
 
+from contextlib import suppress
 from datetime import datetime
 from enum import Enum
 
@@ -250,4 +251,25 @@ def list_statuses(engine: Engine) -> list[Row]:
                     " FROM connection_adapter_status ORDER BY connection_id, adapter_kind"
                 )
             ).all()
+        )
+
+
+def record_reconciliation(
+    engine: Engine, connection_id: int, *, at: datetime, gaps: int, failed_kinds: int
+) -> None:
+    """What reconciling this Connection last came to (ticket 58), replacing
+    whatever an earlier run recorded. A Connection that went meanwhile has
+    nothing left to record against, and that is no failure."""
+    with suppress(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO connection_reconciliation"
+                " (connection_id, reconciled_at, gaps, failed_kinds)"
+                " VALUES (:connection_id, :at, :gaps, :failed_kinds)"
+                " ON CONFLICT (connection_id) DO UPDATE SET"
+                "  reconciled_at = EXCLUDED.reconciled_at,"
+                "  gaps = EXCLUDED.gaps,"
+                "  failed_kinds = EXCLUDED.failed_kinds"
+            ),
+            {"connection_id": connection_id, "at": at, "gaps": gaps, "failed_kinds": failed_kinds},
         )

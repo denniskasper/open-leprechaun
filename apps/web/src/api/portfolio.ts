@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 import { SIGNED_DECIMAL_PATTERN } from "@/api/holdings";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -59,7 +60,7 @@ export type RealisedComponent = z.infer<typeof realisedComponentSchema>;
 export type Realised = z.infer<typeof realisedSchema>;
 
 export async function fetchDevelopment(): Promise<Development> {
-  const response = await fetch(`${PORTFOLIO_URL}/development`);
+  const response = await request(`${PORTFOLIO_URL}/development`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the portfolio's development.`);
   }
@@ -67,7 +68,7 @@ export async function fetchDevelopment(): Promise<Development> {
 }
 
 export async function fetchRealised(): Promise<Realised> {
-  const response = await fetch(`${PORTFOLIO_URL}/realised`);
+  const response = await request(`${PORTFOLIO_URL}/realised`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the realised result.`);
   }

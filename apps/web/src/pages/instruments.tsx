@@ -359,7 +359,7 @@ function AddSecurityPanel({ onDone }: { onDone: () => void }) {
           </p>
 
           {search.error != null && (
-            <p className="mt-3 text-sm text-alarm">{search.error.message}</p>
+            <p role="alert" className="mt-3 text-sm text-alarm">{search.error.message}</p>
           )}
           {search.data && search.data.length === 0 && (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -422,7 +422,11 @@ function CandidateRow({ candidate }: { candidate: Candidate }) {
           {prefill}
         </span>
       )}
-      {add.error != null && <span className="text-sm text-alarm">{add.error.message}</span>}
+      {add.error != null && (
+        <span role="alert" className="text-sm text-alarm">
+          {add.error.message}
+        </span>
+      )}
       {known ? (
         <span className="microlabel text-muted-foreground">in the ledger</span>
       ) : (
@@ -571,7 +575,11 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
       {listingHalf && (
         <p className="text-sm text-caution">A Listing names its venue and currency together.</p>
       )}
-      {create.error != null && <p className="text-sm text-alarm">{create.error.message}</p>}
+      {create.error != null && (
+        <p role="alert" className="text-sm text-alarm">
+          {create.error.message}
+        </p>
+      )}
       <Button type="submit" disabled={create.isPending || listingHalf}>
         Create security
       </Button>
@@ -864,7 +872,11 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
           ))}
         </ul>
       )}
-      {move.error != null && <p className="text-sm text-alarm">{move.error.message}</p>}
+      {move.error != null && (
+        <p role="alert" className="text-sm text-alarm">
+          {move.error.message}
+        </p>
+      )}
 
       <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
         <div className="space-y-1.5">
@@ -908,8 +920,16 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
           Fetch markets from provider
         </Button>
       </form>
-      {add.error != null && <p className="text-sm text-alarm">{add.error.message}</p>}
-      {resolve.error != null && <p className="text-sm text-alarm">{resolve.error.message}</p>}
+      {add.error != null && (
+        <p role="alert" className="text-sm text-alarm">
+          {add.error.message}
+        </p>
+      )}
+      {resolve.error != null && (
+        <p role="alert" className="text-sm text-alarm">
+          {resolve.error.message}
+        </p>
+      )}
 
       {resolve.data && resolve.data.length === 0 && (
         <p className="text-sm text-muted-foreground">
@@ -1118,7 +1138,11 @@ function SettleForm({
           onPolicy={setPolicy}
         />
       )}
-      {settle.error != null && <p className="text-sm text-alarm">{settle.error.message}</p>}
+      {settle.error != null && (
+        <p role="alert" className="text-sm text-alarm">
+          {settle.error.message}
+        </p>
+      )}
       <Button type="submit" disabled={settle.isPending || (!review && classification === null)}>
         {review ? "Settle review" : "Save classification"}
       </Button>

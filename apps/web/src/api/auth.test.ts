@@ -117,7 +117,9 @@ describe("logOut", () => {
   it("rejects when the API could not revoke it", async () => {
     respondWith(500, {});
 
-    await expect(logOut()).rejects.toThrow("Signing out failed.");
+    await expect(logOut()).rejects.toThrow(
+      "Signing out failed. The API answered 500 without a reason — check that it is running, then try again.",
+    );
   });
 });
 

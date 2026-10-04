@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Check, Eye, Split, Undo2 } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
+import { Link } from "react-router";
 import {
   applyCorporateAction,
   type CorporateAction,
@@ -195,6 +196,15 @@ export function CorporateActionsPage() {
         />
       ) : actions.data && instruments.data && platforms.data ? (
         <>
+          {holdable.length === 0 && (
+            <p role="status" className="text-sm text-muted-foreground">
+              No Instrument is in the ledger yet, so there is nothing for an event to act on —{" "}
+              <Link to="/instruments" className="underline underline-offset-2">
+                add the share or fund on Instruments
+              </Link>{" "}
+              first.
+            </p>
+          )}
           <RecordForm instruments={holdable} symbolOf={symbolOf} placeOf={placeOf} />
 
           <section aria-label="Recorded events">
@@ -594,7 +604,8 @@ function LotTable({
   if (lots.length === 0) {
     return (
       <p className="mt-4 border-t border-border pt-3 text-sm text-muted-foreground">
-        No lot was open on that day — the event touches nothing as the ledger stands.
+        No lot was open on that day — the event touches nothing as the ledger stands. Check the
+        Instrument and the effective date, or record the purchase that opens the lot first.
       </p>
     );
   }

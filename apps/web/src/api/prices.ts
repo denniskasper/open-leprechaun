@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -38,7 +39,7 @@ export type ProviderCondition = z.infer<typeof providerConditionSchema>;
 export type PriceReport = z.infer<typeof priceReportSchema>;
 
 export async function fetchCryptoPrices(): Promise<PriceReport> {
-  const response = await fetch(CRYPTO_PRICES_URL);
+  const response = await request(CRYPTO_PRICES_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the crypto price report.`);
   }
@@ -52,7 +53,7 @@ export const SECURITY_PRICES_URL = "/api/prices/securities";
  * priced through its price-source Listing, served fresh, stale or unpriced.
  */
 export async function fetchSecurityPrices(): Promise<PriceReport> {
-  const response = await fetch(SECURITY_PRICES_URL);
+  const response = await request(SECURITY_PRICES_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the security price report.`);
   }

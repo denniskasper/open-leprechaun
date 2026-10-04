@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 import {
@@ -8,11 +8,13 @@ import {
   type PotCarryforward,
   type RegimeYear,
 } from "@/api/multi-year-overview";
+import { appendixUrl, fetchReports, generateReport, type ReportSummary } from "@/api/reports";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Lamp } from "@/components/patterns/lamp";
-import { formatEur } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { formatEur, formatTimestamp } from "@/lib/format";
 import { NAV_SECTIONS } from "@/navigation";
 
 type RegimeKey = "private_sales" | "other_income" | "capital_income";
@@ -175,6 +177,7 @@ export function MultiYearOverviewPage() {
           {REGIMES.map((regime, index) => (
             <RegimeSection key={regime.key} regime={regime} years={data.years} index={index} />
           ))}
+          <Reports years={data.years} />
         </>
       )}
     </div>
@@ -230,6 +233,146 @@ function ResolveLink({ path }: { path: string }) {
     <Link to={path} className="whitespace-nowrap text-foreground underline underline-offset-2">
       Open {label}
     </Link>
+  );
+}
+
+/**
+ * The newest report of each Tax Year — the listing arrives newest first, so
+ * the first one met for a year is that year's latest.
+ */
+export function latestReports(reports: ReportSummary[]): Map<number, ReportSummary> {
+  const latest = new Map<number, ReportSummary>();
+  for (const report of reports) {
+    if (!latest.has(report.year)) {
+      latest.set(report.year, report);
+    }
+  }
+  return latest;
+}
+
+/** A report's lifecycle in words; staleness outranks draft or final. */
+export function describeReport(report: Pick<ReportSummary, "status" | "stale">): string {
+  if (report.stale) {
+    return report.status === "final" ? "Final — stale" : "Draft — stale";
+  }
+  return report.status === "final" ? "Final" : "Draft";
+}
+
+/**
+ * Where a year's figures are frozen into a report: the figures above are the
+ * ledger as it stands now and move with it; a report is what was stated on
+ * the day it was generated, with its appendix to download.
+ */
+function Reports({ years }: { years: OverviewYear[] }) {
+  const queryClient = useQueryClient();
+  const reports = useQuery({ queryKey: ["reports"], queryFn: fetchReports });
+  const generate = useMutation({
+    mutationFn: generateReport,
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["reports"] }),
+        queryClient.invalidateQueries({ queryKey: ["first-run-checklist"] }),
+      ]),
+  });
+  const latest = latestReports(reports.data ?? []);
+
+  return (
+    <section
+      aria-labelledby="reports"
+      className="rise space-y-4"
+      style={{ animationDelay: `${120 + REGIMES.length * 90}ms` }}
+    >
+      <div>
+        <p className="microlabel text-muted-foreground">Frozen figures</p>
+        <h2 id="reports" className="mt-1 text-lg font-medium">
+          Reports
+        </h2>
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          The tables above move with the ledger. Generating a report freezes a Tax Year&apos;s
+          figures as a draft, with every figure&apos;s working in its appendix; generating again
+          adds a new report and leaves the earlier one as it was.
+        </p>
+      </div>
+      {reports.error && (
+        <ErrorState
+          title="The reports could not be loaded"
+          detail="The API did not answer with the reports generated so far. A new one can still be generated below."
+          onRetry={() => void reports.refetch()}
+        />
+      )}
+      {generate.error && (
+        <p role="alert" className="text-sm text-alarm">
+          {generate.error.message}
+        </p>
+      )}
+      {generate.isSuccess && (
+        <p role="status" className="text-sm text-signal">
+          The {generate.variables} report was generated as a draft.
+        </p>
+      )}
+      <ul className="divide-y divide-border border-y border-border">
+        {years.map((year) => {
+          const report = latest.get(year.year);
+          return (
+            <li
+              key={year.year}
+              aria-label={`${year.year} report`}
+              className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3 text-sm"
+            >
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <span className="font-mono tabular-nums">{year.year}</span>
+                {report ? (
+                  <span className="text-muted-foreground">
+                    <span className={report.stale ? "text-caution" : "text-foreground"}>
+                      {describeReport(report)}
+                    </span>
+                    , generated{" "}
+                    <span className="font-mono tabular-nums">
+                      {formatTimestamp(Date.parse(report.generated_at))}
+                    </span>
+                    {report.stale && " — the ledger has changed since; generate again"}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    No report yet — generate one to freeze this year&apos;s figures.
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {report && (
+                  <>
+                    <a
+                      href={appendixUrl(report.id, "pdf")}
+                      className="underline underline-offset-2"
+                    >
+                      Appendix PDF
+                    </a>
+                    <a
+                      href={appendixUrl(report.id, "csv")}
+                      className="underline underline-offset-2"
+                    >
+                      CSV
+                    </a>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={generate.isPending}
+                  onClick={() => generate.mutate(year.year)}
+                >
+                  {generate.isPending && generate.variables === year.year
+                    ? "Generating…"
+                    : report
+                      ? "Generate again"
+                      : "Generate report"}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

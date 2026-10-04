@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiRefusal, postJson, refusal } from "@/api/http";
+import { ApiRefusal, postJson, refusal, request } from "@/api/http";
 
 export const SETUP_URL = "/api/auth/setup";
 export const LOGIN_URL = "/api/auth/login";
@@ -24,7 +24,7 @@ const sessionCountSchema = z.object({ active: z.number().int().nonnegative() });
 export { ApiRefusal };
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
-  const response = await fetch(SETUP_URL);
+  const response = await request(SETUP_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of a setup status.`);
   }
@@ -34,7 +34,7 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 export async function runSetup(password: string): Promise<void> {
   const response = await postJson(SETUP_URL, { password });
   if (!response.ok) {
-    throw await refusal(response, "Setup failed.");
+    throw await refusal(response, "Setting the Admin password failed.");
   }
 }
 
@@ -52,7 +52,7 @@ export async function logIn(password: string): Promise<void> {
 
 /** Who the cookie says we are; null means nobody, which is not an error. */
 export async function fetchSession(): Promise<Session | null> {
-  const response = await fetch(SESSION_URL);
+  const response = await request(SESSION_URL);
   if (response.status === 401) {
     return null;
   }
@@ -65,7 +65,7 @@ export async function fetchSession(): Promise<Session | null> {
 
 /** Revoke the session this browser holds. The cookie is cleared by the response. */
 export async function logOut(): Promise<void> {
-  const response = await fetch(LOGOUT_URL, { method: "POST" });
+  const response = await request(LOGOUT_URL, { method: "POST" });
   if (!response.ok) {
     throw await refusal(response, "Signing out failed.");
   }
@@ -77,7 +77,7 @@ export async function logOut(): Promise<void> {
  * was revoked elsewhere, and logging in again is what it takes to do that.
  */
 export async function logOutEverywhere(): Promise<void> {
-  const response = await fetch(SESSIONS_URL, { method: "DELETE" });
+  const response = await request(SESSIONS_URL, { method: "DELETE" });
   if (!response.ok && response.status !== 401) {
     throw await refusal(response, "Signing out everywhere failed.");
   }
@@ -96,7 +96,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 /** How many sessions are open right now, this one among them. */
 export async function fetchSessionCount(): Promise<number> {
-  const response = await fetch(SESSIONS_URL);
+  const response = await request(SESSIONS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of a session count.`);
   }

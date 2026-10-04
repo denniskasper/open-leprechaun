@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal, request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const TRANSACTIONS_URL = "/api/transactions";
@@ -125,7 +125,7 @@ export interface NewTransaction {
 }
 
 export async function fetchTransactions(): Promise<Transaction[]> {
-  const response = await fetch(TRANSACTIONS_URL);
+  const response = await request(TRANSACTIONS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing transactions.`);
   }
@@ -150,7 +150,7 @@ export async function reviseTransaction(
 }
 
 export async function removeTransaction(transactionId: number): Promise<void> {
-  const response = await fetch(`${TRANSACTIONS_URL}/${transactionId}`, { method: "DELETE" });
+  const response = await request(`${TRANSACTIONS_URL}/${transactionId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Transaction could not be removed.");
   }

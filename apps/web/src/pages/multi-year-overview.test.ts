@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CarryforwardLayer, OverviewYear, PotCarryforward } from "@/api/multi-year-overview";
+import type { ReportSummary } from "@/api/reports";
 import {
   blockedYears,
   carryforwardRows,
   describeOrigin,
+  describeReport,
   gaugeShares,
+  latestReports,
   resolveLabel,
 } from "@/pages/multi-year-overview";
 
@@ -132,5 +135,39 @@ describe("gaugeShares", () => {
 
   it("draws nothing when every year is zero", () => {
     expect(gaugeShares(["0", "0.00"])).toEqual([0, 0]);
+  });
+});
+
+function report(overrides: Partial<ReportSummary> = {}): ReportSummary {
+  return {
+    id: 1,
+    year: 2025,
+    status: "draft",
+    generated_at: "2026-10-04T09:00:00Z",
+    stale: false,
+    ...overrides,
+  };
+}
+
+describe("latestReports", () => {
+  it("keeps each Tax Year's newest report from a newest-first listing", () => {
+    const latest = latestReports([
+      report({ id: 3, year: 2025 }),
+      report({ id: 2, year: 2024 }),
+      report({ id: 1, year: 2025 }),
+    ]);
+
+    expect(latest.get(2025)?.id).toBe(3);
+    expect(latest.get(2024)?.id).toBe(2);
+    expect(latest.has(2023)).toBe(false);
+  });
+});
+
+describe("describeReport", () => {
+  it("names the lifecycle, and says so when the ledger moved underneath", () => {
+    expect(describeReport(report())).toBe("Draft");
+    expect(describeReport(report({ status: "final" }))).toBe("Final");
+    expect(describeReport(report({ stale: true }))).toBe("Draft — stale");
+    expect(describeReport(report({ status: "final", stale: true }))).toBe("Final — stale");
   });
 });

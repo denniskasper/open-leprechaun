@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, refusal } from "@/api/http";
+import { postJson, refusal, request } from "@/api/http";
 import { committedImportSchema, importPreviewSchema } from "@/api/imports";
 import type { CommittedImport, ImportPreview } from "@/api/imports";
 
@@ -109,7 +109,7 @@ export async function interpretMapping(request: {
 }
 
 export async function fetchColumnMappings(): Promise<SavedMapping[]> {
-  const response = await fetch(COLUMN_MAPPINGS_URL);
+  const response = await request(COLUMN_MAPPINGS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing the saved mappings.`);
   }
@@ -128,7 +128,7 @@ export async function saveColumnMapping(request: {
 }
 
 export async function deleteColumnMapping(mappingId: number): Promise<void> {
-  const response = await fetch(`${COLUMN_MAPPINGS_URL}/${mappingId}`, { method: "DELETE" });
+  const response = await request(`${COLUMN_MAPPINGS_URL}/${mappingId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The saved mapping could not be deleted.");
   }

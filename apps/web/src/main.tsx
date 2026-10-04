@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
 import { ConnectionsPage } from "@/pages/connections";
 import { CorporateActionsPage } from "@/pages/corporate-actions";
+import { FirstRunPage } from "@/pages/first-run";
 import { HealthPage } from "@/pages/health";
 import { HoldingsPage } from "@/pages/holdings";
 import { ImportsPage } from "@/pages/imports";
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <HealthPage /> },
+          { path: "first-run", element: <FirstRunPage /> },
           { path: "holdings", element: <HoldingsPage /> },
           { path: "portfolio", element: <PortfolioPage /> },
           { path: "inbox", element: <InboxPage /> },

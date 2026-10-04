@@ -15,6 +15,7 @@ from open_leprechaun.routers import (
     connections,
     corporate_actions,
     csv_imports,
+    first_run,
     futures,
     health,
     holdings,
@@ -97,6 +98,7 @@ def create_app(*, scheduling: bool = False) -> FastAPI:
     app.include_router(connections.router, prefix=API_PREFIX)
     app.include_router(corporate_actions.router, prefix=API_PREFIX)
     app.include_router(csv_imports.router, prefix=API_PREFIX)
+    app.include_router(first_run.router, prefix=API_PREFIX)
     app.include_router(futures.router, prefix=API_PREFIX)
     app.include_router(holdings.router, prefix=API_PREFIX)
     app.include_router(imports.router, prefix=API_PREFIX)

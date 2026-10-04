@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   type DisplayCurrency,
@@ -243,14 +244,17 @@ export function describeCoverageWarning(warning: CoverageWarning, locale?: strin
  * job is surfacing silence, silence on failure would be dishonest.
  */
 function CoverageWarnings() {
-  const { data, error } = useQuery({
+  const { data, error, refetch } = useQuery({
     queryKey: ["coverage-warnings"],
     queryFn: fetchCoverageWarnings,
   });
   if (error) {
     return (
-      <p className="microlabel text-caution">
-        the coverage check could not run — a history gap may be going unreported
+      <p role="alert" className="microlabel text-caution">
+        the coverage check could not run — a history gap may be going unreported ·{" "}
+        <button type="button" className="underline" onClick={() => void refetch()}>
+          run it again
+        </button>
       </p>
     );
   }
@@ -332,7 +336,8 @@ export function DisplayRateNotice({ currency, rateFailed, ratePending }: Display
   if (rateFailed) {
     return (
       <p className="microlabel text-caution">
-        the {currency} rate could not be loaded — figures shown in EUR
+        the {currency} rate could not be loaded — figures shown in EUR; reload the page to try
+        again
       </p>
     );
   }
@@ -387,6 +392,16 @@ export function HoldingsPage() {
           icon={Coins}
           title="Nothing is held yet"
           description="Positions appear here as soon as the ledger records something sitting in an Account — record Transactions or run an import first."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/imports">Go to Imports</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/transactions">Record a Transaction</Link>
+              </Button>
+            </div>
+          }
         />
       ) : data ? (
         <div className="space-y-8">

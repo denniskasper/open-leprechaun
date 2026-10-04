@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, refusal } from "@/api/http";
+import { postJson, refusal, request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const IMPORT_BATCHES_URL = "/api/import-batches";
@@ -30,7 +30,7 @@ export const importBatchSchema = z.object({
 export type ImportBatch = z.infer<typeof importBatchSchema>;
 
 export async function fetchImportBatches(): Promise<ImportBatch[]> {
-  const response = await fetch(IMPORT_BATCHES_URL);
+  const response = await request(IMPORT_BATCHES_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing import batches.`);
   }
@@ -38,7 +38,7 @@ export async function fetchImportBatches(): Promise<ImportBatch[]> {
 }
 
 export async function reverseImportBatch(batchId: number): Promise<void> {
-  const response = await fetch(`${IMPORT_BATCHES_URL}/${batchId}`, { method: "DELETE" });
+  const response = await request(`${IMPORT_BATCHES_URL}/${batchId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Import Batch could not be reversed.");
   }
@@ -142,7 +142,7 @@ export interface ImportFile {
 }
 
 export async function fetchCsvConnectors(): Promise<CsvConnector[]> {
-  const response = await fetch(CSV_CONNECTORS_URL);
+  const response = await request(CSV_CONNECTORS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing the connectors.`);
   }
@@ -190,7 +190,7 @@ export interface ImportAddress {
 }
 
 export async function fetchAddressIndexers(): Promise<AddressIndexer[]> {
-  const response = await fetch(ADDRESS_INDEXERS_URL);
+  const response = await request(ADDRESS_INDEXERS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing the chains.`);
   }

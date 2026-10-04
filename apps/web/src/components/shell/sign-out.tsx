@@ -43,7 +43,7 @@ export function SignOutButton() {
     <>
       {signOut.isError && (
         <span role="alert" className="text-xs text-alarm">
-          Sign-out failed
+          Signing out failed — this Session is still open. Try again.
         </span>
       )}
       <Button

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const HOLDINGS_URL = "/api/holdings";
@@ -58,7 +59,7 @@ export type Holdings = z.infer<typeof holdingsSchema>;
 export type DisplayRate = z.infer<typeof displayRateSchema>;
 
 export async function fetchHoldings(): Promise<Holdings> {
-  const response = await fetch(HOLDINGS_URL);
+  const response = await request(HOLDINGS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the holdings.`);
   }
@@ -66,7 +67,7 @@ export async function fetchHoldings(): Promise<Holdings> {
 }
 
 export async function fetchDisplayRate(currency: string): Promise<DisplayRate> {
-  const response = await fetch(`${HOLDINGS_URL}/display-rate/${currency}`);
+  const response = await request(`${HOLDINGS_URL}/display-rate/${currency}`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the ${currency} rate.`);
   }

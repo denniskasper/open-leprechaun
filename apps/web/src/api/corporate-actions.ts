@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal, request } from "@/api/http";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -69,7 +69,7 @@ export interface NewCorporateAction {
 }
 
 export async function fetchCorporateActions(): Promise<CorporateAction[]> {
-  const response = await fetch(CORPORATE_ACTIONS_URL);
+  const response = await request(CORPORATE_ACTIONS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing corporate actions.`);
   }
@@ -80,7 +80,7 @@ export async function fetchCorporateActions(): Promise<CorporateAction[]> {
 export async function previewCorporateAction(action: NewCorporateAction): Promise<CorporateAction> {
   const response = await postJson(`${CORPORATE_ACTIONS_URL}/preview`, action);
   if (!response.ok) {
-    throw await refusal(response, "The event could not be previewed.");
+    throw await refusal(response, "The corporate action could not be previewed.");
   }
   return corporateActionSchema.parse(await response.json());
 }
@@ -89,7 +89,7 @@ export async function previewCorporateAction(action: NewCorporateAction): Promis
 export async function applyCorporateAction(action: NewCorporateAction): Promise<number> {
   const response = await postJson(CORPORATE_ACTIONS_URL, action);
   if (!response.ok) {
-    throw await refusal(response, "The event could not be applied.");
+    throw await refusal(response, "The corporate action could not be applied.");
   }
   const { id } = z.object({ id: z.number() }).parse(await response.json());
   return id;
@@ -99,14 +99,14 @@ export async function applyCorporateAction(action: NewCorporateAction): Promise<
 export async function markCorporateActionReviewed(actionId: number): Promise<void> {
   const response = await putJson(`${CORPORATE_ACTIONS_URL}/${actionId}/review`, {});
   if (!response.ok) {
-    throw await refusal(response, "The event could not be marked as reviewed.");
+    throw await refusal(response, "The corporate action could not be marked as reviewed.");
   }
 }
 
 /** Reverse the event: remove it, and the lots rebuild without it. */
 export async function removeCorporateAction(actionId: number): Promise<void> {
-  const response = await fetch(`${CORPORATE_ACTIONS_URL}/${actionId}`, { method: "DELETE" });
+  const response = await request(`${CORPORATE_ACTIONS_URL}/${actionId}`, { method: "DELETE" });
   if (!response.ok) {
-    throw await refusal(response, "The event could not be reversed.");
+    throw await refusal(response, "The corporate action could not be reversed.");
   }
 }

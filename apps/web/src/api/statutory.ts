@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { putJson, refusal } from "@/api/http";
+import { putJson, refusal, request } from "@/api/http";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -86,7 +86,7 @@ export interface Election {
 }
 
 export async function fetchStatutory(): Promise<Statutory> {
-  const response = await fetch(STATUTORY_URL);
+  const response = await request(STATUTORY_URL);
   if (!response.ok) {
     throw new Error(
       `The API answered ${response.status} instead of the statutory configuration.`,
@@ -102,21 +102,21 @@ export async function enterValue(
 ): Promise<void> {
   const response = await putJson(`${STATUTORY_URL}/values/${year}/${key}`, value);
   if (!response.ok) {
-    throw await refusal(response, "The value could not be stored.");
+    throw await refusal(response, "The statutory value could not be stored.");
   }
 }
 
 export async function unsetValue(year: number, key: StatutoryKey): Promise<void> {
-  const response = await fetch(`${STATUTORY_URL}/values/${year}/${key}`, { method: "DELETE" });
+  const response = await request(`${STATUTORY_URL}/values/${year}/${key}`, { method: "DELETE" });
   if (!response.ok) {
-    throw await refusal(response, "The value could not be unset.");
+    throw await refusal(response, "The statutory value could not be unset.");
   }
 }
 
 export async function chooseElection(election: Election): Promise<void> {
   const response = await putJson(`${STATUTORY_URL}/election`, election);
   if (!response.ok) {
-    throw await refusal(response, "The election could not be changed.");
+    throw await refusal(response, "The church-tax election could not be changed.");
   }
 }
 
@@ -137,7 +137,7 @@ export const treatyLimitSchema = z.object({
 export type TreatyLimit = z.infer<typeof treatyLimitSchema>;
 
 export async function fetchTreatyLimits(): Promise<TreatyLimit[]> {
-  const response = await fetch(TREATY_LIMITS_URL);
+  const response = await request(TREATY_LIMITS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the treaty limits.`);
   }
@@ -155,7 +155,7 @@ export async function enterTreatyLimit(limit: TreatyLimit): Promise<void> {
 }
 
 export async function removeTreatyLimit(country: string): Promise<void> {
-  const response = await fetch(`${TREATY_LIMITS_URL}/${country}`, { method: "DELETE" });
+  const response = await request(`${TREATY_LIMITS_URL}/${country}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The treaty limit could not be removed.");
   }
@@ -196,7 +196,7 @@ export type FundRedemptionValue = z.infer<typeof fundRedemptionValueSchema>;
 export type FundRedemptionValues = z.infer<typeof fundRedemptionValuesSchema>;
 
 export async function fetchFundRedemptionValues(): Promise<FundRedemptionValues> {
-  const response = await fetch(FUND_REDEMPTION_VALUES_URL);
+  const response = await request(FUND_REDEMPTION_VALUES_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the fund redemption values.`);
   }
@@ -214,7 +214,7 @@ export async function enterFundRedemptionValue(value: FundRedemptionValue): Prom
 export async function removeFundRedemptionValue(
   value: Pick<FundRedemptionValue, "instrument_id" | "year">,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await request(
     `${FUND_REDEMPTION_VALUES_URL}/${value.instrument_id}/${value.year}`,
     { method: "DELETE" },
   );

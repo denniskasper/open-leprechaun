@@ -984,7 +984,17 @@ function AllocationSection({ positions, display }: { positions: Position[]; disp
         <EmptyState
           icon={ChartLine}
           title="Nothing is held yet"
-          description="An allocation appears as soon as the ledger records something sitting in an Account."
+          description="An allocation appears as soon as the ledger records something sitting in an Account — record Transactions or run an import first."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/imports">Go to Imports</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/transactions">Record a Transaction</Link>
+              </Button>
+            </div>
+          }
         />
       ) : (
         <div className="grid gap-x-12 gap-y-10 lg:grid-cols-3">
@@ -1023,7 +1033,11 @@ function AllocationChart({
       </p>
       {allocation.slices.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          No held position states a value, so there is nothing to divide.
+          No held position states a value, so there is nothing to divide.{" "}
+          <Link to="/holdings" className="underline underline-offset-2">
+            Holdings
+          </Link>{" "}
+          says what each position is missing.
         </p>
       ) : (
         <ol className="mt-4 space-y-3.5">

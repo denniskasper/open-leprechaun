@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal, request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const PLATFORMS_URL = "/api/platforms";
@@ -69,7 +69,7 @@ export interface NewWithholding {
 }
 
 export async function fetchPlatforms(): Promise<Platform[]> {
-  const response = await fetch(PLATFORMS_URL);
+  const response = await request(PLATFORMS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing platforms.`);
   }

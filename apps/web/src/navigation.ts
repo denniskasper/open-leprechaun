@@ -10,6 +10,7 @@ import {
   Gavel,
   Inbox,
   KeyRound,
+  ListChecks,
   type LucideIcon,
   Scale,
   Shapes,
@@ -71,6 +72,9 @@ export const NAV_SECTIONS: NavSection[] = [
   { label: "Settings", items: SETTINGS_PANELS },
   {
     label: "System",
-    items: [{ to: "/", label: "Health", icon: Activity }],
+    items: [
+      { to: "/first-run", label: "First run", icon: ListChecks },
+      { to: "/", label: "Health", icon: Activity },
+    ],
   },
 ];

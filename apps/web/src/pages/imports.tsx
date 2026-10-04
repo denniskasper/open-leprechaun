@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FileUp, Radar, Table2, Undo2 } from "lucide-react";
 import { useId, useState, type ChangeEvent } from "react";
+import { Link } from "react-router";
 import {
   FILE_ACCEPT,
   commitCsvImport,
@@ -148,6 +149,16 @@ export function ImportsPage() {
           )
         }
       />
+
+      {importing && loaded && !platforms.data.some((platform) => platform.accounts.length > 0) && (
+        <p role="status" className="text-sm text-muted-foreground">
+          No Account exists yet, and an import lands in one —{" "}
+          <Link to="/settings/platforms" className="underline underline-offset-2">
+            add a Platform and an Account
+          </Link>{" "}
+          first.
+        </p>
+      )}
 
       {flow === "connector" && loaded && (
         <FileImportPanel

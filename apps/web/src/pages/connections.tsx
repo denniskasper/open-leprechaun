@@ -238,7 +238,11 @@ export function ConnectionsPage() {
           />
         ) : (
           <p className="text-sm text-muted-foreground">
-            A Connection links to a Platform — register the venue as a Platform first.
+            No Platform is registered yet, and a Connection links to one —{" "}
+            <Link to="/settings/platforms" className="underline underline-offset-2">
+              register the venue as a Platform
+            </Link>{" "}
+            first.
           </p>
         ))}
 
@@ -481,7 +485,12 @@ function ConnectionRow({
         </ul>
       ) : (
         <p className="mt-1 text-xs text-muted-foreground">
-          No adapter ships for this venue yet — testing and syncing arrive with it.
+          No adapter ships for this venue yet — testing and syncing arrive with it. Until then,
+          bring its history in through{" "}
+          <Link to="/imports" className="underline underline-offset-2">
+            Imports
+          </Link>
+          .
         </p>
       )}
       {(remove.error || test.error || sync.error || reconcile.error) && (
@@ -562,7 +571,13 @@ function KindLine({
           ))}
         </NativeSelect>
       ) : (
-        <span className="text-muted-foreground">Add an Account to this Platform first.</span>
+        <span className="text-muted-foreground">
+          No Account to pair —{" "}
+          <Link to="/settings/platforms" className="underline underline-offset-2">
+            add one to this Platform
+          </Link>{" "}
+          first.
+        </span>
       )}
       {pair.error && (
         <span role="alert" className="text-alarm">
@@ -660,7 +675,8 @@ function ReconciliationPanel({
 
       {results.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          No kind of this venue states what is held, so there is nothing to compare against.
+          No kind of this venue states what is held, so there is nothing to compare against —
+          check Holdings against the venue's own balance by hand.
         </p>
       ) : (
         <div className="mt-4 space-y-6">

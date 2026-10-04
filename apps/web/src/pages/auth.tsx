@@ -138,7 +138,8 @@ function useEnter({ setUpFirst = false }: { setUpFirst?: boolean } = {}) {
     onSuccess: async () => {
       // Setup state and session both changed; let every reader see it fresh.
       await queryClient.invalidateQueries();
-      navigate("/", { replace: true });
+      // A fresh instance opens on the walk to its first report (ticket 58).
+      navigate(setUpFirst ? "/first-run" : "/", { replace: true });
     },
   });
 }

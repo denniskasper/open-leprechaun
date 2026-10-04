@@ -10,8 +10,10 @@ resolutions — importing the history that explains it, or recording an
 Opening Balance, which carries its own uncertainty marker (ticket 15).
 Filling a gap from the snapshot would invent a cost basis.
 
-Because it never writes, reconciliation ignores the authoritative-source
-rule: a kind paired with an Account another source is authoritative for may
+What a run does leave behind is the record that it ran (ticket 58,
+ADR-0030): when, and how many lines and kinds it left open — never a
+quantity. Because it never writes to the ledger, reconciliation ignores the
+authoritative-source rule: a kind paired with an Account another source is authoritative for may
 still compare against it — the free cross-check ADR-0008 promises.
 
 The tracked side is the Tax Lot derivation's `held` (ADR-0019), the same
@@ -21,7 +23,7 @@ acts and reports alone, like testing and syncing (ADR-0004).
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import Engine, Row
@@ -105,11 +107,7 @@ def reconcile_connection(
     connection = repository.connection_row(engine, connection_id)
     if connection is None:
         return None
-    sources = [
-        adapter
-        for adapter in adapters.get(connection.venue, ())
-        if isinstance(adapter, StatesNormalizedPositions)
-    ]
+    sources = _stating(adapters, connection.venue)
     if not sources:
         return ()
     credentials = connections.credentials_of(engine, settings, connection_id)
@@ -118,8 +116,37 @@ def reconcile_connection(
         return None
     if tolerance is None:
         tolerance = settings.reconciliation_tolerance
-    return tuple(
+    results = tuple(
         _reconcile_kind(engine, connection, adapter, credentials, tolerance) for adapter in sources
+    )
+    _record(engine, connection_id, results)
+    return results
+
+
+def _stating(adapters: Adapters, venue: str) -> list[StatesNormalizedPositions]:
+    return [
+        adapter
+        for adapter in adapters.get(venue, ())
+        if isinstance(adapter, StatesNormalizedPositions)
+    ]
+
+
+def states_positions(adapters: Adapters, venue: str) -> bool:
+    """Whether any kind of the venue states what is held — whether a
+    Connection to it can be reconciled at all."""
+    return bool(_stating(adapters, venue))
+
+
+def _record(engine: Engine, connection_id: int, results: Sequence[KindReconciliation]) -> None:
+    """That this Connection was reconciled and what the run left open
+    (ticket 58) — the fact the first-run checklist reads. Nothing reaches the
+    ledger: a count of open lines closes no gap."""
+    repository.record_reconciliation(
+        engine,
+        connection_id,
+        at=datetime.now(UTC),
+        gaps=sum(line.status != MATCHED for result in results for line in result.lines),
+        failed_kinds=sum(result.error is not None for result in results),
     )
 
 

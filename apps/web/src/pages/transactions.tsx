@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Scale, Trash2, X } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { fetchInstruments, type Instrument } from "@/api/instruments";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import {
@@ -404,6 +404,16 @@ export function TransactionsPage() {
           </Button>
         }
       />
+
+      {recording && loaded && !platforms.data.some((platform) => platform.accounts.length > 0) && (
+        <p role="status" className="text-sm text-muted-foreground">
+          No Account exists yet, and every leg of a Transaction sits in one —{" "}
+          <Link to="/settings/platforms" className="underline underline-offset-2">
+            add a Platform and an Account
+          </Link>{" "}
+          first.
+        </p>
+      )}
 
       {recording && loaded && (
         <TransactionForm

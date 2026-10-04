@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { request } from "@/api/http";
 import { SIGNED_DECIMAL_PATTERN } from "@/api/holdings";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -78,7 +79,7 @@ export type OverviewYear = z.infer<typeof overviewYearSchema>;
 export type MultiYearOverview = z.infer<typeof multiYearOverviewSchema>;
 
 export async function fetchMultiYearOverview(): Promise<MultiYearOverview> {
-  const response = await fetch(MULTI_YEAR_OVERVIEW_URL);
+  const response = await request(MULTI_YEAR_OVERVIEW_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the multi-year overview.`);
   }

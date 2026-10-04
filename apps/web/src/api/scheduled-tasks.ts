@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "@/api/http";
+import { postJson, putJson, refusal, request } from "@/api/http";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const SCHEDULED_TASKS_URL = "/api/scheduled-tasks";
@@ -34,7 +34,7 @@ export interface Schedule {
 }
 
 export async function fetchScheduledTasks(): Promise<ScheduledTask[]> {
-  const response = await fetch(SCHEDULED_TASKS_URL);
+  const response = await request(SCHEDULED_TASKS_URL);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of listing scheduled tasks.`);
   }
@@ -53,7 +53,7 @@ export async function setSchedule(key: string, schedule: Schedule): Promise<Sche
 export async function runScheduledTask(key: string): Promise<ScheduledTask> {
   const response = await postJson(`${SCHEDULED_TASKS_URL}/${encodeURIComponent(key)}/run`, {});
   if (!response.ok) {
-    throw await refusal(response, "The task could not be run.");
+    throw await refusal(response, "The scheduled task could not be run.");
   }
   return scheduledTaskSchema.parse(await response.json());
 }

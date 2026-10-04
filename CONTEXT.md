@@ -377,8 +377,10 @@ recording an **Opening Balance**, which declares its own uncertainty. An Opening
 adds a position, so it is offered where the venue holds more than is accounted for, never to
 explain quantity away.
 
-Reconciliation writes nothing, so it is not bound by the authoritative-source rule: a source that
-may not write into an Account may still reconcile against it.
+Reconciliation writes nothing to the ledger, so it is not bound by the authoritative-source rule: a
+source that may not write into an Account may still reconcile against it. What it does leave behind
+is the record that it ran — when, and how many lines and adapter kinds it left open — per
+Connection, replaced by the next run.
 
 _Avoid_: "sync" for reconciling — a sync lands records, a reconciliation only compares.
 _Avoid_: adjusting, correcting or balancing entry — there is no transaction type that absorbs a gap.
@@ -686,6 +688,21 @@ answered for affects nothing.
 
 _Avoid_: "outage" for the application, or for prices as a whole — one provider failing is that
 provider's condition and the staleness of the Instruments it names.
+
+### First-Run Checklist
+
+The walk from an empty database to a first tax report: set a password, enable two-factor, add
+**Platforms** and **Accounts**, connect or import, reconcile, resolve blockers, generate a report.
+Each step is **derived** on every read from what the database holds — an **Admin**, an Account, a
+**Connection** or history, a recorded **Reconciliation** that left nothing open, a **Tax Year** with
+activity and no blockers, a report — so a step reads done because the thing exists and open again
+once it no longer does. A step is **optional** where the walk can finish without it: two-factor is
+opt-in, and a ledger no Connection states a venue balance for has nothing to reconcile against.
+
+_Avoid_: "dismiss", "skip" or "mark as done" — nothing about the checklist is stored, so there is
+nothing to tick.
+_Avoid_: "onboarding wizard" — it does not lead through screens; it states what exists and links
+to where the rest is done.
 
 ## Presentation and access
 

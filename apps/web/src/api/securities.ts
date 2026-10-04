@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { postJson, putJson, refusal } from "./http";
+import { postJson, putJson, refusal, request } from "./http";
 
 /**
  * The Teilfreistellung categories of §20 InvStG — the classification a fund's
@@ -75,9 +75,9 @@ export interface Review {
 }
 
 export async function searchSecurities(query: string): Promise<Candidate[]> {
-  const response = await fetch(`/api/securities/search?query=${encodeURIComponent(query)}`);
+  const response = await request(`/api/securities/search?query=${encodeURIComponent(query)}`);
   if (!response.ok) {
-    throw await refusal(response, `The API answered ${response.status} instead of searching.`);
+    throw await refusal(response, "The security search could not be run.");
   }
   return z.array(candidateSchema).parse(await response.json());
 }
@@ -85,7 +85,7 @@ export async function searchSecurities(query: string): Promise<Candidate[]> {
 export async function createSecurity(security: NewSecurity): Promise<number> {
   const response = await postJson("/api/securities", security);
   if (!response.ok) {
-    throw await refusal(response, `The API answered ${response.status} instead of creating.`);
+    throw await refusal(response, "The security could not be created.");
   }
   return z.object({ id: z.number() }).parse(await response.json()).id;
 }
@@ -96,14 +96,14 @@ export async function classifyFund(
 ): Promise<void> {
   const response = await putJson(`/api/securities/${instrumentId}/classification`, classification);
   if (!response.ok) {
-    throw await refusal(response, `The API answered ${response.status} instead of classifying.`);
+    throw await refusal(response, "The fund classification could not be stored.");
   }
 }
 
 export async function reviewSecurity(instrumentId: number, review: Review): Promise<void> {
   const response = await putJson(`/api/securities/${instrumentId}/review`, review);
   if (!response.ok) {
-    throw await refusal(response, `The API answered ${response.status} instead of settling.`);
+    throw await refusal(response, "The security review could not be stored.");
   }
 }
 
@@ -123,11 +123,11 @@ export interface NewListing {
 }
 
 export async function resolveListings(identifier: string): Promise<ResolvedListing[]> {
-  const response = await fetch(
+  const response = await request(
     `/api/securities/listings/resolve?identifier=${encodeURIComponent(identifier)}`,
   );
   if (!response.ok) {
-    throw await refusal(response, `The API answered ${response.status} instead of resolving.`);
+    throw await refusal(response, "The markets for this identifier could not be fetched.");
   }
   return z.array(resolvedListingSchema).parse(await response.json());
 }
@@ -135,23 +135,17 @@ export async function resolveListings(identifier: string): Promise<ResolvedListi
 export async function createListing(instrumentId: number, listing: NewListing): Promise<number> {
   const response = await postJson(`/api/securities/${instrumentId}/listings`, listing);
   if (!response.ok) {
-    throw await refusal(
-      response,
-      `The API answered ${response.status} instead of creating the Listing.`,
-    );
+    throw await refusal(response, "The Listing could not be created.");
   }
   return z.object({ id: z.number() }).parse(await response.json()).id;
 }
 
 export async function choosePriceSource(instrumentId: number, listingId: number): Promise<void> {
-  const response = await fetch(
+  const response = await request(
     `/api/securities/${instrumentId}/listings/${listingId}/price-source`,
     { method: "PUT" },
   );
   if (!response.ok) {
-    throw await refusal(
-      response,
-      `The API answered ${response.status} instead of moving the price source.`,
-    );
+    throw await refusal(response, "The price source could not be moved.");
   }
 }
