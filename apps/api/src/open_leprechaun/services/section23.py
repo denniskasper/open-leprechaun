@@ -25,10 +25,12 @@ holding period and the long-term flag. Three rules sit on top:
   instant — the same clock as every reference-rate lookup — while the
   instant itself stays absolute.
 
-Values are stated where the ledger and the reference-rate universe can state
-them (ADR-0017): the numéraire by quantity, foreign cash and pegged
-stablecoins by the reference rate of the event date. A value needing a crypto
-price waits for ticket 18 — such a disposal is carried explicitly as awaiting
+Values are stated where something can vouch for them: the numéraire by
+quantity, foreign cash and pegged stablecoins by the reference rate of the
+event date (ADR-0017), and any other crypto Instrument by the stored close of
+the event's day (ADR-0024). A value no stored close answers — and a purchase
+basis paid in anything but the numéraire, which the lot derivation does not
+yet state — is carried explicitly as awaiting
 valuation, never guessed at, and while a counted gain awaits valuation the
 year states no total and no Freigrenze verdict. A consumption of a lot
 acquired without consideration (a kept windfall) falls outside §23 entirely —

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
 
+from open_leprechaun import prices
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.settings import Environment, Settings, get_settings
@@ -17,6 +18,33 @@ from open_leprechaun.settings import Environment, Settings, get_settings
 UNREACHABLE_DATABASE_URL = "postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing"
 
 API_DIR = Path(__file__).resolve().parents[1]
+
+
+class _UncoveringProvider:
+    """A price provider that covers nothing and reaches nothing."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def quotes(self, instruments):
+        return []
+
+    def daily_closes(self, instrument, start, end):
+        return []
+
+
+@pytest.fixture(autouse=True)
+def no_real_price_providers(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Committing an import resolves historical prices through the
+    application's chain (ticket 41), so an app a test did not bind to fakes
+    would reach the real providers by merely importing a row. The default
+    chain is therefore built from providers that cover nothing; a test of
+    pricing binds fakes of its own through the dependency."""
+    monkeypatch.setattr(prices, "CoinGeckoProvider", lambda: _UncoveringProvider("coingecko"))
+    monkeypatch.setattr(prices, "DefiLlamaProvider", lambda: _UncoveringProvider("defillama"))
+    prices.get_crypto_price_chain.cache_clear()
+    yield
+    prices.get_crypto_price_chain.cache_clear()
 
 
 @pytest.fixture(scope="session")

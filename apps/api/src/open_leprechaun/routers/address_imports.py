@@ -10,6 +10,7 @@ from pydantic import BaseModel, StringConstraints
 from open_leprechaun.adapters import AddressIndexersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.prices import PriceSourcesDep
 from open_leprechaun.repositories.imports import Refusal
 from open_leprechaun.routers.imports import CommittedResponse, PreviewResponse
 from open_leprechaun.services import address_imports
@@ -91,11 +92,16 @@ def preview_address(
     response_model=CommittedResponse,
 )
 def commit_address(
-    request: AddressRequest, admin: AdminDep, engine: EngineDep, indexers: AddressIndexersDep
+    request: AddressRequest,
+    admin: AdminDep,
+    engine: EngineDep,
+    indexers: AddressIndexersDep,
+    prices: PriceSourcesDep,
 ) -> CommittedResponse:
     committed = address_imports.commit(
         engine,
         indexers,
+        prices=prices,
         chain=request.chain,
         address=request.address,
         account_id=request.account_id,
@@ -104,13 +110,7 @@ def commit_address(
     if isinstance(committed, CommitRefused):
         status = 404 if committed.kind is Refusal.no_such_account else 409
         raise HTTPException(status_code=status, detail=committed.sentence)
-    return CommittedResponse(
-        batch_id=committed.batch_id,
-        created=committed.created,
-        duplicates=committed.duplicates,
-        skipped=committed.skipped,
-        instruments_created=committed.instruments_created,
-    )
+    return CommittedResponse.of(committed)
 
 
 def _refuse_unread(outcome: object) -> None:

@@ -27,10 +27,15 @@ from open_leprechaun.repositories import instruments, platforms, transactions
 from open_leprechaun.repositories.transactions import Leg
 from open_leprechaun.security_search import get_security_search
 from open_leprechaun.services import securities
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import ImportLeg, ImportRow, InstrumentSpec, commit
 from open_leprechaun.services.preflight import blockers
 
 NOON = datetime(2025, 3, 14, 12, 0, tzinfo=UTC)
+
+# Nothing here is about prices: no provider is asked, so every row a chain
+# would have priced simply stays unpriced (ticket 41).
+NO_PRICES = PriceSources(providers=(), rate_source=None)
 
 WORLD_ETF = {
     "symbol": "EUNL",
@@ -292,6 +297,7 @@ def test_an_imported_unknown_identifier_creates_the_instrument_flagged(db):
 
     committed = commit(
         db,
+        prices=NO_PRICES,
         source="broker-csv",
         label="a.csv",
         account_id=_account(db),
@@ -317,6 +323,7 @@ def test_an_imported_known_identifier_resolves_without_a_flag(db):
 
     committed = commit(
         db,
+        prices=NO_PRICES,
         source="broker-csv",
         label="a.csv",
         account_id=_account(db),

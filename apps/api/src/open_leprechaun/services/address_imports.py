@@ -30,6 +30,7 @@ from open_leprechaun.ports.address_indexer import (
     NormalizedNetworkFee,
 )
 from open_leprechaun.services import imports
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import (
     CommitRefused,
     Committed,
@@ -88,7 +89,13 @@ def preview(
 
 
 def commit(
-    engine: Engine, indexers: Indexers, *, chain: str, address: str, account_id: int
+    engine: Engine,
+    indexers: Indexers,
+    *,
+    prices: PriceSources,
+    chain: str,
+    address: str,
+    account_id: int,
 ) -> Committed | CommitRefused | AddressRefused | IndexerFailed | None:
     """The separate act the preview leads to — the same read and the same
     rows, the framework's own commit, one reversible batch labelled with the
@@ -101,6 +108,7 @@ def commit(
         return history
     return imports.commit(
         engine,
+        prices=prices,
         source=source_of(chain, address),
         label=f"{indexer.name} address {address}",
         account_id=account_id,

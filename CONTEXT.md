@@ -357,6 +357,24 @@ through its symbol.
 _Avoid_: reading "stale" as an age judgement. It is an outcome — the chain could not answer
 just now — not a threshold.
 
+### Historical Price
+
+The price that applied when an event happened: the stored **daily close** of the Instrument for
+the UTC day of the event's instant, kept with the provider that answered. It — never the last
+known price — values an event, so income and cost basis are real rather than backfilled from
+today. An import resolves it on commit for every row that states no price of its own: a row
+states its price when one whole side of an exchange is cash or a **Stablecoin** and the other
+side is a single position; anything else only the **Price Chain** can answer — income, a spend,
+a crypto-for-crypto trade, a bare movement, a fee paid in a coin — wants the close of its day.
+
+A row the chain could not price is listed in the import result as **unpriced** and awaits a
+valuation; the scheduled price update asks again for every event still awaiting a close, and a
+backfill of the Instrument's closes settles it by hand. A provider's answer of zero is no
+answer, and a day not yet over has no close.
+
+_Avoid_: valuing a past event at the last known price.
+_Avoid_: reading an unpriced inflow as worthless — it is unknown, never immaterial.
+
 ## Derivatives
 
 ### Fill

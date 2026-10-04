@@ -9,6 +9,7 @@ import {
   previewCsvImport,
   reverseImportBatch,
   type CommittedImport,
+  type PriceCondition,
   type CsvConnector,
   type ImportBatch,
   type ImportPreview,
@@ -57,7 +58,53 @@ export function committedWords(committed: CommittedImport, locale?: string): str
   if (committed.instruments_created > 0) {
     parts.push(count(committed.instruments_created, "Instrument", locale) + " created");
   }
+  if (committed.unpriced.length > 0) parts.push(awaitingPriceWords(committed.unpriced, locale));
   return parts.join(" · ");
+}
+
+/** How many rows landed without a price for their own day. */
+export function awaitingPriceWords(unpriced: readonly unknown[], locale?: string): string {
+  return `${formatNumber(unpriced.length, locale)} awaiting a price`;
+}
+
+/** What one provider's failure was, in words — a rate limit is to be waited out. */
+export function priceConditionWords(condition: PriceCondition): string {
+  return condition.condition === "rate_limited"
+    ? `${condition.provider} is rate-limiting — the next price update asks again`
+    : `${condition.provider} did not answer`;
+}
+
+/**
+ * The rows that landed without a price for their own day: named with the
+ * Instrument nothing priced, so the gap is visible instead of a zero. Nothing
+ * is rendered when every row was priced.
+ */
+export function UnpricedReport({ committed }: { committed: CommittedImport }) {
+  if (committed.unpriced.length === 0) return null;
+  const shown = committed.unpriced.slice(0, 8);
+  return (
+    <div className="space-y-1" aria-label="Rows awaiting a price">
+      <p className="microlabel text-caution">
+        Awaiting a price — unknown, never valued at zero
+      </p>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        {shown.map((row) => (
+          <li key={row.external_id}>
+            <span className="font-mono tabular-nums">{row.external_id}</span> —{" "}
+            {row.instruments.map((instrument) => instrument.symbol).join(", ")}
+          </li>
+        ))}
+        {committed.unpriced.length > shown.length && (
+          <li>…and {formatNumber(committed.unpriced.length - shown.length)} more</li>
+        )}
+      </ul>
+      {committed.price_conditions.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {committed.price_conditions.map(priceConditionWords).join(" · ")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function ImportsPage() {
@@ -293,6 +340,8 @@ function FileImportPanel({
           <p className="font-mono text-xs text-signal">{committedWords(commit.data)}</p>
         )}
       </div>
+
+      {commit.isSuccess && <UnpricedReport committed={commit.data} />}
 
       {preview.error && (
         <p role="alert" className="text-sm text-alarm">

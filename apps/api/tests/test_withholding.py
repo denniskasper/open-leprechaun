@@ -19,6 +19,7 @@ from open_leprechaun.repositories.transactions import Leg
 from open_leprechaun.seed import seed
 from open_leprechaun.services import holdings
 from open_leprechaun.services import imports as imports_service
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import (
     CommitRefused,
     ImportLeg,
@@ -28,6 +29,10 @@ from open_leprechaun.services.imports import (
 )
 
 NOON = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
+
+# Nothing here is about prices: no provider is asked, so every row a chain
+# would have priced simply stays unpriced (ticket 41).
+NO_PRICES = PriceSources(providers=(), rate_source=None)
 
 
 def _broker(db, name="Scalable Capital"):
@@ -341,7 +346,9 @@ def test_an_import_into_an_unset_depot_is_refused_in_preview_and_commit(db):
     ]
 
     preview = evaluate(db, source="broker-csv", account_id=depot, rows=rows)
-    committed = commit(db, source="broker-csv", label="statement", account_id=depot, rows=rows)
+    committed = commit(
+        db, prices=NO_PRICES, source="broker-csv", label="statement", account_id=depot, rows=rows
+    )
 
     assert preview.refusal is not None
     assert preview.refusal.kind is imports_service.Refusal.withholding_unset

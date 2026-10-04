@@ -10,6 +10,7 @@ from pydantic import BaseModel, StringConstraints
 from open_leprechaun.adapters import CsvConnectorsDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.prices import PriceSourcesDep
 from open_leprechaun.repositories.imports import Refusal
 from open_leprechaun.routers.imports import CommittedResponse, Label, PreviewResponse
 from open_leprechaun.services import csv_imports
@@ -92,11 +93,16 @@ class CommitFileRequest(PreviewFileRequest):
     response_model=CommittedResponse,
 )
 def commit_file(
-    request: CommitFileRequest, admin: AdminDep, engine: EngineDep, connectors: CsvConnectorsDep
+    request: CommitFileRequest,
+    admin: AdminDep,
+    engine: EngineDep,
+    connectors: CsvConnectorsDep,
+    prices: PriceSourcesDep,
 ) -> CommittedResponse:
     committed = csv_imports.commit(
         engine,
         connectors,
+        prices=prices,
         connector=request.connector,
         account_id=request.account_id,
         content=request.content,
@@ -109,10 +115,4 @@ def commit_file(
     if isinstance(committed, CommitRefused):
         status = 404 if committed.kind is Refusal.no_such_account else 409
         raise HTTPException(status_code=status, detail=committed.sentence)
-    return CommittedResponse(
-        batch_id=committed.batch_id,
-        created=committed.created,
-        duplicates=committed.duplicates,
-        skipped=committed.skipped,
-        instruments_created=committed.instruments_created,
-    )
+    return CommittedResponse.of(committed)

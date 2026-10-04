@@ -200,9 +200,39 @@ describe("describeSyncResult", () => {
   it("counts what the import framework created and what it already knew", () => {
     expect(
       describeSyncResult(
-        syncResult({ imported: { batch_id: 5, created: 3, duplicates: 2, skipped: 1 } }),
+        syncResult({
+          imported: {
+            batch_id: 5,
+            created: 3,
+            duplicates: 2,
+            skipped: 1,
+            unpriced: [],
+            price_conditions: [],
+          },
+        }),
       ),
     ).toBe("3 rows imported · 2 already known · 1 skipped");
+  });
+
+  it("names the imported rows nothing could price", () => {
+    const unpriced = [{ external_id: "r-2", instruments: [{ instrument_id: 7, symbol: "ETH" }] }];
+    const price_conditions = [{ provider: "coingecko", condition: "rate_limited" as const }];
+    expect(
+      describeSyncResult(
+        syncResult({
+          imported: {
+            batch_id: 5,
+            created: 3,
+            duplicates: 0,
+            skipped: 0,
+            unpriced,
+            price_conditions,
+          },
+        }),
+      ),
+    ).toBe(
+      "3 rows imported · 1 awaiting a price · coingecko is rate-limiting — the next price update asks again",
+    );
   });
 
   it("says so when a kind had nothing to pull", () => {

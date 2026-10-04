@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { postJson, putJson, refusal } from "@/api/http";
+import { priceConditionSchema, unpricedRowSchema } from "@/api/imports";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const CONNECTIONS_URL = "/api/connections";
@@ -78,6 +79,8 @@ export const kindSyncResultSchema = z.object({
       created: z.number(),
       duplicates: z.number(),
       skipped: z.number(),
+      unpriced: z.array(unpricedRowSchema),
+      price_conditions: z.array(priceConditionSchema),
     })
     .nullable(),
 });

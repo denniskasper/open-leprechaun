@@ -8,11 +8,11 @@ deliberately shared, never duplicated.
 
 Each class digests exactly the columns a derivation reads, so a note edit
 never churns a materialisation while every tax-relevant change does. A class
-declared with no source — rates — digests as empty,
-whether its table is unbuilt or deliberately excluded (each entry says
-which); the ticket that points an entry at rows makes that first real digest
-mark every dependent materialisation stale. An empty table digests like an
-absent one, so the pointing itself drifts nothing.
+declared with no source digests as empty, whether its table is unbuilt or
+deliberately excluded (each entry says which); the ticket that points an
+entry at rows makes that first real digest mark every dependent
+materialisation stale. An empty table digests like an absent one, so the
+pointing itself drifts nothing.
 
 These functions take the caller's Connection, not the Engine: a rebuild must
 stamp the fingerprint inside the same transaction — and snapshot — that read
@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from sqlalchemy import Connection, text
+
+from open_leprechaun.repositories.crypto_prices import EVENT_DAY_SQL
 
 NOTHING = sha256(b"").hexdigest()
 """What zero rows digest to — also the standing digest of a declared class
@@ -186,11 +188,20 @@ INPUT_CLASSES: Mapping[str, str | None] = {
         + " AS line FROM account JOIN platform ON platform.id = account.platform_id"
         " WHERE COALESCE(account.withholding_override, platform.withholding) IS NOT NULL"
     ),
-    # Deliberately empty although the reference-rate store (17) exists: that
-    # store is append-only and immutable (ADR-0017) — a fetch only ever adds
-    # coverage, so no figure already stated can change under it. Prices (18)
-    # point this entry at rows when they arrive, being corrections-capable.
-    "rates": None,
+    # The crypto closes an event rests on (ticket 41): the close of an
+    # Instrument for a day one of its legs happened is what values that leg,
+    # so its arrival turns an awaited figure into a stated one. Closes of
+    # days nothing happened on feed charts alone and drift nothing. The
+    # reference-rate store (17) stays out deliberately: it is fetched by the
+    # very valuation that reads it, append-only and immutable (ADR-0017), so
+    # no figure already stated can change under it.
+    "rates": (
+        f"SELECT DISTINCT {_line('c.instrument_id', 'c.close_date', 'c.price_eur')} AS line"
+        " FROM crypto_daily_close c"
+        " JOIN transaction_leg l ON l.instrument_id = c.instrument_id"
+        " JOIN transaction t ON t.id = l.transaction_id"
+        f" AND {EVENT_DAY_SQL} = c.close_date"
+    ),
     # Corporate Actions (ticket 52): each event rewrites the lots open at its
     # instant, so recording one, and removing one — its whole reversal —
     # moves every figure resting on those lots. The note and the Admin's

@@ -259,6 +259,8 @@ def test_reimporting_the_same_file_changes_nothing(client, connectors, db):
         "duplicates": 1,
         "skipped": 0,
         "instruments_created": 0,
+        "unpriced": [],
+        "price_conditions": [],
     }
     assert len(client.get("/api/import-batches").json()) == 1
 

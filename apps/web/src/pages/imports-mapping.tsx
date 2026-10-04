@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatNumber, formatQuantity, formatTimestamp } from "@/lib/format";
-import { committedWords, FileInput, PreviewReport } from "@/pages/imports";
+import { committedWords, UnpricedReport, FileInput, PreviewReport } from "@/pages/imports";
 import { TYPE_VOCABULARY } from "@/pages/transactions";
 
 /**
@@ -477,6 +477,8 @@ export function MappingPanel({
           <p className="font-mono text-xs text-signal">{committedWords(commit.data)}</p>
         )}
       </div>
+
+      {commit.isSuccess && <UnpricedReport committed={commit.data} />}
 
       {preview.error && (
         <p role="alert" className="text-sm text-alarm">

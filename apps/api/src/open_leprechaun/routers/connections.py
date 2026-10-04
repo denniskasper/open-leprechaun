@@ -13,6 +13,8 @@ from open_leprechaun.adapters import ExchangeAdaptersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.ports.venues import VENUES
+from open_leprechaun.prices import PriceSourcesDep
+from open_leprechaun.routers.imports import PriceConditionResponse, UnpricedRowResponse
 from open_leprechaun.services import connections, coverage, exchange_sync, reconciliation
 from open_leprechaun.services.connections import (
     ConnectionOverview,
@@ -279,6 +281,9 @@ class ImportOutcomeResponse(BaseModel):
     created: int
     duplicates: int
     skipped: int
+    # Created rows no provider could price at their own timestamp (ticket 41).
+    unpriced: list[UnpricedRowResponse]
+    price_conditions: list[PriceConditionResponse]
 
 
 class KindSyncResponse(BaseModel):
@@ -313,6 +318,10 @@ class KindSyncResponse(BaseModel):
                 created=result.imported.created,
                 duplicates=result.imported.duplicates,
                 skipped=result.imported.skipped,
+                unpriced=[UnpricedRowResponse.of(row) for row in result.imported.unpriced],
+                price_conditions=[
+                    PriceConditionResponse.of(entry) for entry in result.imported.price_conditions
+                ],
             ),
         )
 
@@ -328,9 +337,12 @@ def sync_connection(
     engine: EngineDep,
     settings: SettingsDep,
     adapters: ExchangeAdaptersDep,
+    prices: PriceSourcesDep,
 ) -> list[KindSyncResponse]:
     try:
-        results = exchange_sync.sync_connection(engine, settings, adapters, connection_id)
+        results = exchange_sync.sync_connection(
+            engine, settings, adapters, connection_id, prices=prices
+        )
     except CredentialsUnreadableError as sealed:
         raise HTTPException(status_code=409, detail=str(sealed)) from sealed
     if results is None:

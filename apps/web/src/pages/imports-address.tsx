@@ -10,7 +10,7 @@ import type { Platform } from "@/api/platforms";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { committedWords, PreviewReport } from "@/pages/imports";
+import { committedWords, UnpricedReport, PreviewReport } from "@/pages/imports";
 
 /**
  * What reading a chain asks of the Admin, in one line: nothing but the
@@ -198,6 +198,8 @@ export function AddressPanel({
           <p className="font-mono text-xs text-signal">{addressCommittedWords(commit.data)}</p>
         )}
       </div>
+
+      {commit.isSuccess && <UnpricedReport committed={commit.data} />}
 
       {preview.error && (
         <p role="alert" className="text-sm text-alarm">

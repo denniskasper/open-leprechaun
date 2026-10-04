@@ -5,11 +5,14 @@ from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
+from open_leprechaun.prices import PriceSourcesDep
 from open_leprechaun.repositories import imports
 from open_leprechaun.repositories.imports import Refusal
 from open_leprechaun.routers.transactions import LegRole, Note, Quantity, TransactionType
+from open_leprechaun.services.import_prices import UnpricedRow
 from open_leprechaun.services.imports import (
     CommitRefused,
+    Committed,
     ImportLeg,
     ImportRow,
     InstrumentSpec,
@@ -17,6 +20,7 @@ from open_leprechaun.services.imports import (
     commit,
     evaluate,
 )
+from open_leprechaun.services.price_reports import ProviderCondition
 
 router = APIRouter(tags=["imports"])
 
@@ -145,6 +149,38 @@ class PreviewResponse(BaseModel):
         )
 
 
+class UnpricedInstrumentResponse(BaseModel):
+    instrument_id: int
+    symbol: str
+
+
+class UnpricedRowResponse(BaseModel):
+    external_id: str
+    # The Instruments of the row nothing could price at its own timestamp.
+    instruments: list[UnpricedInstrumentResponse]
+
+    @classmethod
+    def of(cls, row: UnpricedRow) -> UnpricedRowResponse:
+        return cls(
+            external_id=row.external_id,
+            instruments=[
+                UnpricedInstrumentResponse(
+                    instrument_id=instrument.instrument_id, symbol=instrument.symbol
+                )
+                for instrument in row.instruments
+            ],
+        )
+
+
+class PriceConditionResponse(BaseModel):
+    provider: str
+    condition: Literal["rate_limited", "outage"]
+
+    @classmethod
+    def of(cls, entry: ProviderCondition) -> PriceConditionResponse:
+        return cls(provider=entry.provider, condition=entry.condition)
+
+
 class CommittedResponse(BaseModel):
     # None when nothing was created: a pure re-import records no batch.
     batch_id: int | None
@@ -152,6 +188,26 @@ class CommittedResponse(BaseModel):
     duplicates: int
     skipped: int
     instruments_created: int
+    # Created rows no provider could price at their own timestamp (ticket
+    # 41): each awaits a valuation, named here rather than valued at zero.
+    unpriced: list[UnpricedRowResponse]
+    # What each failing provider's failure was — a rate limit to wait out
+    # is never reported as an outage.
+    price_conditions: list[PriceConditionResponse]
+
+    @classmethod
+    def of(cls, committed: Committed) -> CommittedResponse:
+        return cls(
+            batch_id=committed.batch_id,
+            created=committed.created,
+            duplicates=committed.duplicates,
+            skipped=committed.skipped,
+            instruments_created=committed.instruments_created,
+            unpriced=[UnpricedRowResponse.of(row) for row in committed.unpriced],
+            price_conditions=[
+                PriceConditionResponse.of(entry) for entry in committed.price_conditions
+            ],
+        )
 
 
 class BatchResponse(BaseModel):
@@ -187,10 +243,11 @@ def preview_import(
     response_model=CommittedResponse,
 )
 def commit_import(
-    request: CommitImportRequest, admin: AdminDep, engine: EngineDep
+    request: CommitImportRequest, admin: AdminDep, engine: EngineDep, prices: PriceSourcesDep
 ) -> CommittedResponse:
     committed = commit(
         engine,
+        prices=prices,
         source=request.source,
         label=request.label,
         account_id=request.account_id,
@@ -199,13 +256,7 @@ def commit_import(
     if isinstance(committed, CommitRefused):
         status = 404 if committed.kind is Refusal.no_such_account else 409
         raise HTTPException(status_code=status, detail=committed.sentence)
-    return CommittedResponse(
-        batch_id=committed.batch_id,
-        created=committed.created,
-        duplicates=committed.duplicates,
-        skipped=committed.skipped,
-        instruments_created=committed.instruments_created,
-    )
+    return CommittedResponse.of(committed)
 
 
 @router.get(

@@ -18,8 +18,8 @@ reference-rate rule of the quote's event date (ADR-0017) before serving or
 storing, the same rule every other foreign-currency amount follows.
 """
 
-from collections.abc import Sequence
-from datetime import date, datetime, time
+from collections.abc import Collection, Sequence
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import Engine
@@ -27,6 +27,7 @@ from sqlalchemy import Engine
 from open_leprechaun.ports.crypto_prices import (
     CryptoPriceProvider,
     DailyClose,
+    PriceableInstrument,
     ProviderOutageError,
     RateLimitedError,
 )
@@ -51,7 +52,14 @@ __all__ = [
     "ProviderCondition",
     "backfill_daily_closes",
     "refresh_prices",
+    "resolve_daily_closes",
 ]
+
+
+OUTAGE_PATIENCE = 3
+"""How many history requests in a row a provider may fail before one
+resolution stops asking it — enough to tell an Instrument it does not know
+from a provider that is down, without a timeout per Instrument."""
 
 
 def refresh_prices(
@@ -141,23 +149,93 @@ def backfill_daily_closes(
             continue
         if not closes:
             continue
-        # Newest first: a non-EUR close converts by its own date's reference
-        # rate, and descending order lets each fetched rate window cover the
-        # dates that follow instead of fetching one window per day. A close
-        # that is no answer — non-positive, or unconvertible just now — is
-        # skipped rather than stored wrong or allowed to fail the backfill.
-        converted = (
-            (close.close_date, _close_in_eur(engine, rate_source, close))
-            for close in sorted(closes, key=lambda close: close.close_date, reverse=True)
-        )
-        stored = stored_prices.store_daily_closes(
-            engine,
-            instrument.id,
-            source=provider.name,
-            closes=[(close_date, price) for close_date, price in converted if price is not None],
-        )
+        stored = _store_closes(engine, rate_source, instrument.id, provider.name, closes)
         return BackfillReport(stored=stored, source=provider.name, conditions=tuple(conditions))
     return BackfillReport(stored=0, source=None, conditions=tuple(conditions))
+
+
+def resolve_daily_closes(
+    engine: Engine,
+    providers: Sequence[CryptoPriceProvider],
+    rate_source: ReferenceRateSource,
+    wanted: Sequence[tuple[PriceableInstrument, Collection[date]]],
+) -> tuple[ProviderCondition, ...]:
+    """Fill the store with the close of each wanted day, per Instrument
+    (ticket 41). Unlike a backfill, which takes the first provider with any
+    history, a day one provider left open falls through to the next — the
+    chain's own rule, applied per day. One request per Instrument and
+    provider, spanning the days still open; whatever else that range answers
+    is kept like any backfill's.
+
+    Nothing is returned about success: the store is the answer, and a day
+    still absent from it afterwards is one nothing could price. A rate limit
+    is the provider's word for the whole run, so it is not asked again; an
+    outage may be one Instrument's alone — an unknown contract answers like
+    one — so the provider is asked on, until OUTAGE_PATIENCE failures in a
+    row say it is the provider that is down. Whatever else a provider raises
+    — a malformed answer, say — is its outage too: this runs after an import
+    has landed, and no provider may fail what is already written."""
+    conditions: dict[ProviderCondition, None] = {}
+    paused: set[str] = set()
+    outages_in_a_row: dict[str, int] = {}
+    for instrument, days in wanted:
+        missing = set(days)
+        for provider in providers:
+            if not missing:
+                break
+            if provider.name in paused:
+                continue
+            start, end = min(missing), max(missing)
+            try:
+                closes = provider.daily_closes(instrument, start, end)
+            except RateLimitedError:
+                paused.add(provider.name)
+                conditions[ProviderCondition(provider.name, "rate_limited")] = None
+                continue
+            # Broad on purpose — see the docstring: nothing may escape.
+            except Exception:
+                conditions[ProviderCondition(provider.name, "outage")] = None
+                outages_in_a_row[provider.name] = outages_in_a_row.get(provider.name, 0) + 1
+                if outages_in_a_row[provider.name] >= OUTAGE_PATIENCE:
+                    paused.add(provider.name)
+                continue
+            outages_in_a_row[provider.name] = 0
+            _store_closes(engine, rate_source, instrument.id, provider.name, closes)
+            missing -= {
+                row.close_date
+                for row in stored_prices.daily_closes(engine, instrument.id, start=start, end=end)
+            }
+    return tuple(conditions)
+
+
+def _store_closes(
+    engine: Engine,
+    rate_source: ReferenceRateSource,
+    instrument_id: int,
+    source: str,
+    closes: Sequence[DailyClose],
+) -> int:
+    """Keep a provider's closes in EUR, answering how many were new.
+
+    Newest first: a non-EUR close converts by its own date's reference rate,
+    and descending order lets each fetched rate window cover the dates that
+    follow instead of fetching one window per day. A close that is no answer
+    — non-positive, or unconvertible just now — is skipped rather than stored
+    wrong or allowed to fail the run. Nor is the current UTC day's: it has
+    no close yet, and the first stored close wins forever, so a provider's
+    latest intraday point must never be frozen as one."""
+    today = datetime.now(UTC).date()
+    converted = (
+        (close.close_date, _close_in_eur(engine, rate_source, close))
+        for close in sorted(closes, key=lambda close: close.close_date, reverse=True)
+        if close.close_date < today
+    )
+    return stored_prices.store_daily_closes(
+        engine,
+        instrument_id,
+        source=source,
+        closes=[(close_date, price) for close_date, price in converted if price is not None],
+    )
 
 
 def _close_in_eur(

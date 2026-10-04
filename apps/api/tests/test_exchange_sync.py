@@ -627,6 +627,8 @@ def test_a_spot_re_sync_changes_nothing(client, adapters, db):
         "created": 0,
         "duplicates": 3,
         "skipped": 0,
+        "unpriced": [],
+        "price_conditions": [],
     }
     assert len(client.get("/api/transactions").json()) == 3
     assert len(client.get("/api/import-batches").json()) == 1

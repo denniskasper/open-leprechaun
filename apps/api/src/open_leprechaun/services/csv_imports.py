@@ -23,6 +23,7 @@ from sqlalchemy import Engine
 from open_leprechaun.ports.csv_connector import CsvConnector, FileRejectedError, NormalizedRow
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.services import imports
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import CommitRefused, Committed, ImportLeg, ImportRow, Preview
 from open_leprechaun.services.transactions import TRANSACTION_TYPES
 
@@ -80,6 +81,7 @@ def commit(
     engine: Engine,
     connectors: Connectors,
     *,
+    prices: PriceSources,
     connector: str,
     account_id: int,
     content: str,
@@ -90,11 +92,19 @@ def commit(
     chosen = connectors.get(connector)
     if chosen is None:
         return None
-    return commit_of(engine, chosen, account_id=account_id, content=content, label=label)
+    return commit_of(
+        engine, chosen, prices=prices, account_id=account_id, content=content, label=label
+    )
 
 
 def commit_of(
-    engine: Engine, connector: CsvConnector, *, account_id: int, content: str, label: str
+    engine: Engine,
+    connector: CsvConnector,
+    *,
+    prices: PriceSources,
+    account_id: int,
+    content: str,
+    label: str,
 ) -> Committed | CommitRefused | FileRefused:
     rows = _rows(engine, connector, content)
     if isinstance(rows, FileRefused):
@@ -102,6 +112,7 @@ def commit_of(
     _, import_rows = rows
     return imports.commit(
         engine,
+        prices=prices,
         source=source_of(connector.connector, account_id),
         label=label,
         account_id=account_id,

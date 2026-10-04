@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.ports.column_mapping import ColumnMapping, InterpretedRow, interpret
+from open_leprechaun.prices import PriceSourcesDep
 from open_leprechaun.repositories.imports import Refusal
 from open_leprechaun.routers.imports import CommittedResponse, Label, PreviewResponse
 from open_leprechaun.services import column_mappings
@@ -211,10 +212,11 @@ class CommitMappedRequest(PreviewMappedRequest):
     response_model=CommittedResponse,
 )
 def commit_mapped(
-    request: CommitMappedRequest, admin: AdminDep, engine: EngineDep
+    request: CommitMappedRequest, admin: AdminDep, engine: EngineDep, prices: PriceSourcesDep
 ) -> CommittedResponse:
     committed = column_mappings.commit(
         engine,
+        prices=prices,
         account_id=request.account_id,
         content=request.content,
         mapping=request.mapping.as_mapping(),
@@ -225,10 +227,4 @@ def commit_mapped(
     if isinstance(committed, CommitRefused):
         status = 404 if committed.kind is Refusal.no_such_account else 409
         raise HTTPException(status_code=status, detail=committed.sentence)
-    return CommittedResponse(
-        batch_id=committed.batch_id,
-        created=committed.created,
-        duplicates=committed.duplicates,
-        skipped=committed.skipped,
-        instruments_created=committed.instruments_created,
-    )
+    return CommittedResponse.of(committed)

@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Engine
 
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
-from open_leprechaun.repositories import reference_rates
+from open_leprechaun.repositories import crypto_prices, reference_rates
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
@@ -68,6 +68,9 @@ class CarriesPeg(Protocol):
 class ValuableInstrument(CarriesPeg, Protocol):
     """What valuing an Instrument quantity needs to know about it — a
     repository row or anything shaped like one."""
+
+    @property
+    def id(self) -> int: ...
 
     @property
     def family(self) -> str: ...
@@ -111,18 +114,23 @@ def value_eur(
     quantity: Decimal,
     at: datetime,
 ) -> Decimal | None:
-    """What the reference-rate universe can state a quantity's EUR value to
-    be (ADR-0017): the numéraire by identity, foreign cash by its own daily
-    rate, a stablecoin by its peg's. A value needing a crypto price is
-    ticket 18's — None until then, never a guess. The one valuation rule of
-    the tax engines (21, 22), so an income and the basis of the lot it minted
-    can never disagree."""
+    """A quantity's EUR value at the instant of its event: the numéraire by
+    identity, foreign cash by its own daily reference rate, a stablecoin by
+    its peg's (ADR-0017) — and a crypto Instrument only the price chain can
+    answer for by the **stored close of the event's day** (ticket 41), the
+    price that applied then rather than today's. None where the store holds
+    no such close — awaiting valuation, never a guess and never a zero. The
+    one valuation rule of the tax engines (21, 22), so an income and the
+    basis of the lot it minted can never disagree."""
     if instrument.is_numeraire:
         return quantity
     currency = valuation_currency(instrument)
-    if currency is None:
+    if currency is not None:
+        return convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur
+    if instrument.family != "crypto":
         return None
-    return convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur
+    close = crypto_prices.close_on(engine, instrument.id, crypto_prices.event_day(at))
+    return None if close is None else quantity * close.price_eur
 
 
 def convert(

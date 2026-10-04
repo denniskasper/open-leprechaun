@@ -249,5 +249,7 @@ def test_reimporting_the_same_file_changes_nothing_even_under_another_saved_mapp
         "duplicates": 2,
         "skipped": 0,
         "instruments_created": 0,
+        "unpriced": [],
+        "price_conditions": [],
     }
     assert len(client.get("/api/import-batches").json()) == 1

@@ -115,6 +115,8 @@ describe("commitCsvImport", () => {
       duplicates: 1,
       skipped: 1,
       instruments_created: 0,
+      unpriced: [],
+      price_conditions: [],
     };
     respondWith(201, committed);
 
@@ -171,6 +173,8 @@ describe("commitAddressImport", () => {
       duplicates: 0,
       skipped: 0,
       instruments_created: 1,
+      unpriced: [],
+      price_conditions: [],
     };
     respondWith(201, committed);
 

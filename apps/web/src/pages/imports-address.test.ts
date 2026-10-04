@@ -11,7 +11,15 @@ describe("indexerWords", () => {
 });
 
 describe("addressCommittedWords", () => {
-  const committed = { batch_id: 5, created: 2, duplicates: 0, skipped: 0, instruments_created: 1 };
+  const committed = {
+    batch_id: 5,
+    created: 2,
+    duplicates: 0,
+    skipped: 0,
+    instruments_created: 1,
+    unpriced: [],
+    price_conditions: [],
+  };
 
   it("counts what landed", () => {
     expect(addressCommittedWords(committed, "en")).toBe("2 rows created · 1 Instrument created");

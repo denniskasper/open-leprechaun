@@ -29,7 +29,9 @@ from open_leprechaun.ports.exchange import AdapterError, Credentials, ExchangeAd
 from open_leprechaun.repositories import connections as repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.services import connections, futures, imports
+from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.imports import CommitRefused, ImportLeg, ImportRow
+from open_leprechaun.services.price_reports import ProviderCondition
 from open_leprechaun.settings import Settings
 
 Adapters = Mapping[str, Sequence[ExchangeAdapter]]
@@ -108,6 +110,11 @@ class ImportOutcome:
     created: int
     duplicates: int
     skipped: int
+    # Created rows no provider could price at their own timestamp (ticket
+    # 41) — named, never valued at zero — and what any failing provider's
+    # failure was.
+    unpriced: tuple[UnpricedRow, ...] = ()
+    price_conditions: tuple[ProviderCondition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,7 +134,12 @@ class KindSync:
 
 
 def sync_connection(
-    engine: Engine, settings: Settings, adapters: Adapters, connection_id: int
+    engine: Engine,
+    settings: Settings,
+    adapters: Adapters,
+    connection_id: int,
+    *,
+    prices: PriceSources,
 ) -> tuple[KindSync, ...] | None:
     """Pull every kind the venue serves and land the records: fills and
     funding in the futures pipeline, ledger-bound rows through the import
@@ -146,7 +158,7 @@ def sync_connection(
         return None
     results = []
     for adapter in kinds:
-        result = _sync_kind(engine, connection, adapter, credentials)
+        result = _sync_kind(engine, connection, adapter, credentials, prices)
         connections.record_result(
             engine,
             connection_id,
@@ -166,7 +178,11 @@ class _UnresolvableError(Exception):
 
 
 def _sync_kind(
-    engine: Engine, connection: Row, adapter: ExchangeAdapter, credentials: Credentials
+    engine: Engine,
+    connection: Row,
+    adapter: ExchangeAdapter,
+    credentials: Credentials,
+    prices: PriceSources,
 ) -> KindSync:
     source = f"{connection.venue}:{adapter.kind}"
     account_id = repository.paired_account(engine, connection.id, adapter.kind)
@@ -236,6 +252,7 @@ def _sync_kind(
     if rows:
         committed = imports.commit(
             engine,
+            prices=prices,
             source=source,
             label=f"{connection.venue} {adapter.kind} sync",
             account_id=account_id,
@@ -249,6 +266,8 @@ def _sync_kind(
                 created=committed.created,
                 duplicates=committed.duplicates,
                 skipped=committed.skipped,
+                unpriced=committed.unpriced,
+                price_conditions=committed.price_conditions,
             )
     return KindSync(
         adapter_kind=adapter.kind,

@@ -76,6 +76,20 @@ export const importPreviewSchema = z.object({
 
 export type ImportPreview = z.infer<typeof importPreviewSchema>;
 
+/** One imported row nothing could price, and the Instruments of it left open. */
+export const unpricedRowSchema = z.object({
+  external_id: z.string(),
+  instruments: z.array(z.object({ instrument_id: z.number(), symbol: z.string() })),
+});
+
+/** What one failing provider's failure was: a rate limit is never an outage. */
+export const priceConditionSchema = z.object({
+  provider: z.string(),
+  condition: z.enum(["rate_limited", "outage"]),
+});
+
+export type PriceCondition = z.infer<typeof priceConditionSchema>;
+
 /** What the commit did. batch_id is null when nothing was new — a pure re-import records no batch. */
 export const committedImportSchema = z.object({
   batch_id: z.number().nullable(),
@@ -83,6 +97,12 @@ export const committedImportSchema = z.object({
   duplicates: z.number(),
   skipped: z.number(),
   instruments_created: z.number(),
+  /**
+   * Created rows no provider could price at their own timestamp — each
+   * awaits a valuation, named rather than valued at zero.
+   */
+  unpriced: z.array(unpricedRowSchema),
+  price_conditions: z.array(priceConditionSchema),
 });
 
 export type CommittedImport = z.infer<typeof committedImportSchema>;

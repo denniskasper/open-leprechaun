@@ -21,6 +21,9 @@ from sqlalchemy import Engine
 from open_leprechaun.repositories import imports, instruments
 from open_leprechaun.repositories.imports import Refusal, WriteRow
 from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.services import import_prices
+from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
+from open_leprechaun.services.price_reports import ProviderCondition
 from open_leprechaun.services.transactions import (
     TRANSACTION_TYPES,
     declaration_defect,
@@ -127,6 +130,11 @@ class Committed:
     duplicates: int
     skipped: int
     instruments_created: int
+    # Created rows no provider could price at their own timestamp (ticket
+    # 41) — named, never valued at zero — and what any failing provider's
+    # failure was.
+    unpriced: tuple[UnpricedRow, ...] = ()
+    price_conditions: tuple[ProviderCondition, ...] = ()
 
 
 def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[ImportRow]) -> Preview:
@@ -203,10 +211,19 @@ def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[Imp
 
 
 def commit(
-    engine: Engine, *, source: str, label: str, account_id: int, rows: Sequence[ImportRow]
+    engine: Engine,
+    *,
+    prices: PriceSources,
+    source: str,
+    label: str,
+    account_id: int,
+    rows: Sequence[ImportRow],
 ) -> Committed | CommitRefused:
     """The separate act the preview leads to: the same evaluation, then the
-    batch, its Transactions and their registry rows written whole."""
+    batch, its Transactions and their registry rows written whole. Once the
+    batch has landed, every row that states no price of its own is given the
+    price of its own day (ticket 41) — after, so that no provider's failure
+    can cost the import."""
     preview = evaluate(engine, source=source, account_id=account_id, rows=rows)
     if preview.refusal is not None:
         return preview.refusal
@@ -235,12 +252,19 @@ def commit(
         # The state changed between the evaluation and the write's row lock;
         # re-read so the sentence names whoever is authoritative now.
         return _refused(engine, outcome, account_id=account_id, source=source)
+    resolution = (
+        import_prices.resolve_batch(engine, prices, outcome.batch_id)
+        if outcome.batch_id is not None
+        else import_prices.Resolution()
+    )
     return Committed(
         batch_id=outcome.batch_id,
         created=outcome.created,
         duplicates=len(preview.duplicate_external_ids) + outcome.raced,
         skipped=len(preview.skipped),
         instruments_created=instruments_created,
+        unpriced=resolution.unpriced,
+        price_conditions=resolution.conditions,
     )
 
 

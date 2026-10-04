@@ -8,12 +8,24 @@ silently shift a figure a chart already showed.
 """
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Engine, Row, text
 
 from open_leprechaun.repositories.stances import UNBARRED_FROM_PRICING_SQL
+
+EVENT_DAY_SQL = "(t.occurred_at AT TIME ZONE 'UTC')::date"
+"""The day whose close prices an event of `transaction t` — the UTC date of
+its instant, because providers bucket their history by UTC day. The same
+rule as `event_day`, stated once for SQL."""
+
+
+def event_day(at: datetime) -> date:
+    """The day whose close prices an event at this instant."""
+    if at.tzinfo is None:
+        raise ValueError("An event's instant must be timezone-aware.")
+    return at.astimezone(UTC).date()
 
 
 def priceable_instruments(engine: Engine) -> list[Row]:
@@ -111,5 +123,52 @@ def daily_closes(engine: Engine, instrument_id: int, *, start: date, end: date) 
                     " ORDER BY close_date"
                 ),
                 {"instrument_id": instrument_id, "start": start, "end": end},
+            ).all()
+        )
+
+
+def close_on(engine: Engine, instrument_id: int, on: date) -> Row | None:
+    """The stored close of one Instrument for one day — what values an event
+    of that day (ticket 41), with the provider that answered."""
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                "SELECT close_date, price_eur, source FROM crypto_daily_close"
+                " WHERE instrument_id = :instrument_id AND close_date = :on"
+            ),
+            {"instrument_id": instrument_id, "on": on},
+        ).one_or_none()
+
+
+def event_legs(engine: Engine, *, batch_id: int | None = None) -> list[Row]:
+    """Every leg of the ledger — or of one Import Batch — as resolving its
+    historical price needs it (ticket 41): the Instrument by the identity
+    attributes a provider maps (`id` is the Instrument's, so a row answers as
+    the Instrument it names), whether the reference-rate universe values it
+    or only the chain can — the chain's own bar included
+    (`priceable_instruments`) — and the day whose close prices it, with
+    whether the store already holds one. `external_id` is what the venue
+    called the event, None where it was recorded by hand."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT t.id AS transaction_id, r.external_id, l.role,"
+                    " i.id, i.type, i.symbol, i.name, i.chain, i.contract_address,"
+                    " (i.family = 'cash' OR i.pegged_currency IS NOT NULL) AS reference_valued,"
+                    " (i.family = 'crypto' AND i.pegged_currency IS NULL"
+                    f"{UNBARRED_FROM_PRICING_SQL}) AS chain_priced,"
+                    f" {EVENT_DAY_SQL} AS close_date,"
+                    " c.instrument_id IS NOT NULL AS has_close"
+                    " FROM transaction t"
+                    " JOIN transaction_leg l ON l.transaction_id = t.id"
+                    " JOIN instrument i ON i.id = l.instrument_id"
+                    " LEFT JOIN imported_row r ON r.transaction_id = t.id"
+                    " LEFT JOIN crypto_daily_close c"
+                    f" ON c.instrument_id = i.id AND c.close_date = {EVENT_DAY_SQL}"
+                    " WHERE CAST(:batch_id AS integer) IS NULL OR r.batch_id = :batch_id"
+                    " ORDER BY t.id, l.id"
+                ),
+                {"batch_id": batch_id},
             ).all()
         )

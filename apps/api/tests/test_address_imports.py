@@ -220,6 +220,8 @@ def test_reading_the_same_address_again_changes_nothing(client, indexers):
         "duplicates": 1,
         "skipped": 0,
         "instruments_created": 0,
+        "unpriced": [],
+        "price_conditions": [],
     }
     assert len(client.get("/api/transactions").json()) == 1
 

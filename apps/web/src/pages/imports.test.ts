@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommittedImport, CsvConnector, ImportBatch } from "@/api/imports";
-import { committedWords, rowsWords, timezoneWords } from "./imports";
+import { committedWords, priceConditionWords, rowsWords, timezoneWords } from "./imports";
 
 function batch(rows: number, overridden: number): ImportBatch {
   return {
@@ -53,6 +53,8 @@ function committed(overrides: Partial<CommittedImport>): CommittedImport {
     duplicates: 0,
     skipped: 0,
     instruments_created: 0,
+    unpriced: [],
+    price_conditions: [],
     ...overrides,
   };
 }
@@ -65,9 +67,27 @@ describe("committedWords", () => {
     ).toBe("3 rows created · 2 already known · 1 left out · 1 Instrument created");
   });
 
+  it("names how many rows landed without a price, only when any", () => {
+    const unpriced = [{ external_id: "r-2", instruments: [{ instrument_id: 7, symbol: "ETH" }] }];
+    expect(committedWords(committed({ unpriced }), "en")).toBe(
+      "3 rows created · 1 awaiting a price",
+    );
+  });
+
   it("says a pure re-import changed nothing", () => {
     expect(committedWords(committed({ batch_id: null, created: 0, duplicates: 4 }), "en")).toBe(
       "Nothing new — the ledger already knows everything in this file.",
+    );
+  });
+});
+
+describe("priceConditionWords", () => {
+  it("tells a rate limit to wait out from a provider that did not answer", () => {
+    expect(priceConditionWords({ provider: "coingecko", condition: "rate_limited" })).toBe(
+      "coingecko is rate-limiting — the next price update asks again",
+    );
+    expect(priceConditionWords({ provider: "defillama", condition: "outage" })).toBe(
+      "defillama did not answer",
     );
   });
 });

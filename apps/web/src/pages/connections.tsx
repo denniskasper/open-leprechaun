@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { DECIMAL_PATTERN } from "@/api/transactions";
 import { formatNumber, formatQuantity, formatSignedQuantity, formatTimestamp } from "@/lib/format";
+import { awaitingPriceWords, priceConditionWords } from "@/pages/imports";
 import { openingBalanceSearch } from "@/pages/transactions";
 
 /**
@@ -134,6 +135,10 @@ export function describeSyncResult(result: KindSyncResult, locale?: string): str
     }
     if (result.imported.skipped > 0) {
       parts.push(`${formatNumber(result.imported.skipped, locale)} skipped`);
+    }
+    if (result.imported.unpriced.length > 0) {
+      parts.push(awaitingPriceWords(result.imported.unpriced, locale));
+      parts.push(...result.imported.price_conditions.map(priceConditionWords));
     }
   }
   const landed = parts.join(" · ");

@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from open_leprechaun.repositories import imports as registry
 from open_leprechaun.repositories import instruments, platforms, transactions
 from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import (
     ImportLeg,
     ImportRow,
@@ -30,6 +31,10 @@ from open_leprechaun.services.transactions import overview
 
 NOON = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
 SOURCE = "kraken-csv"
+
+# Nothing here is about prices: no provider is asked, so every row a chain
+# would have priced simply stays unpriced (ticket 41).
+NO_PRICES = PriceSources(providers=(), rate_source=None)
 
 
 def _account(db, platform_name="Kraken", kind="exchange", name="Main"):
@@ -97,7 +102,14 @@ def _counts(db):
 
 def test_the_registry_holds_one_row_per_source_and_external_id(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)])
+    commit(
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
+    )
 
     with pytest.raises(IntegrityError), db.begin() as connection:
         connection.execute(
@@ -142,7 +154,14 @@ def test_a_registry_row_detached_from_batch_or_transaction_is_only_ever_overridd
 
 def test_the_preview_states_creations_skips_new_instruments_and_duplicates(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)])
+    commit(
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
+    )
 
     unbalanced = ImportRow(
         external_id="t-3",
@@ -293,6 +312,7 @@ def test_commit_records_the_batch_the_transactions_and_the_registry(db):
 
     committed = commit(
         db,
+        prices=NO_PRICES,
         source=SOURCE,
         label="a.csv",
         account_id=account,
@@ -324,11 +344,13 @@ def test_commit_records_the_batch_the_transactions_and_the_registry(db):
 def test_reimporting_the_same_file_changes_nothing(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
     rows = [_trade("t-1", eur, btc), _trade("t-2", eur, btc)]
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    commit(db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows)
     before = _counts(db)
 
     preview = evaluate(db, source=SOURCE, account_id=account, rows=rows)
-    recommitted = commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    recommitted = commit(
+        db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows
+    )
 
     assert preview.duplicate_external_ids == ("t-1", "t-2")
     assert (recommitted.batch_id, recommitted.created, recommitted.duplicates) == (None, 0, 2)
@@ -337,13 +359,25 @@ def test_reimporting_the_same_file_changes_nothing(db):
 
 def test_the_first_commit_declares_its_source_and_a_second_source_may_not_write(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)])
+    commit(
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
+    )
     assert _authoritative_source(db, account) == SOURCE
     before = _counts(db)
 
     preview = evaluate(db, source="kraken-api", account_id=account, rows=[_trade("x-1", eur, btc)])
     refused = commit(
-        db, source="kraken-api", label="sync", account_id=account, rows=[_trade("x-1", eur, btc)]
+        db,
+        prices=NO_PRICES,
+        source="kraken-api",
+        label="sync",
+        account_id=account,
+        rows=[_trade("x-1", eur, btc)],
     )
 
     assert preview.refusal.kind is registry.Refusal.not_authoritative
@@ -360,7 +394,12 @@ def test_a_commit_into_a_missing_account_is_refused(db):
     eur, btc = _eur(db), _btc(db)
 
     refused = commit(
-        db, source=SOURCE, label="a.csv", account_id=999999, rows=[_trade("t-1", eur, btc)]
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=999999,
+        rows=[_trade("t-1", eur, btc)],
     )
 
     assert refused.kind is registry.Refusal.no_such_account
@@ -372,13 +411,17 @@ def test_a_commit_into_a_missing_account_is_refused(db):
 def test_reversing_a_batch_removes_what_it_created_as_a_unit(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
     rows = [_trade("t-1", eur, btc), _trade("t-2", eur, btc)]
-    committed = commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    committed = commit(
+        db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows
+    )
 
     assert registry.reverse_batch(db, committed.batch_id) is True
 
     assert overview(db) == []
     assert registry.list_batches(db) == []
-    reimported = commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    reimported = commit(
+        db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows
+    )
     assert reimported.created == 2
 
     assert registry.reverse_batch(db, committed.batch_id) is False
@@ -390,7 +433,9 @@ def test_reversal_spares_a_row_the_admin_took_ownership_of(db):
     re-import does not resurrect the original."""
     account, eur, btc = _account(db), _eur(db), _btc(db)
     rows = [_trade("t-1", eur, btc), _trade("t-2", eur, btc)]
-    committed = commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    committed = commit(
+        db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows
+    )
     edited = next(row for row in overview(db) if row.import_source == SOURCE)
     transactions.replace_transaction(
         db,
@@ -410,14 +455,23 @@ def test_reversal_spares_a_row_the_admin_took_ownership_of(db):
     assert (survivor.id, survivor.note) == (edited.id, "corrected by hand")
     assert survivor.manually_overridden is True
     assert survivor.import_batch_id is None
-    reimported = commit(db, source=SOURCE, label="a.csv", account_id=account, rows=rows)
+    reimported = commit(
+        db, prices=NO_PRICES, source=SOURCE, label="a.csv", account_id=account, rows=rows
+    )
     assert (reimported.created, reimported.duplicates) == (1, 1)
     assert survivor.note in {row.note for row in overview(db)}
 
 
 def test_a_manually_deleted_imported_row_stays_deleted_through_reimport(db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)])
+    commit(
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
+    )
     (imported,) = overview(db)
 
     assert transactions.delete_transaction(db, imported.id) is True
@@ -425,7 +479,12 @@ def test_a_manually_deleted_imported_row_stays_deleted_through_reimport(db):
     preview = evaluate(db, source=SOURCE, account_id=account, rows=[_trade("t-1", eur, btc)])
     assert preview.duplicate_external_ids == ("t-1",)
     recommitted = commit(
-        db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)]
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
     )
     assert (recommitted.created, recommitted.duplicates) == (0, 1)
     assert overview(db) == []
@@ -438,6 +497,7 @@ def test_the_ledger_marks_an_imported_row_edited_or_deleted_by_hand(client, db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
     commit(
         db,
+        prices=NO_PRICES,
         source=SOURCE,
         label="a.csv",
         account_id=account,
@@ -476,7 +536,14 @@ def test_the_ledger_marks_an_imported_row_edited_or_deleted_by_hand(client, db):
 def test_bulk_reassignment_moves_every_leg_and_marks_imported_rows_overridden(client, db):
     account, eur, btc = _account(db), _eur(db), _btc(db)
     other = _account(db, name="Earn")
-    commit(db, source=SOURCE, label="a.csv", account_id=account, rows=[_trade("t-1", eur, btc)])
+    commit(
+        db,
+        prices=NO_PRICES,
+        source=SOURCE,
+        label="a.csv",
+        account_id=account,
+        rows=[_trade("t-1", eur, btc)],
+    )
     (imported,) = client.get("/api/transactions").json()
 
     reassigned = client.post(
@@ -511,6 +578,7 @@ def test_bulk_retyping_holds_the_vocabulary_and_marks_rows_overridden(client, db
     )
     commit(
         db,
+        prices=NO_PRICES,
         source=SOURCE,
         label="a.csv",
         account_id=account,

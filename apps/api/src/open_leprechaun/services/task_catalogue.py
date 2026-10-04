@@ -20,9 +20,10 @@ from open_leprechaun.ports.crypto_prices import CryptoPriceProvider
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.ports.security_prices import SecurityPriceProvider
 from open_leprechaun.repositories import connections as connections_repository
-from open_leprechaun.services import crypto_prices, exchange_sync, security_prices
+from open_leprechaun.services import crypto_prices, exchange_sync, import_prices, security_prices
 from open_leprechaun.services.connections import CredentialsUnreadableError
 from open_leprechaun.services.exchange_sync import Adapters
+from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.price_reports import PriceReport
 from open_leprechaun.services.scheduled_tasks import Task, TaskFailedError
 from open_leprechaun.settings import Settings
@@ -43,7 +44,12 @@ def catalogue(
     provider arrives as a factory: a misconfigured provider name is that one
     task's failure, not a reason no task can be listed."""
 
+    historical = PriceSources(providers=crypto_chain, rate_source=rate_source)
+
     def update_crypto_prices() -> str:
+        # Besides the present: the close of every past event still awaiting
+        # one (ticket 41), so a gap an import left behind settles itself.
+        import_prices.resolve_ledger(engine, historical)
         return _price_summary(crypto_prices.refresh_prices(engine, crypto_chain, rate_source))
 
     def update_security_prices() -> str:
@@ -54,7 +60,7 @@ def catalogue(
         return _price_summary(security_prices.refresh_prices(engine, provider, rate_source))
 
     def sync_connections() -> str:
-        return _sync_every_connection(engine, settings, adapters)
+        return _sync_every_connection(engine, settings, adapters, historical)
 
     return (
         Task(
@@ -95,14 +101,18 @@ def _price_summary(report: PriceReport) -> str:
     return summary
 
 
-def _sync_every_connection(engine: Engine, settings: Settings, adapters: Adapters) -> str:
+def _sync_every_connection(
+    engine: Engine, settings: Settings, adapters: Adapters, prices: PriceSources
+) -> str:
     """Each Connection alone: one that cannot be synced is named in the
     failure and never keeps the next from syncing (ADR-0004)."""
     failures: list[str] = []
     connections = kinds = 0
     for connection in connections_repository.list_connections(engine):
         try:
-            results = exchange_sync.sync_connection(engine, settings, adapters, connection.id)
+            results = exchange_sync.sync_connection(
+                engine, settings, adapters, connection.id, prices=prices
+            )
         except CredentialsUnreadableError as sealed:
             failures.append(f"{connection.label}: {sealed}")
             continue

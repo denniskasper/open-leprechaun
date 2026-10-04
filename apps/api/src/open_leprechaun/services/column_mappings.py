@@ -17,6 +17,7 @@ from open_leprechaun.ports.column_mapping import ColumnMapping, MappingConnector
 from open_leprechaun.repositories import column_mappings as repository
 from open_leprechaun.services import csv_imports
 from open_leprechaun.services.csv_imports import CommitRefused, Committed, FileRefused, Preview
+from open_leprechaun.services.import_prices import PriceSources
 
 
 @dataclass(frozen=True)
@@ -57,10 +58,21 @@ def preview(
 
 
 def commit(
-    engine: Engine, *, account_id: int, content: str, mapping: ColumnMapping, label: str
+    engine: Engine,
+    *,
+    prices: PriceSources,
+    account_id: int,
+    content: str,
+    mapping: ColumnMapping,
+    label: str,
 ) -> Committed | CommitRefused | FileRefused:
     """The separate act the preview leads to: one reversible batch under the
     Account's mapping source."""
     return csv_imports.commit_of(
-        engine, MappingConnector(mapping), account_id=account_id, content=content, label=label
+        engine,
+        MappingConnector(mapping),
+        prices=prices,
+        account_id=account_id,
+        content=content,
+        label=label,
     )
