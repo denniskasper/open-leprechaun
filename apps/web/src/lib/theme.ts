@@ -3,7 +3,9 @@
  *
  * The chosen preference lives in localStorage under "theme"; "system" is the
  * absence of a stored value. index.html applies the class before first paint
- * with the same rules, so the page never flashes the wrong theme.
+ * with the same rules, so the page never flashes the wrong theme. The
+ * theme-color meta follows the class, its two colours stated on the meta
+ * itself.
  */
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -22,18 +24,22 @@ export function setThemePreference(preference: ThemePreference): void {
   } else {
     localStorage.setItem(STORAGE_KEY, preference);
   }
-  syncThemeClass();
+  syncTheme();
 }
 
-function syncThemeClass(): void {
+function syncTheme(): void {
   const preference = getThemePreference();
   const dark = preference === "dark" || (preference === "system" && systemDark().matches);
   document.documentElement.classList.toggle("dark", dark);
+
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const color = themeColor?.dataset[dark ? "dark" : "light"];
+  if (themeColor && color) themeColor.content = color;
 }
 
 /** Keep a "system" preference tracking the OS while the app is open. */
 export function watchSystemTheme(): () => void {
   const media = systemDark();
-  media.addEventListener("change", syncThemeClass);
-  return () => media.removeEventListener("change", syncThemeClass);
+  media.addEventListener("change", syncTheme);
+  return () => media.removeEventListener("change", syncTheme);
 }

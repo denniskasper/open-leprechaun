@@ -9,8 +9,9 @@ something.
 ## Tokens
 
 All tokens — colour, type scale, radii, elevation — live in
-`apps/web/src/index.css` and nowhere else. Style with the semantic utilities
-they generate (`bg-background`, `text-muted-foreground`, `border-border`,
+`apps/web/src/index.css` and nowhere else (the favicon and the `theme-color`
+meta are the one exception, see below). Style with the semantic utilities they
+generate (`bg-background`, `text-muted-foreground`, `border-border`,
 `text-signal`/`text-caution`/`text-alarm`, `shadow-raised`/`shadow-overlay`),
 never a raw colour or an arbitrary size. Both themes then follow automatically;
 `apps/web/design/contrast.test.ts` re-judges every colour against WCAG AA, so
@@ -20,6 +21,22 @@ The type scale is strict: only the `text-*` sizes defined in the `@theme` block
 compile, `text-display` is the one hero size, and `.microlabel` is the small
 uppercase fixed-pitch caption over data. UI text is sans (Archivo); data —
 figures, codes, timestamps — is `font-mono tabular-nums` (Martian Mono).
+
+## Favicon and browser chrome
+
+The tab icon is the shell's clover on a tile of its own — the ink theme's
+`--primary` on the ink theme's `--background`, the same on every tab strip
+whatever the OS or the theme toggle says. The drawing is
+`apps/web/public/favicon.svg`; `favicon.ico` and `apple-touch-icon.png` beside
+it are rendered from it and committed. After changing the drawing, run
+`node design/render-favicon.ts` from `apps/web/` and commit what it writes.
+
+The `theme-color` meta in `apps/web/index.html` carries each theme's
+`--background`, and follows the theme toggle rather than the OS.
+
+These are the one exception to colours living in `index.css`, because
+browser chrome reads no CSS variable. `apps/web/design/favicon.test.ts` holds
+each literal to its token: tune the token, and the test names what to update.
 
 ## shadcn components
 

@@ -1,31 +1,8 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { wcagContrast } from "culori";
 import { describe, expect, it } from "vitest";
+import { resolve, themeTokens } from "./tokens";
 
-// The ticket's claim, held as a test: both themes meet WCAG AA. The tokens live
-// in CSS, so the test reads them from CSS — a colour tuned later is re-judged
-// here, not trusted.
-
-const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
-
-function themeTokens(selector: string): Map<string, string> {
-  const block = css.match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1];
-  if (!block) throw new Error(`No ${selector} block found in index.css`);
-
-  const tokens = new Map<string, string>();
-  for (const [, name, value] of block.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
-    if (name !== undefined && value !== undefined) tokens.set(name, value.trim());
-  }
-  return tokens;
-}
-
-function resolve(tokens: Map<string, string>, name: string): string {
-  const value = tokens.get(name);
-  if (!value) throw new Error(`Token ${name} is not defined`);
-  const reference = value.match(/^var\((--[\w-]+)\)$/);
-  return reference?.[1] !== undefined ? resolve(tokens, reference[1]) : value;
-}
+// The ticket's claim, held as a test: both themes meet WCAG AA.
 
 // Text on its surface needs 4.5:1; large text and non-text indicators need 3:1.
 const TEXT_PAIRS: [foreground: string, background: string][] = [

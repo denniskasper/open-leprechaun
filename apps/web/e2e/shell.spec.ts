@@ -49,3 +49,36 @@ test("the theme toggle switches the theme and the choice survives a reload", asy
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
+
+test("the browser chrome is tinted for the chosen theme, not the system's", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  const themeColor = page.locator('meta[name="theme-color"]');
+  const light = await themeColor.getAttribute("content");
+  expect(light).toBeTruthy();
+
+  await page.getByRole("button", { name: "Theme" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Dark" }).click();
+  await expect(themeColor).not.toHaveAttribute("content", light ?? "");
+  const dark = await themeColor.getAttribute("content");
+  expect(dark).toBeTruthy();
+
+  await page.reload();
+  await expect(themeColor).toHaveAttribute("content", dark ?? "");
+});
+
+// A path the server does not know is answered with the application, so a
+// missing icon would still be a 200 — only the content type tells them apart.
+for (const [path, type] of [
+  ["/favicon.svg", "image/svg+xml"],
+  ["/favicon.ico", "image/x-icon"],
+  ["/apple-touch-icon.png", "image/png"],
+] as const) {
+  test(`${path} is served as an image`, async ({ page, request }) => {
+    await page.goto("/");
+    await expect(page.locator(`link[href="${path}"]`)).toBeAttached();
+
+    const response = await request.get(path);
+    expect(response.headers()["content-type"]).toContain(type);
+  });
+}

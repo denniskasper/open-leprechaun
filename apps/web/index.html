@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open Leprechaun</title>
+    <!-- The .ico answers clients that ask for /favicon.ico unprompted; a
+         browser that can draw the SVG prefers it. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Each theme's background, for the browser chrome above the page. The
+         literals are held to the tokens by design/favicon.test.ts. -->
+    <meta name="theme-color" content="#f6f5f1" data-light="#f6f5f1" data-dark="#070d09" />
     <script>
       // Applied before first paint so the page never flashes the wrong theme.
       // Must mirror src/lib/theme.ts: stored "light"/"dark" wins, else the OS.
@@ -13,6 +21,8 @@
           stored === "dark" ||
           (stored !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        themeColor.content = themeColor.dataset[dark ? "dark" : "light"];
       })();
     </script>
   </head>

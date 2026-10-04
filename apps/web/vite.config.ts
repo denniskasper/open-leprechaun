@@ -26,7 +26,7 @@ export default defineConfig({
     environment: "node",
     // Modules only. Individual React components are deliberately not tested in
     // isolation — the seam above them is Playwright. design/ holds Node-side
-    // checks over the design tokens.
+    // checks over the design tokens, and what draws the favicon.
     include: ["src/**/*.test.ts", "design/**/*.test.ts"],
   },
 });
