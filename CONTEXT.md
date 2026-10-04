@@ -306,6 +306,11 @@ exact, and left unset otherwise.
 A **Normalized Position** is a snapshot of what the venue says is held, never history: it travels
 apart from every record that lands in the ledger and has exactly one consumer, **Reconciliation**.
 
+An **Address Indexer**'s Normalized Transfer names what moved by the chain's own identity — its
+coin, or a token's contract — never by a bare symbol, which is what lets an Instrument the ledger
+has never seen arrive `unacknowledged` instead of refusing the read. A network fee the address paid
+for a transaction that moved nothing else is its own record, a **Normalized Network Fee**.
+
 ### Reconciliation
 
 The comparison, per **Connection** and per **Instrument**, of the live balance a venue states

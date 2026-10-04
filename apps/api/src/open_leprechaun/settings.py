@@ -10,6 +10,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from open_leprechaun import __version__
+from open_leprechaun.ports.solana import PUBLIC_RPC_URL
 
 # .../apps/api/src/open_leprechaun/settings.py -> repository root.
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -78,6 +79,14 @@ class Settings(BaseSettings):
             "units of the Instrument, before reconciliation reports a gap "
             "(ticket 39). The default forgives one unit of the eighth decimal "
             "place — venue rounding — and nothing more; a run may state its own."
+        ),
+    )
+    solana_rpc_url: str = Field(
+        default=PUBLIC_RPC_URL,
+        description=(
+            "The Solana JSON-RPC endpoint the Address Indexer reads (ticket 38). "
+            "The default is the public endpoint, which needs no key and is "
+            "rate-limited; a provider's endpoint reads a long history faster."
         ),
     )
     scheduler_enabled: bool = Field(

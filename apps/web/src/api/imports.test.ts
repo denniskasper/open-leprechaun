@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  commitAddressImport,
   commitCsvImport,
+  fetchAddressIndexers,
   fetchCsvConnectors,
   fetchImportBatches,
+  previewAddressImport,
   previewCsvImport,
   reverseImportBatch,
 } from "./imports";
@@ -123,6 +126,62 @@ describe("commitCsvImport", () => {
 
     await expect(commitCsvImport({ ...file, label: "export.csv" })).rejects.toThrow(
       "'bitbox:3' is authoritative for this Account.",
+    );
+  });
+});
+
+const indexer = { chain: "solana", name: "Solana", native_symbol: "SOL", lookback_days: null };
+const address = { chain: "solana", address: "Wa11etAddr3ss", account_id: 3 };
+
+describe("fetchAddressIndexers", () => {
+  it("parses the chains the registry serves", async () => {
+    respondWith(200, [indexer]);
+
+    await expect(fetchAddressIndexers()).resolves.toEqual([indexer]);
+  });
+
+  it("refuses a response that is not the contract", async () => {
+    respondWith(200, [{ chain: "solana" }]);
+
+    await expect(fetchAddressIndexers()).rejects.toThrow();
+  });
+});
+
+describe("previewAddressImport", () => {
+  it("parses the preview, warnings included", async () => {
+    respondWith(200, preview);
+
+    await expect(previewAddressImport(address)).resolves.toEqual(preview);
+  });
+
+  it("reports the API's own sentence when the chain cannot be read", async () => {
+    respondWith(502, { detail: "The Solana endpoint is rate-limiting." });
+
+    await expect(previewAddressImport(address)).rejects.toThrow(
+      "The Solana endpoint is rate-limiting.",
+    );
+  });
+});
+
+describe("commitAddressImport", () => {
+  it("parses what the commit did", async () => {
+    const committed = {
+      batch_id: 9,
+      created: 1,
+      duplicates: 0,
+      skipped: 0,
+      instruments_created: 1,
+    };
+    respondWith(201, committed);
+
+    await expect(commitAddressImport(address)).resolves.toEqual(committed);
+  });
+
+  it("reports the API's own sentence when another address is authoritative", async () => {
+    respondWith(409, { detail: "'solana:0ther' is authoritative for this Account." });
+
+    await expect(commitAddressImport(address)).rejects.toThrow(
+      "'solana:0ther' is authoritative for this Account.",
     );
   });
 });

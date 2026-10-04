@@ -97,7 +97,7 @@ def find_instrument(
     queries = {
         "token": (
             "SELECT id FROM instrument WHERE family = 'crypto' AND type = 'token'"
-            " AND chain = :chain AND contract_address = lower(:contract_address)"
+            " AND chain = :chain AND lower(contract_address) = lower(:contract_address)"
         ),
         "native": (
             "SELECT id FROM instrument WHERE family = 'crypto' AND type = 'native'"

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileUp, Table2, Undo2 } from "lucide-react";
+import { Download, FileUp, Radar, Table2, Undo2 } from "lucide-react";
 import { useId, useState, type ChangeEvent } from "react";
 import {
   commitCsvImport,
+  fetchAddressIndexers,
   fetchCsvConnectors,
   fetchImportBatches,
   previewCsvImport,
@@ -14,6 +15,7 @@ import {
 } from "@/api/imports";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
+import { AddressPanel } from "@/pages/imports-address";
 import { MappingPanel } from "@/pages/imports-mapping";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
@@ -59,16 +61,18 @@ export function committedWords(committed: CommittedImport, locale?: string): str
 }
 
 export function ImportsPage() {
-  // Which flow is open: a shipped connector's file, or the Admin's own
-  // column mapping for a venue nothing ships a connector for.
-  const [flow, setFlow] = useState<"connector" | "mapping" | null>(null);
+  // Which flow is open: a shipped connector's file, the Admin's own column
+  // mapping for a venue nothing ships a connector for, or a public address
+  // read straight off its chain.
+  const [flow, setFlow] = useState<"connector" | "mapping" | "address" | null>(null);
   const importing = flow !== null;
   const batches = useQuery({ queryKey: ["import-batches"], queryFn: fetchImportBatches });
   const platforms = useQuery({ queryKey: ["platforms"], queryFn: fetchPlatforms });
   const connectors = useQuery({ queryKey: ["csv-connectors"], queryFn: fetchCsvConnectors });
+  const indexers = useQuery({ queryKey: ["address-indexers"], queryFn: fetchAddressIndexers });
 
-  const failed = batches.error ?? platforms.error ?? connectors.error;
-  const loaded = batches.data && platforms.data && connectors.data;
+  const failed = batches.error ?? platforms.error ?? connectors.error ?? indexers.error;
+  const loaded = batches.data && platforms.data && connectors.data && indexers.data;
 
   return (
     <div className="space-y-10">
@@ -87,6 +91,10 @@ export function ImportsPage() {
                 <Table2 aria-hidden />
                 Map a file
               </Button>
+              <Button variant="outline" onClick={() => setFlow("address")}>
+                <Radar aria-hidden />
+                Read an address
+              </Button>
             </>
           )
         }
@@ -102,13 +110,20 @@ export function ImportsPage() {
       {flow === "mapping" && loaded && (
         <MappingPanel platforms={platforms.data} onDone={() => setFlow(null)} />
       )}
+      {flow === "address" && loaded && (
+        <AddressPanel
+          indexers={indexers.data}
+          platforms={platforms.data}
+          onDone={() => setFlow(null)}
+        />
+      )}
 
       {failed ? (
         <ErrorState
           title="The imports could not be loaded"
-          detail="The API did not answer with the import batches, the accounts or the connectors."
+          detail="The API did not answer with the import batches, the accounts, the connectors or the chains."
           onRetry={() => {
-            for (const query of [batches, platforms, connectors]) {
+            for (const query of [batches, platforms, connectors, indexers]) {
               if (query.error) void query.refetch();
             }
           }}
@@ -117,7 +132,7 @@ export function ImportsPage() {
         <EmptyState
           icon={Download}
           title="No imports yet"
-          description="Nothing has been imported. Choose a wallet's exported file — or map an unsupported venue's columns yourself — see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
+          description="Nothing has been imported. Choose a wallet's exported file, map an unsupported venue's columns yourself, or read a self-custody address straight off its chain — see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
           action={
             <Button variant="outline" onClick={() => setFlow("connector")}>
               <FileUp aria-hidden />

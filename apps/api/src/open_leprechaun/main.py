@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from open_leprechaun import API_PREFIX, __version__
 from open_leprechaun.db import get_engine
 from open_leprechaun.routers import (
+    address_imports,
     aggregates,
     auth,
     column_mappings,
@@ -87,6 +88,7 @@ def create_app(*, scheduling: bool = False) -> FastAPI:
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(meta.router, prefix=API_PREFIX)
     app.include_router(auth.router, prefix=API_PREFIX)
+    app.include_router(address_imports.router, prefix=API_PREFIX)
     app.include_router(aggregates.router, prefix=API_PREFIX)
     app.include_router(column_mappings.router, prefix=API_PREFIX)
     app.include_router(connections.router, prefix=API_PREFIX)

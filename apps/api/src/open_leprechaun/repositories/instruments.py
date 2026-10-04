@@ -33,6 +33,15 @@ _COLUMNS = ", ".join(_COLUMN_NAMES)
 _PREFIXED_COLUMNS = ", ".join(f"i.{name}" for name in _COLUMN_NAMES)
 
 
+def canonical_contract_address(contract_address: str) -> str:
+    """The one spelling a contract address is stored under: hex folds to
+    lowercase (its casing is only a checksum), anything else keeps the casing
+    the chain wrote it in."""
+    if contract_address[:2].lower() == "0x":
+        return contract_address.lower()
+    return contract_address
+
+
 def create_crypto_token(
     engine: Engine,
     *,
@@ -44,8 +53,11 @@ def create_crypto_token(
 ) -> int | None:
     """A crypto Instrument keyed on chain and contract address.
 
-    Stored lowercased for display consistency; the unique index compares
-    lowercased regardless, so checksum casing cannot mint a second identity.
+    A hex address is stored lowercased for display consistency; the unique
+    index compares lowercased regardless, so checksum casing cannot mint a
+    second identity. Any other address is stored exactly as given, because a
+    chain that writes base58 means its casing — folded, the address names
+    nothing on that chain.
     The contract opens the identifier history, as the ISIN does for a security.
     A stablecoin carries the currency it pegs, which routes its EUR value to
     the daily reference rate (ticket 17).
@@ -59,11 +71,14 @@ def create_crypto_token(
                 symbol=symbol,
                 name=name,
                 chain=chain,
-                contract_address=contract_address.lower(),
+                contract_address=canonical_contract_address(contract_address),
                 pegged_currency=pegged_currency,
             )
             _insert_identifier(
-                connection, instrument_id, kind="contract_address", value=contract_address.lower()
+                connection,
+                instrument_id,
+                kind="contract_address",
+                value=canonical_contract_address(contract_address),
             )
             return instrument_id
     except IntegrityError:

@@ -5,6 +5,8 @@ import { postJson, refusal } from "@/api/http";
 export const IMPORT_BATCHES_URL = "/api/import-batches";
 export const CSV_CONNECTORS_URL = "/api/csv-connectors";
 export const CSV_IMPORTS_URL = "/api/csv-imports";
+export const ADDRESS_INDEXERS_URL = "/api/address-indexers";
+export const ADDRESS_IMPORTS_URL = "/api/address-imports";
 
 /**
  * One import, recorded as a unit and reversible as a unit (ticket 31). The
@@ -112,6 +114,52 @@ export async function commitCsvImport(
   file: ImportFile & { label: string },
 ): Promise<CommittedImport> {
   const response = await postJson(CSV_IMPORTS_URL, file);
+  if (!response.ok) {
+    throw await refusal(response, "The import could not be committed.");
+  }
+  return committedImportSchema.parse(await response.json());
+}
+
+/**
+ * One chain a public address can be read on (ticket 38), with the coin its
+ * network fees are paid in. No credential belongs to it: a chain's history is
+ * public, so reading it is read-only by nature.
+ */
+export const addressIndexerSchema = z.object({
+  chain: z.string(),
+  name: z.string(),
+  native_symbol: z.string(),
+  /** How far back the indexer reaches, in days; null is the whole history. */
+  lookback_days: z.number().nullable(),
+});
+
+export type AddressIndexer = z.infer<typeof addressIndexerSchema>;
+
+export interface ImportAddress {
+  chain: string;
+  /** The public address, exactly as the chain writes it — casing included. */
+  address: string;
+  account_id: number;
+}
+
+export async function fetchAddressIndexers(): Promise<AddressIndexer[]> {
+  const response = await fetch(ADDRESS_INDEXERS_URL);
+  if (!response.ok) {
+    throw new Error(`The API answered ${response.status} instead of listing the chains.`);
+  }
+  return z.array(addressIndexerSchema).parse(await response.json());
+}
+
+export async function previewAddressImport(address: ImportAddress): Promise<ImportPreview> {
+  const response = await postJson(`${ADDRESS_IMPORTS_URL}/preview`, address);
+  if (!response.ok) {
+    throw await refusal(response, "The address could not be read.");
+  }
+  return importPreviewSchema.parse(await response.json());
+}
+
+export async function commitAddressImport(address: ImportAddress): Promise<CommittedImport> {
+  const response = await postJson(ADDRESS_IMPORTS_URL, address);
   if (!response.ok) {
     throw await refusal(response, "The import could not be committed.");
   }
