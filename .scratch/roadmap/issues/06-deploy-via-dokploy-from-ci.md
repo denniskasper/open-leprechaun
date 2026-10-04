@@ -31,15 +31,15 @@ of order. Do these in sequence — each step assumes the one above it.
 ## Pipeline — code
 
 - [ ] The platform's own auto-deploy is disabled; CI is the only trigger
-- [ ] The deploy job depends on every check job and runs only on the main branch
-- [ ] The runner joins the private network as a short-lived node scoped to a CI tag
-- [ ] A rejected deployment fails the step visibly, showing what the platform replied
-- [ ] Migrations run as a release step, not at application startup
-- [ ] Credentials for the platform and the network come from repository secrets, never the workflow
+- [x] The deploy job depends on every check job and runs only on the main branch
+- [x] The runner joins the private network as a short-lived node scoped to a CI tag
+- [x] A rejected deployment fails the step visibly, showing what the platform replied
+- [x] Migrations run as a release step, not at application startup
+- [x] Credentials for the platform and the network come from repository secrets, never the workflow
       file
-- [ ] A superseding push to main never kills a deployment mid-flight — either main's concurrency
+- [x] A superseding push to main never kills a deployment mid-flight — either main's concurrency
       group stops cancelling in progress, or the deploy gets a group of its own
-- [ ] The API is started trusting the proxy's forwarded headers and nothing else's
+- [x] The API is started trusting the proxy's forwarded headers and nothing else's
       (`--proxy-headers --forwarded-allow-ips <the proxy>`), so login throttling (ticket 61) counts
       failures per real client address rather than against the proxy's one address
 
@@ -73,3 +73,22 @@ none is ticked here on inference. Ticket 08 added two things this ticket inherit
 proxy-header criterion now also protects password change and the two-factor disable, which share
 login's per-address count; and `docs/runbook.md`'s two-factor entry gives a generic
 `docker exec` example that should become the real command once the container shape exists.
+
+**Update (2026-10-04).** The pipeline half is written: a `Dockerfile` with an `api` and a `web`
+image, `deploy/compose.tailnet.yaml`, the deploy and not-public scripts, the body of
+`.github/workflows/deploy.yml`, and `docs/deployment.md` for what is set up by hand. Ticked above
+is what the code does; none of it has run against Dokploy yet, so the first deployment is the proof.
+The stack was started locally with a stand-in for the Tailscale sidecar: migrations ran before the
+API, the client and deep links were served, and a forwarded address from loopback reached the API's
+log as the client. The auto-deploy criterion stays unticked — it is a switch in Dokploy.
+
+Two things differ from the ticket as written. The instance is served over the tailnet only, by a
+Tailscale sidecar under a MagicDNS name, so there is no domain to move and no Traefik router; the
+"domain moves" cutover step has nothing to act on. And the forwarded-header criterion is met with
+loopback as the one trusted address, because the API, the web server and the sidecar share a
+network namespace.
+
+Observed, for whoever ticks the cutover: on GitHub the old repository is `open-leprechaun-legacy`,
+private and archived, and this one is published as `open-leprechaun`; the Dokploy host runs no old
+application. Not observed: a backup of the old application's data. The deploy job is skipped until
+the `DOKPLOY_COMPOSE_ID` repository variable is set.

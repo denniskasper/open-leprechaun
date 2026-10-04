@@ -11,10 +11,10 @@ See [`.scratch/roadmap/spec.md`](.scratch/roadmap/spec.md) for the plan,
 [`CONTEXT.md`](CONTEXT.md) for the domain vocabulary and [`docs/adr/`](docs/adr) for the
 decisions behind it.
 
-> **Current state: feature-complete against the roadmap, not yet deployed.** Every roadmap ticket
-> but the go-live one (06) has landed: the ledger, imports and venue adapters, the tax engine and
-> its reports, the portfolio, and the Admin's security settings. Publishing the pipeline's deploy
-> job and cutting over from the old application are what remain.
+> **Current state: feature-complete against the roadmap.** Every roadmap ticket has landed in
+> code: the ledger, imports and venue adapters, the tax engine and its reports, the portfolio, the
+> Admin's security settings, and a pipeline that deploys a green `main`. How the one deployed
+> instance is set up is in [`docs/deployment.md`](docs/deployment.md).
 
 ## Prerequisites
 
@@ -88,6 +88,7 @@ docs/agents/ Conventions agents and contributors follow — design, versioning, 
 docs/research/  Primary-source research the tax logic rests on
 docs/runbook.md What to do when the running instance needs a hand from the host
 .github/     The CI pipeline: API checks, web checks, e2e, and the deploy job
+deploy/      The deployed instance: its compose stack, web server and deploy scripts
 .scratch/    Spec and implementation tickets (this repo has no hosted tracker)
 ```
 

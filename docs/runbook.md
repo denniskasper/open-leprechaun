@@ -38,9 +38,13 @@ pnpm auth:disable-two-factor
 python -m open_leprechaun.disable_two_factor
 ```
 
-If the API runs in a container, run the second form inside that container — for example
-`docker exec -it <api-container> python -m open_leprechaun.disable_two_factor` — so it inherits the
-container's environment.
+The deployed instance runs in a container, so run the second form inside it, where it inherits the
+container's environment. On the server, with the name `docker ps --filter name=-api-1` shows
+(`docs/deployment.md`):
+
+```sh
+docker exec -it <service>-api-1 python -m open_leprechaun.disable_two_factor
+```
 
 **What it does.** Clears the Admin's two-factor secret and any unfinished enrollment. Nothing
 else: the password is unchanged, open Sessions stay open, and no ledger data is touched. It asks

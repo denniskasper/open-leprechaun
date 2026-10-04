@@ -1,0 +1,39 @@
+# Prose and tooling the build does not read. A change to any of these must not
+# cost a rebuild that ships a byte-identical image.
+.scratch/
+docs/
+.claude/
+**/*.md
+
+.git/
+.gitignore
+.github/
+# Only the web server's configuration is copied from deploy/.
+deploy/*
+!deploy/Caddyfile
+
+# Tests ship with neither image.
+apps/api/tests/
+apps/web/e2e/
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.egg-info/
+
+# Node
+**/node_modules/
+apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+**/*.tsbuildinfo
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+
+.tmp/

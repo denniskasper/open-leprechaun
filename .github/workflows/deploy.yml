@@ -1,16 +1,60 @@
 # One concern: deploying a green main. Called by ci.yml; not triggered
 # directly. The gate itself lives in the caller — ci.yml's `needs` list is
-# what makes every check a precondition. This body is a placeholder until
-# ticket 06 lands the Dokploy deployment.
+# what makes every check a precondition. Dokploy's own auto-deploy is off: this
+# job is the only thing that asks it (ADR-0002). See docs/deployment.md.
 name: Deploy
 
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    name: Deploy gate
+    name: Deploy through Dokploy
     runs-on: ubuntu-latest
+    # One deployment at a time. Dokploy builds the head of main whichever run
+    # asks, so a waiting deployment overtaken by a newer one loses nothing.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    # The repository is public and so are its logs. Everything that names the
+    # server or the tailnet is a secret, so a log line that echoes it is masked;
+    # only the compose id is a variable, because ci.yml's condition must read it.
+    env:
+      DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+      DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+      DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
     steps:
-      - name: All checks green
-        run: echo "Eligible to deploy — the Dokploy deployment lands with ticket 06."
+      - uses: actions/checkout@v7
+
+      # Dokploy has no public address. The runner joins the tailnet as an
+      # ephemeral node tagged tag:ci, which the tailnet's policy lets reach the
+      # Dokploy host and nothing else; the node is gone when the job ends.
+      - name: Join the tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy and wait
+        run: deploy/dokploy-deploy.sh
+
+  # Tailnet-only, verified rather than assumed. This runner is a stranger on
+  # the public internet and never joins the tailnet, which makes it the right
+  # place to ask from.
+  not-public:
+    name: The instance does not answer a stranger
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    env:
+      APP_HOSTNAME: ${{ secrets.APP_HOSTNAME }}
+      SERVER_PUBLIC_IP: ${{ secrets.SERVER_PUBLIC_IP }}
+      SERVER_PUBLIC_IPV6: ${{ secrets.SERVER_PUBLIC_IPV6 }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Try every door
+        run: deploy/verify-not-public.sh

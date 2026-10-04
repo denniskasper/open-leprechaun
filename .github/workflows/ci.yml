@@ -12,9 +12,11 @@ on:
   pull_request:
 
 # A superseding push cancels the run it overtook; per-ref, so runs on
-# different branches never cancel each other.
+# different branches never cancel each other. Not on main: there every push
+# keeps its own run, because a run cancelled while it waits for Dokploy would
+# take its deployment with it.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
   cancel-in-progress: true
 
 jobs:
@@ -31,9 +33,12 @@ jobs:
     uses: ./.github/workflows/e2e.yml
 
   # The gate every deployment stands behind: eligible only when all three
-  # checks are green, and only on main. Ticket 06 fills the deploy workflow's
-  # body; the `needs` list here is the part that must survive it.
+  # checks are green, and only on main. The last clause skips the deployment
+  # while no Dokploy service is named, rather than failing every push to main;
+  # secrets cannot be read in a job condition, so the variable stands in for
+  # them.
   deploy:
     needs: [api, web, e2e]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.DOKPLOY_COMPOSE_ID != ''
     uses: ./.github/workflows/deploy.yml
+    secrets: inherit

@@ -1,0 +1,32 @@
+# The web server of the deployed instance: the built client, and /api forwarded
+# to the API beside it. Same-origin in the browser, as in development, where
+# Vite's proxy plays this part.
+{
+	admin off
+	auto_https off
+	servers {
+		# Tailscale's serve proxy is the only caller and reaches this over
+		# loopback; its X-Forwarded-For names the tailnet client, and is passed
+		# on to the API only because it comes from there.
+		trusted_proxies static 127.0.0.1/32
+	}
+}
+
+:8080 {
+	# Loopback only: the container shares the Tailscale sidecar's network
+	# namespace, so any other address would be reachable from the Docker network.
+	bind 127.0.0.1
+
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		root * /srv
+		# Routes live in the client; a deep link is answered with the application.
+		try_files {path} /index.html
+		file_server
+	}
+}
