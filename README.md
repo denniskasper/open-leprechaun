@@ -105,6 +105,11 @@ then an `Authorization: Bearer` header. A session expires `SESSION_TTL_HOURS` (d
 days) after its last authenticated request; every authenticated request renews it, so renewal is
 automatic while the app is in use and an idle instance logs the admin out.
 
+Sessions are ended from the app: the header signs out of the current one, and Settings → Security
+shows how many are open and signs out of all of them (`DELETE /api/auth/sessions`). The password is
+changed there too — `POST /api/auth/password` takes the current password and the new one, revokes
+every other session and keeps the caller's. Setup and change share one 12-character minimum.
+
 ## Testing
 
 Four seams, in descending order of how much lives at each — the reasoning is in the spec.

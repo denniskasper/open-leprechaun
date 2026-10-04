@@ -2,16 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clover } from "lucide-react";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { fetchSetupStatus, logIn, runSetup } from "@/api/auth";
+import { fetchSetupStatus, logIn, MINIMUM_PASSWORD_LENGTH, runSetup } from "@/api/auth";
 import { ErrorState } from "@/components/patterns/error-state";
+import { PasswordField } from "@/components/patterns/password-field";
 import { EnvironmentBadge } from "@/components/shell/instance";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { watchSystemTheme } from "@/lib/theme";
-
-/** The floor the API enforces; stated here so the form can say it up front. */
-const MINIMUM_PASSWORD_LENGTH = 12;
 
 /**
  * The two screens that exist before the shell does: first-run setup and
@@ -50,7 +47,7 @@ export function SetupPage() {
       description="A fresh instance serves nothing until its Admin has a password. It is set once, here, and this screen never returns."
     >
       <form onSubmit={submit} className="space-y-5">
-        <Field
+        <PasswordField
           id={passwordId}
           label="Password"
           hint={`At least ${MINIMUM_PASSWORD_LENGTH} characters.`}
@@ -60,7 +57,7 @@ export function SetupPage() {
           autoComplete="new-password"
           autoFocus
         />
-        <Field
+        <PasswordField
           id={confirmationId}
           label="Confirm password"
           minLength={MINIMUM_PASSWORD_LENGTH}
@@ -103,7 +100,7 @@ export function LoginPage() {
       description="The session lives in an httpOnly cookie and renews itself with use; an idle month logs you out."
     >
       <form onSubmit={submit} className="space-y-5">
-        <Field
+        <PasswordField
           id={passwordId}
           label="Password"
           value={password}
@@ -144,60 +141,6 @@ function useEnter({ setUpFirst = false }: { setUpFirst?: boolean } = {}) {
       navigate("/", { replace: true });
     },
   });
-}
-
-function Field({
-  id,
-  label,
-  hint,
-  error,
-  minLength,
-  value,
-  onChange,
-  autoComplete,
-  autoFocus,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  error?: string;
-  minLength?: number;
-  value: string;
-  onChange: (value: string) => void;
-  autoComplete: string;
-  autoFocus?: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="microlabel block text-muted-foreground">
-        {label}
-      </label>
-      <Input
-        id={id}
-        type="password"
-        required
-        minLength={minLength}
-        className="font-mono"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete={autoComplete}
-        autoFocus={autoFocus}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
-      />
-      {error ? (
-        <p id={`${id}-error`} role="alert" className="text-sm text-alarm">
-          {error}
-        </p>
-      ) : (
-        hint && (
-          <p id={`${id}-hint`} className="text-sm text-muted-foreground">
-            {hint}
-          </p>
-        )
-      )}
-    </div>
-  );
 }
 
 function AuthScreen({

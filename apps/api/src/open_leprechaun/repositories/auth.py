@@ -34,6 +34,23 @@ def create_admin(engine: Engine, password_hash: str) -> bool:
     return True
 
 
+def replace_password_hash(engine: Engine, password_hash: str, keep_token_hash: str | None) -> None:
+    """Swap the credential and revoke every session but the one kept, atomically.
+
+    One transaction, so a leaked session can never outlive the password it was
+    minted under by slipping between the two statements.
+    """
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE admin_user SET password_hash = :password_hash"),
+            {"password_hash": password_hash},
+        )
+        connection.execute(
+            text("DELETE FROM admin_session WHERE token_hash IS DISTINCT FROM :keep"),
+            {"keep": keep_token_hash},
+        )
+
+
 def create_session(engine: Engine, token_hash: str, expires_at: datetime) -> None:
     with engine.begin() as connection:
         connection.execute(
@@ -69,3 +86,15 @@ def delete_session(engine: Engine, token_hash: str) -> None:
 def purge_expired_sessions(engine: Engine, now: datetime) -> None:
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM admin_session WHERE expires_at <= :now"), {"now": now})
+
+
+def delete_all_sessions(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM admin_session"))
+
+
+def count_live_sessions(engine: Engine, now: datetime) -> int:
+    with engine.connect() as connection:
+        return connection.execute(
+            text("SELECT count(*) FROM admin_session WHERE expires_at > :now"), {"now": now}
+        ).scalar_one()

@@ -319,3 +319,159 @@ def test_the_session_endpoint_names_the_caller(production_client):
 
     assert response.status_code == 200
     assert response.json() == {"subject": "admin"}
+
+
+NEW_PASSWORD = "a rather different passphrase"
+
+
+def test_setup_and_change_share_one_minimum_password_length(production_client):
+    """One floor, two doors: neither takes an 11-character password."""
+    eleven = "x" * 11
+
+    assert production_client.post("/api/auth/setup", json={"password": eleven}).status_code == 422
+
+    _set_up_and_log_in(production_client)
+    changed = production_client.post(
+        "/api/auth/password", json={"current_password": PASSWORD, "new_password": eleven}
+    )
+    assert changed.status_code == 422
+    # The twelfth character is what both were waiting for.
+    accepted = production_client.post(
+        "/api/auth/password", json={"current_password": PASSWORD, "new_password": "x" * 12}
+    )
+    assert accepted.status_code == 204
+
+
+def test_changing_the_password_refuses_a_wrong_current_password(production_client):
+    _set_up_and_log_in(production_client)
+
+    refused = production_client.post(
+        "/api/auth/password",
+        json={"current_password": "not the password", "new_password": NEW_PASSWORD},
+    )
+
+    assert refused.status_code == 403
+    # Nothing changed: the old password still logs in, the new one does not.
+    assert production_client.post("/api/auth/login", json={"password": PASSWORD}).status_code == 200
+    assert (
+        production_client.post("/api/auth/login", json={"password": NEW_PASSWORD}).status_code
+        == 401
+    )
+
+
+def test_a_changed_password_replaces_the_old_one_at_login(production_client):
+    _set_up_and_log_in(production_client)
+
+    changed = production_client.post(
+        "/api/auth/password", json={"current_password": PASSWORD, "new_password": NEW_PASSWORD}
+    )
+
+    assert changed.status_code == 204
+    assert production_client.post("/api/auth/login", json={"password": PASSWORD}).status_code == 401
+    assert (
+        production_client.post("/api/auth/login", json={"password": NEW_PASSWORD}).status_code
+        == 200
+    )
+
+
+def _log_in_elsewhere(client: TestClient, password: str = PASSWORD) -> str:
+    """A second Session, as another browser would hold: its token, not our cookie."""
+    cookie = client.cookies.get(SESSION_COOKIE)
+    token = client.post("/api/auth/login", json={"password": password}).json()["token"]
+    client.cookies.set(SESSION_COOKIE, cookie)
+    return token
+
+
+def test_changing_the_password_revokes_every_other_session_and_keeps_this_one(
+    production_client,
+):
+    _add_protected_probe(production_client)
+    _set_up_and_log_in(production_client)
+    elsewhere = _log_in_elsewhere(production_client)
+
+    changed = production_client.post(
+        "/api/auth/password", json={"current_password": PASSWORD, "new_password": NEW_PASSWORD}
+    )
+
+    assert changed.status_code == 204
+    # The cookie this client changed the password with still works...
+    assert production_client.get("/api/probe").status_code == 200
+    # ...and the other browser's Session is gone.
+    production_client.cookies.clear()
+    stranger = production_client.get("/api/probe", headers={"Authorization": f"Bearer {elsewhere}"})
+    assert stranger.status_code == 401
+
+
+def test_a_bearer_client_that_changes_the_password_keeps_its_own_session(production_client):
+    """The session kept is the one that authenticated, cookie or not."""
+    _add_protected_probe(production_client)
+    browser = _set_up_and_log_in(production_client)
+    client = _log_in_elsewhere(production_client)
+    production_client.cookies.clear()
+    as_client = {"Authorization": f"Bearer {client}"}
+
+    changed = production_client.post(
+        "/api/auth/password",
+        json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},
+        headers=as_client,
+    )
+
+    assert changed.status_code == 204
+    assert production_client.get("/api/probe", headers=as_client).status_code == 200
+    abandoned = production_client.get("/api/probe", headers={"Authorization": f"Bearer {browser}"})
+    assert abandoned.status_code == 401
+
+
+def test_changing_the_password_before_setup_points_at_setup(make_client, alembic_config, engine):
+    """Development authenticates nobody, so it can reach this with no admin."""
+    command.upgrade(alembic_config, "head")
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM admin_user"))
+    client = make_client(Environment.development, engine=engine)
+
+    response = client.post(
+        "/api/auth/password", json={"current_password": PASSWORD, "new_password": NEW_PASSWORD}
+    )
+
+    assert response.status_code == 409
+
+
+def test_the_active_session_count_follows_logins_and_ignores_the_expired(production_client, engine):
+    _set_up_and_log_in(production_client)
+    assert production_client.get("/api/auth/sessions").json() == {"active": 1}
+
+    elsewhere = _log_in_elsewhere(production_client)
+    assert production_client.get("/api/auth/sessions").json() == {"active": 2}
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE admin_session SET expires_at = now() - interval '1 hour' "
+                "WHERE token_hash = encode(sha256(convert_to(:token, 'UTF8')), 'hex')"
+            ),
+            {"token": elsewhere},
+        )
+    assert production_client.get("/api/auth/sessions").json() == {"active": 1}
+
+
+def test_signing_out_everywhere_revokes_every_session_including_this_one(production_client):
+    _add_protected_probe(production_client)
+    here = _set_up_and_log_in(production_client)
+    elsewhere = _log_in_elsewhere(production_client)
+
+    response = production_client.delete("/api/auth/sessions")
+
+    assert response.status_code == 204
+    # The browser is told to drop its cookie, not left holding a dead one: of
+    # the cookies this response sets, the last word is the deletion.
+    assert response.headers.get_list("set-cookie")[-1].startswith(f'{SESSION_COOKIE}=""')
+    production_client.cookies.clear()
+    for token in (here, elsewhere):
+        refused = production_client.get("/api/probe", headers={"Authorization": f"Bearer {token}"})
+        assert refused.status_code == 401
+
+
+def test_signing_out_everywhere_requires_a_session(production_client):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+
+    assert production_client.delete("/api/auth/sessions").status_code == 401

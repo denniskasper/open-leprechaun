@@ -9,7 +9,7 @@ all, or none that names a live session, is a 401.
 """
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Annotated
 
@@ -28,9 +28,14 @@ class Principal:
     """The authenticated caller. This application only ever has the one admin."""
 
     subject: str
+    session_token: str | None = field(default=None, repr=False)
+    """The token that authenticated this request; None where nothing had to.
+
+    Kept out of the repr so a logged principal never spells a live credential.
+    """
 
 
-_ADMIN = Principal(subject="admin")
+_ADMIN_SUBJECT = "admin"
 
 
 def require_admin(
@@ -42,7 +47,7 @@ def require_admin(
     do not use it.
     """
     if settings.environment is Environment.development:
-        return _ADMIN
+        return Principal(subject=_ADMIN_SUBJECT)
     for token in presented_tokens(request):
         if sessions.authenticate(engine, token, settings.session_ttl):
             if request.cookies.get(SESSION_COOKIE) == token:
@@ -50,7 +55,7 @@ def require_admin(
                 # browser's copy must slide with it, or the cookie dies a TTL
                 # after login no matter how recently the admin was here.
                 set_session_cookie(response, token, settings.session_ttl)
-            return _ADMIN
+            return Principal(subject=_ADMIN_SUBJECT, session_token=token)
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required.",

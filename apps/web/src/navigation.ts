@@ -11,6 +11,7 @@ import {
   type LucideIcon,
   Scale,
   Shapes,
+  ShieldCheck,
   Split,
   Vault,
 } from "lucide-react";
@@ -25,6 +26,22 @@ export interface NavSection {
   label: string;
   items: NavItem[];
 }
+
+// Never empty: a bare /settings has to have somewhere to go.
+const SETTINGS_PANELS: [NavItem, ...NavItem[]] = [
+  { to: "/settings/platforms", label: "Platforms", icon: Vault },
+  { to: "/settings/connections", label: "Connections", icon: KeyRound },
+  { to: "/settings/statutory", label: "Statutory", icon: Gavel },
+  { to: "/settings/scheduled-tasks", label: "Scheduled tasks", icon: CalendarClock },
+  { to: "/settings/security", label: "Security", icon: ShieldCheck },
+];
+
+/**
+ * Where a bare `/settings` lands. Settings has no index page — a list of
+ * links to the panels would only repeat the sidebar — so it opens its first
+ * panel instead.
+ */
+export const SETTINGS_INDEX = SETTINGS_PANELS[0].to;
 
 /**
  * The one place navigation is declared. A later ticket that adds a screen adds
@@ -47,15 +64,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Tax",
     items: [{ to: "/tax/overview", label: "Multi-year overview", icon: CalendarRange }],
   },
-  {
-    label: "Settings",
-    items: [
-      { to: "/settings/platforms", label: "Platforms", icon: Vault },
-      { to: "/settings/connections", label: "Connections", icon: KeyRound },
-      { to: "/settings/statutory", label: "Statutory", icon: Gavel },
-      { to: "/settings/scheduled-tasks", label: "Scheduled tasks", icon: CalendarClock },
-    ],
-  },
+  { label: "Settings", items: SETTINGS_PANELS },
   {
     label: "System",
     items: [{ to: "/", label: "Health", icon: Activity }],

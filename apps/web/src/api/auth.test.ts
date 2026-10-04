@@ -1,10 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRefusal, fetchSession, fetchSetupStatus, logIn, runSetup } from "./auth";
+import {
+  ApiRefusal,
+  changePassword,
+  fetchSession,
+  fetchSessionCount,
+  fetchSetupStatus,
+  logIn,
+  logOut,
+  logOutEverywhere,
+  runSetup,
+} from "./auth";
 
 function respondWith(status: number, body: unknown): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify(body), { status })),
+  );
+}
+
+/** A 204 carries no body, and Response refuses to be built with one. */
+function respondWithNothing(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(null, { status: 204 })),
   );
 }
 
@@ -85,5 +103,82 @@ describe("fetchSession", () => {
     respondWith(503, { detail: "down" });
 
     await expect(fetchSession()).rejects.toThrow("503");
+  });
+});
+
+describe("logOut", () => {
+  it("asks the API to revoke the session the cookie names", async () => {
+    respondWithNothing();
+
+    await expect(logOut()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
+  });
+
+  it("rejects when the API could not revoke it", async () => {
+    respondWith(500, {});
+
+    await expect(logOut()).rejects.toThrow("Signing out failed.");
+  });
+});
+
+describe("logOutEverywhere", () => {
+  it("deletes every session", async () => {
+    respondWithNothing();
+
+    await expect(logOutEverywhere()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith("/api/auth/sessions", { method: "DELETE" });
+  });
+
+  it("rejects when the API fails", async () => {
+    respondWith(503, { detail: "The database is unreachable." });
+
+    await expect(logOutEverywhere()).rejects.toThrow("The database is unreachable.");
+  });
+
+  it("counts an already-dead session as signed out, so the browser reaches login", async () => {
+    respondWith(401, { detail: "Authentication required." });
+
+    await expect(logOutEverywhere()).resolves.toBeUndefined();
+  });
+});
+
+describe("changePassword", () => {
+  it("posts the current and the new password under the API's field names", async () => {
+    respondWithNothing();
+
+    await changePassword("correct horse battery staple", "a rather different passphrase");
+
+    expect(fetch).toHaveBeenCalledWith("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: "correct horse battery staple",
+        new_password: "a rather different passphrase",
+      }),
+    });
+  });
+
+  it("surfaces a wrong current password as the API's refusal", async () => {
+    respondWith(403, { detail: "Wrong current password." });
+
+    const attempt = changePassword("not the password", "a rather different passphrase");
+
+    await expect(attempt).rejects.toThrow("Wrong current password.");
+    await expect(attempt).rejects.toBeInstanceOf(ApiRefusal);
+  });
+});
+
+describe("fetchSessionCount", () => {
+  it("reads how many sessions are open", async () => {
+    respondWith(200, { active: 3 });
+
+    await expect(fetchSessionCount()).resolves.toBe(3);
+    expect(fetch).toHaveBeenCalledWith("/api/auth/sessions");
+  });
+
+  it("rejects an error status", async () => {
+    respondWith(503, { detail: "down" });
+
+    await expect(fetchSessionCount()).rejects.toThrow("503");
   });
 });

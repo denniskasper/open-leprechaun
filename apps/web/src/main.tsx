@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AppShell } from "@/components/shell/app-shell";
 import { AuthGate } from "@/components/shell/auth-gate";
 import { LoginPage, SetupPage } from "@/pages/auth";
@@ -15,9 +15,11 @@ import { InstrumentsPage } from "@/pages/instruments";
 import { MultiYearOverviewPage } from "@/pages/multi-year-overview";
 import { PlatformsPage } from "@/pages/platforms";
 import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
+import { SecurityPage } from "@/pages/security";
 import { StatutoryPage } from "@/pages/statutory";
 import { TransactionsPage } from "@/pages/transactions";
 import { TransfersPage } from "@/pages/transfers";
+import { SETTINGS_INDEX } from "@/navigation";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -51,10 +53,13 @@ const router = createBrowserRouter([
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "corporate-actions", element: <CorporateActionsPage /> },
           { path: "tax/overview", element: <MultiYearOverviewPage /> },
+          // Settings has no index of its own; it opens on its first panel.
+          { path: "settings", element: <Navigate to={SETTINGS_INDEX} replace /> },
           { path: "settings/platforms", element: <PlatformsPage /> },
           { path: "settings/connections", element: <ConnectionsPage /> },
           { path: "settings/statutory", element: <StatutoryPage /> },
           { path: "settings/scheduled-tasks", element: <ScheduledTasksPage /> },
+          { path: "settings/security", element: <SecurityPage /> },
         ],
       },
     ],

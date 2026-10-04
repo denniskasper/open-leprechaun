@@ -44,6 +44,32 @@ Pages render into the shell's content region and open with `PageHeader`
 in `apps/web/src/main.tsx` and its nav entry in `apps/web/src/navigation.ts`;
 sidebar, mobile sheet and active states follow from that one entry.
 
+## Settings panels
+
+A screen under Settings is one **panel**. A new one is built from
+`apps/web/src/components/patterns/settings-panel.tsx`, never from a bespoke
+frame; `apps/web/src/pages/security.tsx` is the reference. Platforms,
+Connections, Statutory and Scheduled tasks predate the convention and still
+open with `PageHeader` directly — bring one onto it when next reworking it.
+
+- **`SettingsPanel`** — the heading and one line saying what the panel
+  governs. It renders the `PageHeader` itself, so a panel does not add its own.
+- **`SettingsGroup`** — one named group of controls: title and description on
+  the left, controls on the right, stacked on a narrow screen. Groups are
+  ruled apart by hairlines; no cards, no boxes.
+
+The description is where a consequence is stated, before the control that
+causes it ("ends every Session, this one included") — not in a confirmation
+dialog afterwards. A value the panel reports is a fixed-pitch figure with a
+`.microlabel` beside it; a control that failed says so in place, with
+`ErrorState` or a `role="alert"` line, and one that succeeded with a
+`role="status"` line.
+
+A panel registers in `navigation.ts` under Settings as `/settings/<panel>`.
+Settings has no index page: a bare `/settings` redirects to the first panel
+declared there (`SETTINGS_INDEX`), so adding a panel is the one entry plus its
+route.
+
 ## Numbers
 
 Format through `apps/web/src/lib/format.ts`, always. Money goes through

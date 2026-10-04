@@ -38,7 +38,11 @@ class SetupAlreadyDoneError(Exception):
 
 
 class SetupRequiredError(Exception):
-    """A login attempt while no admin exists."""
+    """A login or password change attempted while no admin exists."""
+
+
+class WrongPasswordError(Exception):
+    """A password change that could not prove the current password."""
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,27 @@ def log_in(engine: Engine, password: str, ttl: timedelta) -> IssuedSession | Non
     return IssuedSession(token=token, expires_at=expires_at)
 
 
+def change_password(
+    engine: Engine, current_password: str, new_password: str, keep_token: str | None
+) -> None:
+    """Replace the password, revoking every session except the caller's own.
+
+    The current password is demanded even of an authenticated caller: a
+    session proves someone logged in once, not that they are at the keyboard
+    now. Revoking the others is the point of a change after a suspected leak;
+    keeping this one spares the admin a login straight after proving who they
+    are.
+    """
+    stored = repository.read_password_hash(engine)
+    if stored is None:
+        raise SetupRequiredError
+    if not verify_password(current_password, stored):
+        raise WrongPasswordError
+    repository.replace_password_hash(
+        engine, hash_password(new_password), _digest(keep_token) if keep_token else None
+    )
+
+
 def authenticate(engine: Engine, token: str, ttl: timedelta) -> bool:
     """Whether the token names a live session — renewing it as a side effect."""
     now = datetime.now(UTC)
@@ -82,6 +107,15 @@ def authenticate(engine: Engine, token: str, ttl: timedelta) -> bool:
 
 def log_out(engine: Engine, token: str) -> None:
     repository.delete_session(engine, _digest(token))
+
+
+def log_out_everywhere(engine: Engine) -> None:
+    repository.delete_all_sessions(engine)
+
+
+def count_active_sessions(engine: Engine) -> int:
+    """Sessions that would still authenticate — expired rows await the purge."""
+    return repository.count_live_sessions(engine, datetime.now(UTC))
 
 
 def hash_password(password: str) -> str:
