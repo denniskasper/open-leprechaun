@@ -91,3 +91,6 @@ Decisions worth recording:
   (engine, settings, adapters, connection_id) parameter clump, and the unpair endpoint
   shipping without a UI consumer (the API's recovery for a mispairing).
 - No version bump — releases have not started; this rides as `feat:` like earlier tickets.
+
+**Update (2026-10-04).** `services/exchange_sync.py` and `test_exchange_sync.py`, named above, were renamed
+`connection_sync.py` and `test_connection_sync.py` by ticket 48.

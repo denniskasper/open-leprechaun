@@ -35,8 +35,8 @@ Failures are named: a **rate limit is its own condition**, distinct from an outa
 two demand different responses — waiting versus investigating.
 
 **Daily closes** are stored per Instrument and day with the same source attribution, populated
-by a backfill over a chosen range; the first stored close for a day wins forever, so history
-never silently shifts under a chart.
+by a backfill over a chosen range — and, since ADR 0024, by imports and the scheduled update; the
+first stored close for a day wins forever, so history never silently shifts under a chart.
 
 The chain prices only what the reference-rate universe cannot: stablecoins route to their peg's
 daily rate (ADR-0017), and dangerous or everywhere-ignored Instruments may never acquire a price

@@ -54,7 +54,8 @@ identifies itself honestly as `open-leprechaun`.
 ## Consequences
 
 - Ticket 45's identifier-resolution and pricing ports remain free to choose different
-  providers; nothing outside `ports/onvista.py` knows onvista's vocabulary.
+  providers; nothing outside the onvista ports (`ports/onvista.py`,
+  `ports/onvista_market_data.py`) knows onvista's vocabulary.
 - Extending the category mapping is one line in the provider port; an unmapped fund type simply
   prefills nothing and the fund waits for the Admin, guarded by the finalisation blocker.
 - A provider outage leaves manual creation available; the Instrument is then unpriced —

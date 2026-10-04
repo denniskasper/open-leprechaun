@@ -77,3 +77,8 @@ Notes and deviations:
 - Signing out everywhere with a session that has already died is treated by the web as signed
   out — the Admin lands on login rather than on an error — though nothing was revoked elsewhere.
 - **Admin** and **Session** were already in `CONTEXT.md`; no change was needed.
+
+**Update (2026-10-04).** Ticket 08 added the `code` field to `POST /api/auth/password` and closed the
+unthrottled current-password check: it now counts against login's per-address record
+(ADR 0015), as does the two-factor disable. Still open: Platforms, Connections, Statutory and
+Scheduled tasks have not been moved onto the settings convention, and no ticket tracks that.

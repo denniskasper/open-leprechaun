@@ -45,3 +45,8 @@ applied inside the upsert, so behaviour does not depend on when the purge last r
 that is the real client only if uvicorn is started trusting the proxy's forwarded headers;
 otherwise every caller shares the proxy's address and the count is in effect global — the option
 ADR 0015 rejects. The start command does not exist yet, so the requirement is recorded there.
+
+**Update (2026-10-04).** Ticket 08 widened this. The same count now covers the password and code a live
+session presents before a credential changes. With two-factor on, a correct password alone no
+longer deletes the row: a wrong code is a failure, and a right password still owing its code has
+its delay lifted while the count stands. ADR 0015 was amended to say so.

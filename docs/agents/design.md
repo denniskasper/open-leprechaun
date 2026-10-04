@@ -83,8 +83,10 @@ of money must not appear on any screen — or `formatMoneyExact` where the
 amount is a fixed-point decimal string off the API, or `formatEur` where a
 column of EUR tax figures should align to the cent. Quantities use
 `formatNumber`, or `formatQuantity` where the value is a fixed-point decimal
-string — those must never pass through a float. Timestamps use
-`formatTimestamp`; all format per locale.
+string — those must never pass through a float — and `formatSignedQuantity`
+where the sign is the point. A share is `formatPercent`, a file size
+`formatBytes`. Timestamps use `formatTimestamp` and date-only values
+`formatDate`; all format per locale.
 
 ## Charts
 
@@ -108,6 +110,17 @@ Two reusable patterns in `apps/web/src/components/patterns/`:
   rest of the screen stays usable. An error never blanks the page.
 
 A screen that can be empty or can fail uses these, not a bespoke treatment.
+
+## Other shared patterns
+
+The same directory holds the rest of what screens share:
+
+- **Lamp** (`lamp.tsx`) — the status dot, with `TONE` as the one pairing of a
+  tone (`signal`, `caution`, `alarm`, `idle`) to its text and lamp colour. It
+  breathes only while something is live; a settled state stays still.
+- **PasswordField** (`password-field.tsx`) — a labelled password input with a
+  hint or, in its place, an error. Every form that takes a password uses it.
+- **CodeField** and **QrCode** — see Settings panels above.
 
 ## Motion
 

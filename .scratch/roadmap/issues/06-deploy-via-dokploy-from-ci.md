@@ -65,3 +65,11 @@ Both git hooks (`commit-msg`, `pre-push`) are present in this clone, so the guar
 financial data is live before the first push — worth re-checking rather than assuming, since
 `AGENTS.md` notes they do not survive a fresh clone. Both repositories are public, so that guard
 matters from the first push onward.
+
+**Update (2026-10-04).** The statement above that this repository has never had a remote is out of date:
+`origin` exists and main is pushed to it, so repository secrets and workflow triggers are no longer
+blocked on publication. Which cutover steps that completes is for whoever performed them to tick —
+none is ticked here on inference. Ticket 08 added two things this ticket inherits: the
+proxy-header criterion now also protects password change and the two-factor disable, which share
+login's per-address count; and `docs/runbook.md`'s two-factor entry gives a generic
+`docker exec` example that should become the real command once the container shape exists.

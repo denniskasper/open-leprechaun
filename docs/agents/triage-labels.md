@@ -10,8 +10,9 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
+One further status is this tracker's own and maps to no triage role: `done`, set when a ticket's
+work has landed (see `issue-tracker.md`).
+
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Because this repo's tracker is local markdown, a "label" is the value of the `Status:` line near the top of an issue file — not a hosted-tracker label.
-
-Edit the right-hand column to match whatever vocabulary you actually use.

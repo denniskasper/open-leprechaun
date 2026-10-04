@@ -84,3 +84,6 @@ Decisions worth recording:
   table appends one).
 - No version bump — releases have not started; like tickets 09–21 this rides as `feat:` until
   one is cut.
+
+**Update (2026-10-04).** `delegation.import_warning` was never wired: ticket 31 landed without it, and the
+connectors raise their own warnings. It remains defined and unused, with no ticket owning it.

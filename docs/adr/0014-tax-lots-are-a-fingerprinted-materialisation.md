@@ -23,7 +23,9 @@ the ledger on every request.
 
 Each materialisation records a **per-entity fingerprint** of the inputs that produced it — counts
 and digests per input class, covering transactions, corporate actions, instrument classifications,
-the rates used, and statutory configuration. A lot table whose fingerprint no longer matches the
+the crypto closes that value an event, statutory configuration, and each further class of input a
+later ticket made the figures depend on. Reference rates stay out deliberately: they are
+append-only and immutable (ADR 0017), so no stated figure can change under them. A lot table whose fingerprint no longer matches the
 ledger is detectable, and detectably stale rather than quietly wrong.
 
 This is the same mechanism that marks a report stale, deliberately reused rather than duplicated.

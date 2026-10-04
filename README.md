@@ -11,8 +11,10 @@ See [`.scratch/roadmap/spec.md`](.scratch/roadmap/spec.md) for the plan,
 [`CONTEXT.md`](CONTEXT.md) for the domain vocabulary and [`docs/adr/`](docs/adr) for the
 decisions behind it.
 
-> **Current state: walking skeleton.** The path from Postgres through the API to the browser is
-> connected and proven. Nothing else is wired yet.
+> **Current state: feature-complete against the roadmap, not yet deployed.** Every roadmap ticket
+> but the go-live one (06) has landed: the ledger, imports and venue adapters, the tax engine and
+> its reports, the portfolio, and the Admin's security settings. Publishing the pipeline's deploy
+> job and cutting over from the old application are what remain.
 
 ## Prerequisites
 
@@ -29,8 +31,8 @@ pnpm setup             # installs web dependencies and builds apps/api/.venv
 pnpm dev               # starts Postgres, the API and the web client
 ```
 
-Then open <http://localhost:5173>. The page reports whether the API answered and whether it could
-reach its database. The API's OpenAPI documentation is at <http://localhost:8000/api/docs>.
+Then open <http://localhost:5173>. The first page is the health panel — how fresh the prices,
+rates and syncs are — and, if the API or its database cannot be reached, it says which. The API's OpenAPI documentation is at <http://localhost:8000/api/docs>.
 
 `pnpm setup` creates a Python virtual environment at `apps/api/.venv` and installs the pinned
 requirements into it. No Python package is ever installed globally: every script invokes
@@ -52,6 +54,7 @@ leak they exist to prevent. After a fresh clone, recreate them by hand. See
 | Command             | What it does                                                     |
 | ------------------- | ---------------------------------------------------------------- |
 | `pnpm setup`        | Install web dependencies and create the API virtual environment   |
+| `pnpm setup:api`    | The API virtual environment alone — rebuild it after a requirements change |
 | `pnpm dev`          | Start Postgres, then the API and web dev servers together         |
 | `pnpm dev:api`      | The API alone, reloading, on `API_HOST:API_PORT`                  |
 | `pnpm dev:web`      | The web client alone, on `WEB_PORT`                               |
@@ -81,6 +84,10 @@ playwright install chromium`.
 apps/api/    FastAPI service — routers validate, services decide, repositories query
 apps/web/    React client — Vite, Tailwind, TanStack Query, Zod
 docs/adr/    Architectural decision records
+docs/agents/ Conventions agents and contributors follow — design, versioning, the tracker
+docs/research/  Primary-source research the tax logic rests on
+docs/runbook.md What to do when the running instance needs a hand from the host
+.github/     The CI pipeline: API checks, web checks, e2e, and the deploy job
 .scratch/    Spec and implementation tickets (this repo has no hosted tracker)
 ```
 
@@ -119,6 +126,12 @@ the unchanged token, cookie and bearer alike. Changing the password and disablin
 take a current code as well. A production instance shows a reminder on every page while
 two-factor is off.
 
+Guessing is throttled, never locked out (ADR-0015): each failed attempt from a source address —
+at login, or at the password and code a live session must present before a credential changes —
+delays that address's next one, from one second doubling to at most five minutes. An attempt inside
+the delay is answered 429 with `Retry-After`. The right credentials always get in once the delay
+has passed.
+
 **There are no recovery codes** (ADR-0005). An Admin who has lost their authenticator turns
 two-factor off from the host with `pnpm auth:disable-two-factor` — see the
 [runbook](docs/runbook.md).
@@ -130,7 +143,11 @@ Four seams, in descending order of how much lives at each — the reasoning is i
 1. **The HTTP API against a real Postgres** (`pnpm test:api`). The default seam. Ports get fakes;
    the database does not, because the queries and the migrations are part of what is under test.
    The suite creates its own `<database>_test` database on first run.
-2. **The tax engine as a pure function.** Not yet built.
-3. **Ports against recorded fixtures.** Not yet built.
-4. **Playwright against the built application** (`pnpm test:e2e`). A few critical journeys only.
+2. **The tax engine.** Sections 20, 22 and 23, the lots and the form lines, exercised with worked
+   examples. In practice these tests also run against Postgres, because the engine replays the
+   stored ledger; they live in the same suite.
+3. **Ports against recorded fixtures.** Adapters, connectors and the indexer are tested against
+   responses recorded under `apps/api/tests/fixtures/`; no test reaches a live venue or provider.
+4. **Playwright against the running application** (`pnpm test:e2e`). A few critical journeys only,
+   against the dev servers.
    There is deliberately no broad component-test layer.

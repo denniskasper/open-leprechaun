@@ -21,5 +21,7 @@ fingerprint and a last-used timestamp, and states the read-only scope each venue
 - Plaintext secrets never touch the database or its backups.
 - The encryption key becomes part of deployment and must be backed up separately; losing it means
   re-entering every credential.
+- The Admin's two-factor secret is sealed by the same mechanism under its own derived key
+  (ADR 0005); losing the encryption key also means disabling two-factor from the host.
 - Because nothing is ever displayed back, a mistyped key is discovered by testing the connection
   rather than by reading it — connection testing is therefore not optional.

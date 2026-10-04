@@ -693,7 +693,8 @@ spot, crypto income, futures and securities together.
 - Layering is enforced: routers validate, services decide, repositories query. Business logic in a
   router is a review failure.
 - The staleness fingerprint is per-entity — a count plus a digest per input class (transactions,
-  corporate actions, instrument classifications, FX rates used, statutory configuration) — so that
+  corporate actions, instrument classifications, the closes that value an event, statutory
+  configuration) — so that
   a change can be described, not merely detected.
 
 ## Testing Decisions
@@ -728,7 +729,7 @@ connector's declared timezone and unit handling is tested explicitly, including 
 exports in local time and one that exports in sub-units — both are real cases, and both silently
 produce wrong tax years or wrong quantities if mishandled.
 
-**4. Playwright against the built application.** A small number of critical journeys only: first-run
+**4. Playwright against the running application.** A small number of critical journeys only: first-run
 setup and login, recording a transaction by hand, running an import preview and committing it, and
 generating a report. Deliberately no broad component-test layer — individual React components are
 not tested in isolation.

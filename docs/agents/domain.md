@@ -18,11 +18,14 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 ├── CONTEXT.md
 ├── docs/adr/
 │   ├── 0001-....md
-│   └── 0002-....md
-└── src/
+│   ├── 0002-....md
+│   └── …
+└── apps/
+    ├── api/
+    └── web/
 ```
 
-If this repo ever grows into several independently-modelled contexts, the layout becomes a root `CONTEXT-MAP.md` pointing at one `CONTEXT.md` per context, with context-scoped ADRs under `src/<context>/docs/adr/`. Re-run `/setup-matt-pocock-skills` if that happens.
+If this repo ever grows into several independently-modelled contexts, the layout becomes a root `CONTEXT-MAP.md` pointing at one `CONTEXT.md` per context, with context-scoped ADRs under `apps/<context>/docs/adr/`. Re-run `/setup-matt-pocock-skills` if that happens.
 
 ## Use the glossary's vocabulary
 
@@ -36,4 +39,4 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+> _Contradicts ADR-0007 (the report states taxable amounts, not tax owed) — but worth reopening because…_

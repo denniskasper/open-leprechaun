@@ -11,8 +11,9 @@ the authenticator holds it. A code is accepted for the step it was made in and
 one either side, to forgive a drifting clock, and never twice: the step of
 each accepted code is recorded as spent.
 
-**There are no recovery codes.** `remove` is the anti-lockout path, reached
-only from the host (`python -m open_leprechaun.disable_two_factor`).
+**There are no recovery codes.** The anti-lockout path is `remove` called
+from the host (`python -m open_leprechaun.disable_two_factor`), where it asks
+for nothing; inside the app it is reached only past both factors.
 """
 
 import base64

@@ -51,3 +51,7 @@ Decisions worth recording:
 - **Left for later**: the screen does not say when `SCHEDULER_ENABLED` is off on this instance;
   no failure signal outside this screen (ticket 55); the panel does not yet follow ticket 60's
   settings convention, which does not exist yet.
+
+**Update (2026-10-04).** Of the items left for later: ticket 60's settings convention now exists, though
+this panel has not been moved onto it; the failure signal outside this screen is the health panel
+(ticket 55).

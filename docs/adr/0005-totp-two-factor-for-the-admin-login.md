@@ -19,8 +19,14 @@ and a correct code gates issuance of the unchanged token rather than changing it
 the QR code alongside the raw URI and secret, so an Admin who keeps secrets in a password store
 need not photograph a screen.
 
+A code is accepted once: the time step of each accepted code is recorded, so a code that was
+observed cannot be replayed. While two-factor is active, every change to a credential takes a
+current code on top of the password — changing the password, and turning two-factor off from
+inside the application. Activating it revokes every other session, since each was opened by the
+password alone. Guessing at the code is throttled like guessing at the password (ADR 0015).
+
 **No recovery codes.** The only anti-lockout path is a targeted server-side disable, and the UI
-says so at enrollment.
+says so at enrollment. It is a command run on the host, documented in `docs/runbook.md`.
 
 ## Considered Options
 
@@ -37,3 +43,5 @@ says so at enrollment.
 - Losing the authenticator device does not lock the Admin out while the secret remains in their
   password store; total loss is recoverable only with host access.
 - Production shows a persistent reminder while two-factor is off.
+- The secret shares the venue credentials' fate (ADR 0003): if the application secret changes, it
+  no longer decrypts, no code verifies, and the server-side disable is the way back in.

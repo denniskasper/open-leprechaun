@@ -60,3 +60,7 @@ Decisions worth recording:
   church-tax figures against the statute and flagged the used-at-source zero as a deferral to
   record, not a gap to close here.
 - No version bump — releases have not started; this rides as `feat:` like tickets 09–26.
+
+**Update (2026-10-04).** The Freistellungsauftrag consumption the producer was to receive from ticket 43 was
+not delivered by 43, 47 or 51; it is still zero in `services/section20.py`, and no ticket owns it.
+Spec story 186 is therefore not yet met.

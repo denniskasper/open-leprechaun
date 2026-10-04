@@ -55,7 +55,7 @@ Decisions worth recording:
 - **Only single-role types are mappable** (`MAPPED_TYPES`, pinned to `TRANSACTION_TYPES` on
   both API and web): one file row states one movement, so a trade's two sides never fit, and
   an opening balance is the Admin's declaration, never an import's. Broker exports with real
-  trades are ticket-88 territory.
+  trades are spec story 88 territory.
 - **A type value maps to a type or to "leave out"** — an undeclared value is a stated problem
   and refuses the strict parse; leave-out rows and zero-amount rows are counted in a warning,
   never dropped in silence.

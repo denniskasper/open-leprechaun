@@ -64,3 +64,8 @@ per-concern workflows, so ticket 06 fills a body rather than restructuring); a g
 `pull_request` trigger gives fork pull requests checks without double-running same-repo
 branches; and the environment-file step moved into `setup-api`, where both jobs that talk to
 Compose already were.
+
+**Update (2026-10-04).** The repository now has its remote (`origin`), so "the pipeline cannot run yet"
+no longer holds; `docs/agents/issue-tracker.md` was corrected to match. What ticket 06 still owes
+is unchanged: the deploy job's body is a placeholder, and `cancel-in-progress` is still
+unconditional.

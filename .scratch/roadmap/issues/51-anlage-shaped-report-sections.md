@@ -90,3 +90,6 @@ Decisions worth recording:
   Teilfreistellung and span both sides, so they check the lines rather than fill one); German
   tax withheld on a receipt at a Depot that itself withholds nothing still stands on the withheld
   side, because it was withheld; `Status: done` follows tickets 46 and 47.
+
+**Update (2026-10-04).** The web has a report screen now: ticket 58 added a Reports section to the
+multi-year overview.

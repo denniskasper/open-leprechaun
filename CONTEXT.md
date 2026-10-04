@@ -758,8 +758,10 @@ An optional second login factor for the single Admin: a TOTP code required along
 wherever authentication is active. Opt-in, with a verify-before-activate step at enrollment, and
 nudged by a persistent reminder in production while it is off. Login stays one endpoint that
 returns a distinct "code required" result, then issues the unchanged token once both factors pass.
-Deliberately has **no recovery codes** — the only anti-lockout path is a server-side disable, which
-the UI states at enrollment.
+A code is accepted once, and while the factor is active every change to a credential — the
+password, or the factor itself — takes a current code as well. Activating it ends every other
+**Session**. Deliberately has **no recovery codes** — the only anti-lockout path is a server-side
+disable, which the UI states at enrollment.
 
 _Avoid_: "two-factor authorization" — authentication proves *who* you are; authorization is *what*
 you may do once authenticated.

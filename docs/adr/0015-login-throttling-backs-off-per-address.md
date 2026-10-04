@@ -15,9 +15,16 @@ codes (ADR 0005), so a lockout has no self-service exit.
 ## Decision
 
 Failed attempts are counted per source address and delay the next attempt, backing off
-exponentially to a cap. A correct password clears that address's failures. **The account is never
+exponentially to a cap. A completed proof clears that address's failures. **The account is never
 locked**, whatever the failure count. Counts live in the database so a restart does not reset them
 and every worker shares one view.
+
+The same count covers every place a credential is proven, not login alone: the password and code
+a live session must present before the password changes or two-factor is disabled count against
+it too, so a stolen session is no licence to guess. With two-factor on (ADR 0005), a wrong code is
+a failure like a wrong password. A right password that still owes its code is neither a failure
+nor a completed proof: its delay is lifted so the code may follow at once, but the count stands,
+so asking again without a code never resets what wrong codes have earned.
 
 ## Considered Options
 

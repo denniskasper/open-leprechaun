@@ -49,7 +49,7 @@ is what the step asks — an Import Batch, or a Transaction recorded by hand.
   observed; it does not claim the venue still agrees.
 - A reconciliation run with a looser tolerance is recorded like any other, so the step reflects
   the tolerance the Admin last chose.
-- Two-factor reads as off on every instance until ticket 08 lands enrolment; the step then reads
-  the enrolled secret instead.
+- The two-factor step reads the Admin's activated second factor (ticket 08). An enrollment no
+  code has proven does not count, and the step stays optional either way.
 - The web had no way to generate a report. The multi-year overview gains a Reports section — the
   screen the last step links to.
