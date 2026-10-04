@@ -15,7 +15,7 @@ const checklist = {
       key: "two_factor",
       done: false,
       optional: true,
-      detail: "Two-factor is off — this version cannot enrol a second factor yet.",
+      detail: "Two-factor is off — the password alone opens a Session.",
       resolve_path: "/settings/security",
     },
   ],

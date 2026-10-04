@@ -18,7 +18,7 @@ from typing import Literal
 from sqlalchemy import Engine
 
 from open_leprechaun.repositories import first_run as repository
-from open_leprechaun.services import preflight, reconciliation
+from open_leprechaun.services import preflight, reconciliation, two_factor
 from open_leprechaun.services.reconciliation import Adapters
 
 Key = Literal[
@@ -59,7 +59,7 @@ def checklist(engine: Engine, adapters: Adapters) -> Checklist:
     return Checklist(
         items=(
             _password(engine),
-            _two_factor(),
+            _two_factor(engine),
             _platforms_and_accounts(tally.platforms, tally.accounts),
             _connect_or_import(tally.connections, tally.import_batches, tally.transactions),
             _reconcile(engine, adapters),
@@ -82,14 +82,16 @@ def _password(engine: Engine) -> Item:
     )
 
 
-def _two_factor() -> Item:
-    # Ticket 08 lands enrolment and, with it, the row this reads. Until then
-    # no instance has a second factor, which is exactly what the item says.
+def _two_factor(engine: Engine) -> Item:
+    # On means activated: an enrollment no code has proven protects nothing.
+    done = two_factor.active(engine)
     return Item(
         key="two_factor",
-        done=False,
+        done=done,
         optional=True,
-        detail="Two-factor is off — this version cannot enrol a second factor yet.",
+        detail="Two-factor is on — login asks for a code from the authenticator."
+        if done
+        else "Two-factor is off — the password alone opens a Session.",
         resolve_path="/settings/security",
     )
 

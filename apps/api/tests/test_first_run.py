@@ -9,6 +9,10 @@ reference-rate ports: each test does what the Admin would do through the API
 and reads the checklist back.
 """
 
+import base64
+import hashlib
+import hmac
+import struct
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -245,6 +249,24 @@ def test_two_factor_is_optional_and_never_holds_the_walk_back(client):
 
     assert two_factor["optional"] is True
     assert two_factor["done"] is False
+
+
+def test_two_factor_is_done_once_a_code_has_activated_it(client):
+    """Derived from the Admin's row like every other step: enrolling alone is
+    not enough, a verifying code is."""
+    assert client.post("/api/auth/setup", json={"password": "correct horse battery"}).is_success
+    secret = client.post("/api/auth/two-factor/enrollment").json()["secret"]
+    assert item(client, "two_factor")["done"] is False
+
+    counter = struct.pack(">Q", int(datetime.now(UTC).timestamp()) // 30)
+    mac = hmac.new(base64.b32decode(secret), counter, hashlib.sha1).digest()
+    number = struct.unpack(">I", mac[mac[-1] & 0x0F :][:4])[0] & 0x7FFFFFFF
+    activated = client.post(
+        "/api/auth/two-factor/activation", json={"code": f"{number % 1_000_000:06d}"}
+    )
+
+    assert activated.status_code == 204
+    assert item(client, "two_factor")["done"] is True
 
 
 def test_a_platform_alone_is_not_enough_it_takes_an_account(client):
