@@ -81,6 +81,18 @@ column of EUR tax figures should align to the cent. Quantities use
 string — those must never pass through a float. Timestamps use
 `formatTimestamp`; all format per locale.
 
+## Charts
+
+Charts are inline SVG drawn with the tokens — no chart library and no second
+palette; `apps/web/src/pages/portfolio.tsx` is the reference. A series is told
+apart by its line (solid ink, dashed muted), never by a new hue; magnitude is
+an ink bar on a `bg-muted` track, labelled with its figure, a grouped
+remainder in `bg-muted-foreground`; the status tones stay reserved for
+readings and never name a series. A line chart has a readout in words and
+figures that follows pointer and arrow keys, and a table of the same points.
+Every chart says how much of the data it covers. A point that cannot be
+stated breaks the line — it never falls to zero.
+
 ## Empty and error states
 
 Two reusable patterns in `apps/web/src/components/patterns/`:

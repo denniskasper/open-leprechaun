@@ -125,6 +125,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Scheduled tasks reference nothing; a schedule one test chose or a
         # run it recorded must not answer another test's list.
         connection.execute(text("DELETE FROM scheduled_task"))
+        # Snapshots reference nothing either; a day one test measured must
+        # not appear in another test's series.
+        connection.execute(text("DELETE FROM portfolio_snapshot"))
     return engine
 
 

@@ -14,6 +14,7 @@ import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
 import { LedgerExportPage } from "@/pages/ledger-export";
 import { MultiYearOverviewPage } from "@/pages/multi-year-overview";
+import { PortfolioPage } from "@/pages/portfolio";
 import { PlatformsPage } from "@/pages/platforms";
 import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
 import { SecurityPage } from "@/pages/security";
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <HealthPage /> },
           { path: "holdings", element: <HoldingsPage /> },
+          { path: "portfolio", element: <PortfolioPage /> },
           { path: "inbox", element: <InboxPage /> },
           { path: "transactions", element: <TransactionsPage /> },
           { path: "transfers", element: <TransfersPage /> },

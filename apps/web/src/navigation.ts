@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   CalendarClock,
   CalendarRange,
+  ChartLine,
   Coins,
   Download,
   FileOutput,
@@ -53,6 +54,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Ledger",
     items: [
       { to: "/holdings", label: "Holdings", icon: Coins },
+      { to: "/portfolio", label: "Portfolio", icon: ChartLine },
       { to: "/inbox", label: "Inbox", icon: Inbox },
       { to: "/transactions", label: "Transactions", icon: Scale },
       { to: "/transfers", label: "Transfers", icon: ArrowLeftRight },

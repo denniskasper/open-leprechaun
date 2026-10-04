@@ -43,7 +43,7 @@ const CUSTODY_LABEL: Record<ReturnType<typeof custodyOf>, string> = {
   third_party: "Third-party custody",
 };
 
-const FAMILY_LABEL: Record<Position["family"], string> = {
+export const FAMILY_LABEL: Record<Position["family"], string> = {
   crypto: "Crypto",
   cash: "Cash",
   security: "Security",
@@ -280,13 +280,14 @@ function CoverageWarnings() {
   );
 }
 
-export function HoldingsPage() {
-  const { data, error, refetch } = useQuery({ queryKey: ["holdings"], queryFn: fetchHoldings });
-  const [groupMode, setGroupMode] = useState<GroupMode>("asset_class");
+/**
+ * The DisplayCurrency as a screen holds it: the stored choice, the rate that
+ * serves it, and what is actually shown. The rate arrives separately and
+ * only when a foreign display currency is chosen: the figures are EUR either
+ * way, so a missing rate degrades the presentation, never the data.
+ */
+export function useDisplayCurrency() {
   const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency);
-  // The rate arrives separately and only when a foreign display currency is
-  // chosen: the holdings figures are EUR either way, so a missing rate
-  // degrades the presentation, never the data.
   const rateQuery = useQuery({
     queryKey: ["display-rate", currency],
     queryFn: () => fetchDisplayRate(currency),
@@ -294,11 +295,62 @@ export function HoldingsPage() {
   });
   const rate = currency !== "EUR" ? (rateQuery.data ?? null) : null;
   const shown: DisplayCurrency = rate === null ? "EUR" : currency;
-
   const choose = (choice: DisplayCurrency) => {
     setDisplayCurrency(choice);
     setCurrency(choice);
   };
+  return {
+    currency,
+    choose,
+    rate,
+    shown,
+    rateFailed: currency !== "EUR" && rateQuery.error != null,
+    ratePending: currency !== "EUR" && rateQuery.isPending,
+  };
+}
+
+type DisplayCurrencyState = ReturnType<typeof useDisplayCurrency>;
+
+export function DisplayCurrencySelect({ currency, choose }: DisplayCurrencyState) {
+  return (
+    <NativeSelect
+      aria-label="Display currency"
+      value={currency}
+      onChange={(event) => choose(event.target.value as DisplayCurrency)}
+    >
+      {DISPLAY_CURRENCIES.map((choice) => (
+        <option key={choice} value={choice}>
+          {choice}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+}
+
+/** Says so while a chosen DisplayCurrency cannot be shown yet, or at all. */
+export function DisplayRateNotice({ currency, rateFailed, ratePending }: DisplayCurrencyState) {
+  if (rateFailed) {
+    return (
+      <p className="microlabel text-caution">
+        the {currency} rate could not be loaded — figures shown in EUR
+      </p>
+    );
+  }
+  if (ratePending) {
+    return (
+      <p className="microlabel text-muted-foreground">
+        loading the {currency} rate — figures shown in EUR meanwhile
+      </p>
+    );
+  }
+  return null;
+}
+
+export function HoldingsPage() {
+  const { data, error, refetch } = useQuery({ queryKey: ["holdings"], queryFn: fetchHoldings });
+  const [groupMode, setGroupMode] = useState<GroupMode>("asset_class");
+  const displayCurrency = useDisplayCurrency();
+  const { rate, shown } = displayCurrency;
 
   return (
     <div className="space-y-10">
@@ -317,17 +369,7 @@ export function HoldingsPage() {
               <option value="platform">By Platform</option>
               <option value="custody">By custody</option>
             </NativeSelect>
-            <NativeSelect
-              aria-label="Display currency"
-              value={currency}
-              onChange={(event) => choose(event.target.value as DisplayCurrency)}
-            >
-              {DISPLAY_CURRENCIES.map((choice) => (
-                <option key={choice} value={choice}>
-                  {choice}
-                </option>
-              ))}
-            </NativeSelect>
+            <DisplayCurrencySelect {...displayCurrency} />
           </>
         }
       />
@@ -348,16 +390,7 @@ export function HoldingsPage() {
         />
       ) : data ? (
         <div className="space-y-8">
-          {currency !== "EUR" && rateQuery.error != null && (
-            <p className="microlabel text-caution">
-              the {currency} rate could not be loaded — figures shown in EUR
-            </p>
-          )}
-          {currency !== "EUR" && rateQuery.isPending && (
-            <p className="microlabel text-muted-foreground">
-              loading the {currency} rate — figures shown in EUR meanwhile
-            </p>
-          )}
+          <DisplayRateNotice {...displayCurrency} />
           <TotalsStrip positions={data.positions} currency={shown} rate={rate} />
           <HoldingsTable
             positions={data.positions}

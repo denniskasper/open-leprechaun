@@ -10,6 +10,10 @@ A price update fails only when a provider's own failure left an Instrument
 without a fresh price. A provider that simply does not know an Instrument is
 no failure — that Instrument would fail the task forever — and a provider
 that failed while another answered for everything cost nothing.
+
+The portfolio snapshot (ticket 54) never fails over what it cannot value: a
+Position nothing prices and a flow nothing values are what the snapshot
+states about that day, named in its summary.
 """
 
 from collections.abc import Callable, Sequence
@@ -20,12 +24,19 @@ from open_leprechaun.ports.crypto_prices import CryptoPriceProvider
 from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.ports.security_prices import SecurityPriceProvider
 from open_leprechaun.repositories import connections as connections_repository
-from open_leprechaun.services import connection_sync, crypto_prices, import_prices, security_prices
+from open_leprechaun.services import (
+    connection_sync,
+    crypto_prices,
+    import_prices,
+    security_prices,
+    snapshots,
+)
 from open_leprechaun.services.connection_sync import Adapters
 from open_leprechaun.services.connections import CredentialsUnreadableError
 from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.price_reports import PriceReport
-from open_leprechaun.services.scheduled_tasks import Task, TaskFailedError
+from open_leprechaun.services.scheduled_tasks import Task, TaskFailedError, utc_now
+from open_leprechaun.services.snapshots import Measurement
 from open_leprechaun.settings import Settings
 
 _CONDITIONS = {"rate_limited": "is rate-limiting", "outage": "is not answering"}
@@ -62,6 +73,9 @@ def catalogue(
     def sync_connections() -> str:
         return _sync_every_connection(engine, settings, adapters, historical)
 
+    def take_snapshot() -> str:
+        return _snapshot_summary(snapshots.take(engine, rate_source, now=utc_now()))
+
     return (
         Task(
             key="crypto_prices",
@@ -84,7 +98,30 @@ def catalogue(
             default_cron="0 */6 * * *",
             run=sync_connections,
         ),
+        # Late in the Berlin day, after the day's price updates: the day's
+        # point is the portfolio as the day left it.
+        Task(
+            key="portfolio_snapshot",
+            name="Portfolio snapshot",
+            description="Stores what the portfolio is worth beside what was put in and taken out.",
+            default_cron="55 23 * * *",
+            run=take_snapshot,
+        ),
     )
+
+
+def _snapshot_summary(measured: Measurement) -> str:
+    summary = (
+        f"Snapshot stored: {measured.positions_counted} of {measured.positions_held}"
+        " positions counted."
+    )
+    if measured.unvalued_flows:
+        plural = "" if measured.unvalued_flows == 1 else "s"
+        summary += (
+            f" {measured.unvalued_flows} contribution{plural} or withdrawal{plural}"
+            " could not be valued."
+        )
+    return summary
 
 
 def _price_summary(report: PriceReport) -> str:

@@ -41,6 +41,7 @@ A disposal exceeding the lots its Account holds is a hard error naming the
 shortfall — never a silent zero-basis fill.
 """
 
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -56,6 +57,7 @@ __all__ = [
     "LotShortfallError",
     "StatutoryValueUnsetError",
     "counts",
+    "disposals_through",
     "year_report",
 ]
 
@@ -148,22 +150,7 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     limit = required_value(
         engine, year=year, key=EXEMPTION_LIMIT_KEY, statute="§23 Abs. 3 Satz 5 EStG"
     )
-    walked = disposals.replay(engine)
-    instruments = walked.instruments
-
-    reported = []
-    for transaction, leg, consumed in disposals.sales(walked, families=_PRIVATE_SALE_FAMILIES):
-        siblings = walked.legs_of.get(transaction.id, [])
-        # Whatever year the gap sits in: every later consumption's FIFO
-        # position rests on it, so no year computes over it.
-        disposals.refuse_shortfall(leg, consumed, transaction, instruments)
-        # Only the requested year is valued: another year's disposal must
-        # not cost a rate lookup here — nor fail over one.
-        if fx.event_date(transaction.occurred_at).year != year:
-            continue
-        reported.append(
-            _disposal(engine, source, transaction, leg, siblings, consumed, instruments)
-        )
+    reported = list(_disposals(engine, source, lambda tax_year: tax_year == year))
 
     awaiting = tuple(
         disposal.leg_id
@@ -192,6 +179,52 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     )
 
 
+def disposals_through(
+    engine: Engine, source: ReferenceRateSource, *, through_year: int
+) -> tuple[Disposal, ...]:
+    """Every private sale up to the end of the Tax Year, with what each
+    consumed — the disposals alone, before any Freigrenze, so a reader that
+    asks what the sales made (ticket 54) needs no statutory value set. Every
+    consumed slice states its basis where a value exists, the Haltefrist-
+    exempt ones included: what a sale made does not depend on whether it is
+    taxed."""
+    return tuple(
+        _disposals(
+            engine, source, lambda tax_year: tax_year <= through_year, values_exempt_basis=True
+        )
+    )
+
+
+def _disposals(
+    engine: Engine,
+    source: ReferenceRateSource,
+    wanted: Callable[[int], bool],
+    *,
+    values_exempt_basis: bool = False,
+) -> Iterator[Disposal]:
+    walked = disposals.replay(engine)
+    instruments = walked.instruments
+    for transaction, leg, consumed in disposals.sales(walked, families=_PRIVATE_SALE_FAMILIES):
+        siblings = walked.legs_of.get(transaction.id, [])
+        # Whatever year the gap sits in: every later consumption's FIFO
+        # position rests on it, so no year computes over it.
+        disposals.refuse_shortfall(leg, consumed, transaction, instruments)
+        # Only the wanted years are valued: another year's disposal must
+        # not cost a rate lookup here — nor fail over one.
+        if not wanted(fx.event_date(transaction.occurred_at).year):
+            continue
+        yield _disposal(
+            engine,
+            source,
+            transaction,
+            leg,
+            siblings,
+            consumed,
+            instruments,
+            values_exempt_basis=values_exempt_basis,
+        )
+
+
 def _disposal(
     engine: Engine,
     source: ReferenceRateSource,
@@ -200,6 +233,8 @@ def _disposal(
     siblings: list[Row],
     consumed: list[lots.Slice],
     instruments: dict[int, Row],
+    *,
+    values_exempt_basis: bool = False,
 ) -> Disposal:
     at = transaction.occurred_at
     proceeds = disposals.proceeds(engine, source, transaction, leg, siblings, instruments)
@@ -212,7 +247,15 @@ def _disposal(
             at,
             proceeds_share,
             costs_share,
-            _basis(engine, source, piece, leg.instrument_id, instruments, at),
+            _basis(
+                engine,
+                source,
+                piece,
+                leg.instrument_id,
+                instruments,
+                at,
+                values_exempt=values_exempt_basis,
+            ),
         )
         for piece, proceeds_share, costs_share in zip(
             consumed, proceeds_shares, costs_shares, strict=True
@@ -240,6 +283,8 @@ def _basis(
     instrument_id: int,
     instruments: dict[int, Row],
     disposed_at: datetime,
+    *,
+    values_exempt: bool = False,
 ) -> Decimal | None:
     """The consumed slice's basis. A lot minted by §22 income (ticket 22)
     stores no basis until the rate tickets extend the derivation; its basis
@@ -247,11 +292,13 @@ def _basis(
     same instant — that valued the income, so income and cost basis can never
     disagree. Only a slice that counts is valued: a Haltefrist-exempt one is
     excluded from the total, so it must not cost a rate lookup at its old
-    acquisition date — nor crash the year over one it cannot move."""
+    acquisition date — nor crash the year over one it cannot move — unless
+    the caller asks for it by `values_exempt`, wanting what the sale made
+    rather than what is taxable."""
     if (
         piece.basis_eur is None
         and piece.basis_source == lots.MARKET_VALUE
-        and disposed_at <= _one_year_after(piece.acquired_at)
+        and (values_exempt or disposed_at <= _one_year_after(piece.acquired_at))
     ):
         # Valued as it was received: the Instrument and units the slice
         # entered the books as, whatever a Corporate Action (ticket 52) has

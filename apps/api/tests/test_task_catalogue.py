@@ -103,13 +103,14 @@ def coins(db: Engine) -> None:
     instruments.create_native_coin(db, symbol="ETH", name="Ether", chain="ethereum")
 
 
-def test_price_updates_and_syncs_are_the_tasks_on_offer(client):
+def test_price_updates_syncs_and_the_snapshot_are_the_tasks_on_offer(client):
     tasks = client.get("/api/scheduled-tasks").json()
 
     assert [task["key"] for task in tasks] == [
         "crypto_prices",
         "security_prices",
         "connection_sync",
+        "portfolio_snapshot",
     ]
     assert all(task["enabled"] for task in tasks)
 

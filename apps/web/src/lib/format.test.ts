@@ -4,6 +4,8 @@ import {
   formatMoney,
   formatMoneyExact,
   formatNumber,
+  formatBytes,
+  formatPercent,
   formatQuantity,
   formatSignedQuantity,
   formatTimestamp,
@@ -43,6 +45,11 @@ describe("formatMoney", () => {
 });
 
 describe("formatMoneyExact", () => {
+  it("puts a negative amount's sign where the locale does", () => {
+    expect(formatMoneyExact("-2744.00", "EUR", "en-US")).toBe("-€2,744.00");
+    expect(formatMoneyExact("-2744.00", "EUR", "de-DE")).toBe("-2.744,00\u00a0€");
+  });
+
   it("puts the currency where the locale puts it, around the exact digits", () => {
     // de-DE uses a non-breaking space before the symbol.
     expect(formatMoneyExact("1234.56", "EUR", "de-DE")).toBe("1.234,56 €");
@@ -83,6 +90,23 @@ describe("formatNumber", () => {
 
   it("keeps up to eight fraction digits for asset quantities", () => {
     expect(formatNumber(0.00012345, "en-US")).toBe("0.00012345");
+  });
+});
+
+describe("formatPercent", () => {
+  it("states a share per locale, to one decimal at most", () => {
+    expect(formatPercent(0.4567, "en-US")).toBe("45.7%");
+    expect(formatPercent(0.9, "en-US")).toBe("90%");
+    expect(formatPercent(0.02, "de-DE")).toBe("2\u00a0%");
+  });
+});
+
+describe("formatBytes", () => {
+  it("states a size in the largest unit that keeps it above one", () => {
+    expect(formatBytes(512, "en-US")).toBe("512 byte");
+    expect(formatBytes(52428800, "en-US")).toBe("50 MB");
+    expect(formatBytes(1610612736, "en-US")).toBe("1.5 GB");
+    expect(formatBytes(1536, "de-DE")).toBe("1,5 kB");
   });
 });
 

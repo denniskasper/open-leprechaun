@@ -127,6 +127,32 @@ def value_eur(
     currency = valuation_currency(instrument)
     if currency is not None:
         return convert(engine, source, amount=quantity, currency=currency, at=at).amount_eur
+    return _value_at_close(engine, instrument, quantity, at)
+
+
+def stored_value_eur(
+    engine: Engine, *, instrument: ValuableInstrument, quantity: Decimal, at: datetime
+) -> Decimal | None:
+    """`value_eur` answered by the store alone — the same routing, but a
+    reference rate the store does not hold is no answer instead of a fetch.
+    For a view that must never block on the source (ADR-0019) and states no
+    tax figure: None where nothing stored can value the quantity."""
+    if instrument.is_numeraire:
+        return quantity
+    currency = valuation_currency(instrument)
+    if currency == "EUR":
+        return quantity
+    if currency is not None:
+        on = event_date(at)
+        floor = on - timedelta(days=PUBLICATION_LOOKBACK_DAYS)
+        row = reference_rates.latest_on_or_before(engine, currency=currency, on=on, floor=floor)
+        return None if row is None else quantity / row.rate
+    return _value_at_close(engine, instrument, quantity, at)
+
+
+def _value_at_close(
+    engine: Engine, instrument: ValuableInstrument, quantity: Decimal, at: datetime
+) -> Decimal | None:
     if instrument.family != "crypto":
         return None
     close = crypto_prices.close_on(engine, instrument.id, crypto_prices.event_day(at))

@@ -38,15 +38,18 @@ export function formatMoney(
  */
 export function formatMoneyExact(value: string, currency: string, locale?: string): string {
   const digits = "\u0000";
+  // A negative amount borrows the locale's own negative pattern, so the sign
+  // sits where the locale puts it rather than between currency and digits.
+  const negative = value.startsWith("-");
   const pattern = new Intl.NumberFormat(locale, { style: "currency", currency })
-    .formatToParts(1)
+    .formatToParts(negative ? -1 : 1)
     .map((part) =>
       part.type === "integer" || part.type === "decimal" || part.type === "fraction"
         ? digits
         : part.value,
     )
     .join("");
-  return pattern.replace(/\0+/, formatQuantity(value, locale));
+  return pattern.replace(/\0+/, formatQuantity(negative ? value.slice(1) : value, locale));
 }
 
 /**
@@ -62,6 +65,13 @@ export function formatEur(value: string, locale?: string): string {
 /** Quantities of an asset, not money: up to eight fraction digits, no unit. */
 export function formatNumber(value: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 8 }).format(value);
+}
+
+/** A share of a whole (0–1) as a percentage, to one decimal at most. */
+export function formatPercent(share: number, locale?: string): string {
+  return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(
+    share,
+  );
 }
 
 /**

@@ -58,6 +58,31 @@ as zero. Cash is a Position like any other, the numéraire valued by identity.
 _Avoid_: "Position" bare for the normalized ingestion row or for a futures **Derived Position** —
 those belong to ingestion and derivatives vocabulary.
 
+### Portfolio Snapshot
+
+What the portfolio measured on one day, stored: the value of every counted **Position** beside the
+cumulative **contributions** and **withdrawals** of the ledger as it stood then. One per
+Europe/Berlin date — a later measurement of the same day replaces the earlier — taken by a
+**Scheduled Task**. An observation, never a derivation: a ledger corrected afterwards changes the
+next snapshot, not an earlier one.
+
+_Avoid_: "snapshot" bare for this where a **Normalized Position** could be meant — that one is what
+a venue says is held, and feeds only **Reconciliation**.
+
+### Contribution · Withdrawal
+
+Value that crossed the ledger's edge. A **contribution** arrived from outside: a transfer in that
+no confirmed self-transfer explains, or an **Opening Balance**. A **withdrawal** left for outside: a
+transfer out nothing matches, or a spend. Each is valued as of its own day; an Opening Balance at
+its declared estimate. Together they are the ledger's **flows**; one nothing stored can value is an
+**unvalued flow**, counted beside the sums it stands outside. Value less contributions plus
+withdrawals is the **result** — everything the holdings did, realised or not.
+
+_Avoid_: counting income as a contribution — a dividend or a staking reward is what the holdings
+earned, not money put in.
+_Avoid_: "deposit" as a transaction type. There is none; a deposit is a transfer in that nothing
+inside the ledger sent.
+
 ### Custody Type
 
 Where the assets of an **Account** actually sit, judged from its Platform's kind: `cold_storage`
@@ -632,7 +657,8 @@ form asks for a fact the ledger does not hold.
 
 ### Scheduled Task
 
-Work the application repeats on its own — a price update, a **Connection** sync — on a schedule
+Work the application repeats on its own — a price update, a **Connection** sync, a **Portfolio
+Snapshot** — on a schedule
 the Admin controls: a cron expression read on the Europe/Berlin clock, and an enabled flag, per
 task. The tasks themselves are declared in code; the Admin chooses when each runs, never what
 exists. **Run-now** runs one immediately, whatever its schedule says and whether or not it is
