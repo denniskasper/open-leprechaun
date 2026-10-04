@@ -34,11 +34,11 @@ any screen.
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/<feature>/` in this repo — there is no hosted tracker. See `docs/agents/issue-tracker.md`.
+Issues live in this repo's GitHub Issues, through the `gh` CLI. The finished roadmap's tickets stay as markdown under `.scratch/roadmap/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The five canonical roles, each label string equal to its name, recorded as a `Status:` line in the issue file. See `docs/agents/triage-labels.md`.
+The five canonical roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

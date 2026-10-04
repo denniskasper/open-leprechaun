@@ -89,7 +89,7 @@ docs/research/  Primary-source research the tax logic rests on
 docs/runbook.md What to do when the running instance needs a hand from the host
 .github/     The CI pipeline: API checks, web checks, e2e, and the deploy job
 deploy/      The deployed instance: its compose stack, web server and deploy scripts
-.scratch/    Spec and implementation tickets (this repo has no hosted tracker)
+.scratch/    The finished roadmap: its spec and tickets (new work is tracked in GitHub Issues)
 ```
 
 Configuration lives in one `.env` at the root, read by Docker Compose, by the API through

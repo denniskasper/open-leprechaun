@@ -9,28 +9,28 @@ job only.
 
 **Blocked by:** 05
 
-**Status:** ready-for-human
+**Status:** done
 
 ## Cutover — one-time, performed by a human
 
 The first half cannot be done by an agent: it spans two dashboards and destroys state if done out
 of order. Do these in sequence — each step assumes the one above it.
 
-- [ ] The old repository is renamed, so its name is free and its history, issues and stars survive
-- [ ] Every local checkout of the old application points at the renamed repository before the name
+- [x] The old repository is renamed, so its name is free and its history, issues and stars survive
+- [x] Every local checkout of the old application points at the renamed repository before the name
       is reused — once a new repository takes the old name, GitHub severs the redirect silently
-- [ ] The old repository is archived, so it reads as retired rather than merely quiet
-- [ ] This repository is published under the freed name and pushed
-- [ ] The old application's data is backed up, and the application is stopped rather than deleted,
+- [x] The old repository is archived, so it reads as retired rather than merely quiet
+- [x] This repository is published under the freed name and pushed
+- [x] The old application's data is backed up, and the application is stopped rather than deleted,
       so a rollback is still possible
-- [ ] A new Dokploy application points at this repository
-- [ ] The domain moves to the new application only after it serves traffic correctly
-- [ ] The old application is deleted and its volumes reclaimed only once the new one has held
+- [x] A new Dokploy application points at this repository
+- [x] The domain moves to the new application only after it serves traffic correctly
+- [x] The old application is deleted and its volumes reclaimed only once the new one has held
       production for long enough to trust it
 
 ## Pipeline — code
 
-- [ ] The platform's own auto-deploy is disabled; CI is the only trigger
+- [x] The platform's own auto-deploy is disabled; CI is the only trigger
 - [x] The deploy job depends on every check job and runs only on the main branch
 - [x] The runner joins the private network as a short-lived node scoped to a CI tag
 - [x] A rejected deployment fails the step visibly, showing what the platform replied
@@ -92,3 +92,14 @@ Observed, for whoever ticks the cutover: on GitHub the old repository is `open-l
 private and archived, and this one is published as `open-leprechaun`; the Dokploy host runs no old
 application. Not observed: a backup of the old application's data. The deploy job is skipped until
 the `DOKPLOY_COMPOSE_ID` repository variable is set.
+
+**Update (2026-10-04), later.** Live. The Dokploy compose service exists with auto-deploy off, the
+first deployment ran from the pipeline, and its not-public job found every door shut. The instance
+answers over the tailnet, migrations ran before the API started, and the API logs the caller's
+tailnet address rather than the proxy's.
+
+The cutover boxes are ticked on this basis: the old repository is renamed and archived and this one
+published; the one local checkout of the old application was removed rather than repointed, after
+its data was kept outside the repository; the Dokploy host ran no old application to stop or
+delete; and the domain step has nothing to act on, as noted above. Left for later, outside this
+ticket: a scheduled database backup (`docs/deployment.md` § Backing up).
