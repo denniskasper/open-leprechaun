@@ -128,6 +128,9 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Snapshots reference nothing either; a day one test measured must
         # not appear in another test's series.
         connection.execute(text("DELETE FROM portfolio_snapshot"))
+        # Login failures are keyed by address, and every test client shares
+        # one; a wrong password in one test must not delay another's login.
+        connection.execute(text("DELETE FROM login_failure"))
         # What asking a provider last came to is keyed by its name alone; a
         # failure one test provoked must not be another test's outage. The
         # Instruments it named went with the Instruments above.

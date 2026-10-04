@@ -39,6 +39,9 @@ of order. Do these in sequence — each step assumes the one above it.
       file
 - [ ] A superseding push to main never kills a deployment mid-flight — either main's concurrency
       group stops cancelling in progress, or the deploy gets a group of its own
+- [ ] The API is started trusting the proxy's forwarded headers and nothing else's
+      (`--proxy-headers --forwarded-allow-ips <the proxy>`), so login throttling (ticket 61) counts
+      failures per real client address rather than against the proxy's one address
 
 ## Comments
 

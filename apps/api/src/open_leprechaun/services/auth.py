@@ -11,6 +11,14 @@ login. Every authenticated request slides the expiry forward, so renewal is
 automatic while the admin keeps using the app, and an idle instance logs them
 out. The token is random, returned once, and stored only as a SHA-256 digest —
 a database dump does not hand out live sessions.
+
+Login throttling (ADR-0015): each failed login from a source address delays
+that address's next attempt — one second, doubling per failure, to at most five
+minutes. An attempt inside the delay is refused before the password is looked
+at, so the refusal says nothing about it. A correct password clears the
+address's failures, and **nothing ever locks the account**: the longest wait
+between an address and the right password is the cap. A failure record goes
+stale a day after its delay ran out, and counts for nothing from then on.
 """
 
 import hashlib
@@ -32,6 +40,10 @@ _SCRYPT_MAXMEM = 64 * 1024 * 1024
 _KEY_BYTES = 32
 _TOKEN_BYTES = 32
 
+_FIRST_LOGIN_DELAY = timedelta(seconds=1)
+_LONGEST_LOGIN_DELAY = timedelta(minutes=5)
+_FAILURES_STALE_AFTER = timedelta(days=1)
+
 
 class SetupAlreadyDoneError(Exception):
     """A second setup attempt while the admin exists."""
@@ -43,6 +55,14 @@ class SetupRequiredError(Exception):
 
 class WrongPasswordError(Exception):
     """A password change that could not prove the current password."""
+
+
+class LoginThrottledError(Exception):
+    """A login attempted while its source address is still serving a delay."""
+
+    def __init__(self, retry_after: timedelta) -> None:
+        super().__init__(f"Login throttled for another {retry_after}.")
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True)
@@ -63,15 +83,33 @@ def set_up_admin(engine: Engine, password: str) -> None:
         raise SetupAlreadyDoneError
 
 
-def log_in(engine: Engine, password: str, ttl: timedelta) -> IssuedSession | None:
-    """Verify the password and mint a session; None means a wrong password."""
+def log_in(
+    engine: Engine, password: str, ttl: timedelta, *, address: str, now: datetime
+) -> IssuedSession | None:
+    """Verify the password and mint a session; None means a wrong password.
+
+    Raises `LoginThrottledError` when the address is inside the delay its
+    earlier failures earned — before the password is verified, so neither the
+    answer nor its timing tells a right guess from a wrong one.
+    """
     stored = repository.read_password_hash(engine)
     if stored is None:
         raise SetupRequiredError
+    delayed_until = repository.claim_login_attempt(
+        engine,
+        address,
+        now,
+        first_delay=_FIRST_LOGIN_DELAY,
+        longest_delay=_LONGEST_LOGIN_DELAY,
+        stale_after=_FAILURES_STALE_AFTER,
+    )
+    if delayed_until is not None:
+        raise LoginThrottledError(delayed_until - now)
     if not verify_password(password, stored):
         return None
-    now = datetime.now(UTC)
+    repository.clear_login_failures(engine, address)
     repository.purge_expired_sessions(engine, now)
+    repository.purge_stale_login_failures(engine, now - _FAILURES_STALE_AFTER)
     token = secrets.token_urlsafe(_TOKEN_BYTES)
     expires_at = now + ttl
     repository.create_session(engine, _digest(token), expires_at)

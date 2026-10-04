@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from open_leprechaun.auth import SESSION_COOKIE, AdminDep, require_admin
 from open_leprechaun.main import create_app
+from open_leprechaun.routers.auth import get_clock
 from open_leprechaun.settings import Environment
 
 # The routes production serves to the world. Everything else must authenticate.
@@ -40,14 +41,37 @@ def _add_protected_probe(client: TestClient) -> None:
         return {"subject": admin.subject}
 
 
+class _SteppedClock:
+    """The login's clock, moved only by the test: backoff is measured in
+    seconds to minutes, and no test should wait them out."""
+
+    def __init__(self) -> None:
+        self._now = datetime.now(UTC)
+
+    def __call__(self) -> datetime:
+        return self._now
+
+    def advance(self, **delta) -> None:
+        self._now += timedelta(**delta)
+
+
 @pytest.fixture
-def production_client(make_client, alembic_config, engine) -> TestClient:
+def clock() -> _SteppedClock:
+    return _SteppedClock()
+
+
+@pytest.fixture
+def production_client(make_client, alembic_config, engine, clock) -> TestClient:
     """A production-mode client over the real test database, with no admin yet."""
     command.upgrade(alembic_config, "head")
     with engine.begin() as connection:
         # Cascades to admin_session, so every test starts before first run.
         connection.execute(text("DELETE FROM admin_user"))
-    return make_client(Environment.production, engine=engine)
+        # Failures are keyed by address alone, and every test client shares one.
+        connection.execute(text("DELETE FROM login_failure"))
+    client = make_client(Environment.production, engine=engine)
+    client.app.dependency_overrides[get_clock] = lambda: clock
+    return client
 
 
 def _set_up_and_log_in(client: TestClient) -> str:
@@ -359,7 +383,7 @@ def test_changing_the_password_refuses_a_wrong_current_password(production_clien
     )
 
 
-def test_a_changed_password_replaces_the_old_one_at_login(production_client):
+def test_a_changed_password_replaces_the_old_one_at_login(production_client, clock):
     _set_up_and_log_in(production_client)
 
     changed = production_client.post(
@@ -368,6 +392,7 @@ def test_a_changed_password_replaces_the_old_one_at_login(production_client):
 
     assert changed.status_code == 204
     assert production_client.post("/api/auth/login", json={"password": PASSWORD}).status_code == 401
+    clock.advance(seconds=1)  # the failed attempt's delay
     assert (
         production_client.post("/api/auth/login", json={"password": NEW_PASSWORD}).status_code
         == 200
@@ -475,3 +500,145 @@ def test_signing_out_everywhere_requires_a_session(production_client):
     production_client.post("/api/auth/setup", json={"password": PASSWORD})
 
     assert production_client.delete("/api/auth/sessions").status_code == 401
+
+
+def _guess(client: TestClient, password: str = "not the password"):
+    return client.post("/api/auth/login", json={"password": password})
+
+
+def test_a_failed_login_delays_the_next_attempt_from_that_address(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    assert _guess(production_client).status_code == 401
+
+    throttled = _guess(production_client)
+
+    assert throttled.status_code == 429
+    assert throttled.headers["retry-after"] == "1"
+    clock.advance(seconds=1)
+    assert _guess(production_client).status_code == 401
+
+
+def _fail(client: TestClient, clock: _SteppedClock, times: int) -> None:
+    """Fail that many logins, each one made as soon as the last one's delay lets it."""
+    for _ in range(times):
+        response = _guess(client)
+        if response.status_code == 429:
+            clock.advance(seconds=int(response.headers["retry-after"]))
+            response = _guess(client)
+        assert response.status_code == 401
+
+
+def _client_from(address: str, client: TestClient) -> TestClient:
+    """The same running instance, reached from another source address."""
+    return TestClient(client.app, base_url="https://testserver", client=(address, 50000))
+
+
+def test_the_delay_doubles_with_each_failure_up_to_a_cap(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    delays = []
+
+    for _ in range(11):
+        assert _guess(production_client).status_code == 401
+        delay = int(_guess(production_client).headers["retry-after"])
+        delays.append(delay)
+        clock.advance(seconds=delay)
+
+    assert delays == [1, 2, 4, 8, 16, 32, 64, 128, 256, 300, 300]
+
+
+def test_a_throttled_attempt_is_refused_the_same_whether_or_not_the_password_was_right(
+    production_client,
+):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    assert _guess(production_client).status_code == 401
+
+    wrong = _guess(production_client)
+    right = _guess(production_client, PASSWORD)
+
+    assert right.status_code == 429
+    assert (right.json(), right.headers["retry-after"]) == (
+        wrong.json(),
+        wrong.headers["retry-after"],
+    )
+    assert SESSION_COOKIE not in right.cookies
+
+
+def test_the_correct_password_still_succeeds_after_the_backoff(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(production_client, clock, times=12)
+    assert _guess(production_client, PASSWORD).status_code == 429
+
+    clock.advance(minutes=5)
+
+    assert _guess(production_client, PASSWORD).status_code == 200
+
+
+def test_hammering_through_a_delay_does_not_lengthen_it(production_client, clock):
+    """What keeps a delay from becoming a lock: an attacker who never stops
+    cannot push the moment the Admin may try any further away."""
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(production_client, clock, times=3)
+
+    for _ in range(25):
+        assert _guess(production_client).status_code == 429
+    clock.advance(seconds=4)
+
+    assert _guess(production_client, PASSWORD).status_code == 200
+
+
+def test_a_correct_password_clears_the_address_of_its_failures(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(production_client, clock, times=4)
+    clock.advance(seconds=8)
+    assert _guess(production_client, PASSWORD).status_code == 200
+
+    assert _guess(production_client).status_code == 401
+
+    assert _guess(production_client).headers["retry-after"] == "1"
+
+
+def test_one_address_failing_does_not_delay_another(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    attacker = _client_from("203.0.113.7", production_client)
+    _fail(attacker, clock, times=5)
+    assert _guess(attacker).status_code == 429
+
+    assert _guess(production_client, PASSWORD).status_code == 200
+    # ...and the Admin logging in from home forgives nothing elsewhere.
+    assert _guess(attacker).status_code == 429
+
+
+def test_a_restarted_instance_remembers_the_failures(production_client, make_client, engine, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(production_client, clock, times=3)
+
+    restarted = make_client(Environment.production, engine=engine)
+    restarted.app.dependency_overrides[get_clock] = lambda: clock
+    throttled = _guess(restarted)
+
+    assert throttled.status_code == 429
+    assert throttled.headers["retry-after"] == "4"
+
+
+def test_failures_gone_stale_count_for_nothing(production_client, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(production_client, clock, times=6)
+
+    clock.advance(days=1, seconds=32)
+
+    assert _guess(production_client).status_code == 401
+    assert _guess(production_client).headers["retry-after"] == "1"
+
+
+def test_a_login_purges_the_failure_records_gone_stale(production_client, engine, clock):
+    production_client.post("/api/auth/setup", json={"password": PASSWORD})
+    _fail(_client_from("203.0.113.7", production_client), clock, times=2)
+    clock.advance(hours=12)
+    _fail(_client_from("203.0.113.8", production_client), clock, times=2)
+
+    clock.advance(hours=12, seconds=2)
+    assert _guess(production_client, PASSWORD).status_code == 200
+
+    with engine.connect() as connection:
+        remembered = connection.execute(text("SELECT address FROM login_failure")).scalars().all()
+    assert remembered == ["203.0.113.8"]

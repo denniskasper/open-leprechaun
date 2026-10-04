@@ -1,10 +1,10 @@
-"""Queries over the admin row and its sessions. Decisions live in the service.
+"""Queries over the admin row, its sessions and the login failures. Decisions live in the service.
 
 Reads of the admin row are ordered deterministically as defence in depth, per
 ADR-0006 — the schema already guarantees at most one row exists.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
@@ -86,6 +86,74 @@ def delete_session(engine: Engine, token_hash: str) -> None:
 def purge_expired_sessions(engine: Engine, now: datetime) -> None:
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM admin_session WHERE expires_at <= :now"), {"now": now})
+
+
+def claim_login_attempt(
+    engine: Engine,
+    address: str,
+    now: datetime,
+    *,
+    first_delay: timedelta,
+    longest_delay: timedelta,
+    stale_after: timedelta,
+) -> datetime | None:
+    """Admit an attempt from the address, or answer when it may next try.
+
+    None admits it — and has already counted it as a failure and set the next
+    delay, doubling per failure up to the longest. Counting before the
+    password is checked, in the one statement that decides, is what lets a
+    burst of simultaneous guesses through only once: the row is the arbiter,
+    and a login that then succeeds clears it. A record whose delay passed
+    longer ago than `stale_after` is stale and counts from one again, whether or not
+    the purge has reached it.
+    """
+    with engine.begin() as connection:
+        admitted = connection.execute(
+            text(
+                "INSERT INTO login_failure AS known (address, failures, delayed_until) "
+                "VALUES (:address, 1, :now + :first_delay) "
+                "ON CONFLICT (address) DO UPDATE SET "
+                "  failures = CASE WHEN known.delayed_until <= :stale THEN 1 "
+                "    ELSE known.failures + 1 END, "
+                "  delayed_until = :now + LEAST(:longest_delay, :first_delay * power(2, "
+                "    CASE WHEN known.delayed_until <= :stale THEN 0 "
+                # Clamped so a count grown over years cannot overflow the power.
+                "      ELSE LEAST(known.failures, 30) END)) "
+                "WHERE known.delayed_until <= :now "
+                "RETURNING 1"
+            ),
+            {
+                "address": address,
+                "now": now,
+                "first_delay": first_delay,
+                "longest_delay": longest_delay,
+                "stale": now - stale_after,
+            },
+        ).scalar_one_or_none()
+        if admitted is not None:
+            return None
+        delayed_until = connection.execute(
+            text("SELECT delayed_until FROM login_failure WHERE address = :address"),
+            {"address": address},
+        ).scalar_one_or_none()
+        # Gone in between means a login from the address just succeeded and
+        # cleared it; there is nothing left to wait for.
+        return delayed_until or now
+
+
+def clear_login_failures(engine: Engine, address: str) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM login_failure WHERE address = :address"), {"address": address}
+        )
+
+
+def purge_stale_login_failures(engine: Engine, stale: datetime) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM login_failure WHERE delayed_until <= :stale"),
+            {"stale": stale},
+        )
 
 
 def delete_all_sessions(engine: Engine) -> None:
