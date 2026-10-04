@@ -5,6 +5,7 @@ import {
   CalendarRange,
   Coins,
   Download,
+  FileOutput,
   Gavel,
   Inbox,
   KeyRound,
@@ -58,6 +59,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/imports", label: "Imports", icon: Download },
       { to: "/instruments", label: "Instruments", icon: Shapes },
       { to: "/corporate-actions", label: "Corporate actions", icon: Split },
+      { to: "/export", label: "Export", icon: FileOutput },
     ],
   },
   {

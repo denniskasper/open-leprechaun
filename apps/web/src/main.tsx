@@ -12,6 +12,7 @@ import { HoldingsPage } from "@/pages/holdings";
 import { ImportsPage } from "@/pages/imports";
 import { InboxPage } from "@/pages/inbox";
 import { InstrumentsPage } from "@/pages/instruments";
+import { LedgerExportPage } from "@/pages/ledger-export";
 import { MultiYearOverviewPage } from "@/pages/multi-year-overview";
 import { PlatformsPage } from "@/pages/platforms";
 import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
@@ -52,6 +53,7 @@ const router = createBrowserRouter([
           { path: "imports", element: <ImportsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },
           { path: "corporate-actions", element: <CorporateActionsPage /> },
+          { path: "export", element: <LedgerExportPage /> },
           { path: "tax/overview", element: <MultiYearOverviewPage /> },
           // Settings has no index of its own; it opens on its first panel.
           { path: "settings", element: <Navigate to={SETTINGS_INDEX} replace /> },
