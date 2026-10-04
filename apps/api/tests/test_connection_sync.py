@@ -71,8 +71,7 @@ def connect(client: TestClient, platform_id: int, **overrides) -> int:
 def test_the_venue_registry_names_its_adapter_kinds_and_their_lookback(client):
     """The UI offers pairing per kind before anything has synced, and states
     per kind how far back the venue actually reaches (ADR-0008, ticket 40) —
-    the registry says which kinds a venue serves, empty until its adapters
-    ship."""
+    the registry says which kinds a venue serves, of either port."""
     venues = {venue["venue"]: venue for venue in client.get("/api/connections/venues").json()}
 
     assert venues["pionex"]["adapters"] == [{"kind": "futures", "lookback_days": 90}]
@@ -82,7 +81,11 @@ def test_the_venue_registry_names_its_adapter_kinds_and_their_lookback(client):
     ]
     # A venue serving its whole history declares no cap.
     assert venues["coinbase"]["adapters"] == [{"kind": "spot", "lookback_days": None}]
-    assert venues["bitpanda"]["adapters"] == []
+    # One account holding coins beside securities: a kind of each port.
+    assert venues["bitpanda"]["adapters"] == [
+        {"kind": "spot", "lookback_days": None},
+        {"kind": "securities", "lookback_days": None},
+    ]
 
 
 # --- Account pairing: which Account each kind writes into (ADR-0004) ---
@@ -475,37 +478,16 @@ def test_a_sync_of_an_account_with_no_history_completes_cleanly(client, adapters
 
 def test_a_refused_commit_states_no_coverage(client, adapters, db):
     """The pull succeeded, the account refused — records did not all land,
-    so the kind must not claim its period is covered (while the other kind,
-    landing first, claims its own)."""
+    so the kind must not claim its period is covered."""
     spot_instruments(db)
-    platform_id = okx(client)
-    account_id = account(client, platform_id)
-    connection_id = connect(client, platform_id)
-    for kind in ("spot", "futures"):
-        client.put(
-            f"/api/connections/{connection_id}/pairings/{kind}", json={"account_id": account_id}
-        )
-    late_transfer = port.Harvest(
-        transfers=(
-            port.NormalizedTransfer(
-                external_id="transfer-2",
-                occurred_at=AN_INSTANT,
-                direction="in",
-                symbol="BTC",
-                quantity=Decimal("1"),
-            ),
-        )
-    )
-    adapters["okx"] = (
-        FakeAdapter("spot", harvest=spot_harvest()),
-        FakeAdapter("futures", harvest=late_transfer),
-    )
+    connection_id, account_id = paired_spot_connection(client, adapters)
+    client.put(f"/api/accounts/{account_id}/authoritative-source", json={"source": "csv:by-hand"})
 
-    spot, futures = client.post(f"/api/connections/{connection_id}/sync").json()
+    (spot,) = client.post(f"/api/connections/{connection_id}/sync").json()
 
-    assert spot["ok"] is True and spot["covered_days"] == 90
-    assert futures["ok"] is False and "okx:spot" in futures["error"]
-    assert futures["covered_days"] is None
+    assert spot["ok"] is False and "csv:by-hand" in spot["error"]
+    assert spot["covered_days"] is None
+    assert client.get("/api/transactions").json() == []
 
 
 def test_a_failed_pull_covers_no_period(client, adapters):

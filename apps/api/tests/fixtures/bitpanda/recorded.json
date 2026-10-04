@@ -1,0 +1,706 @@
+{
+  "currencies": {
+    "data": [
+      {
+        "id": "b88b8879-efe3-11eb-b56f-0691764446a7",
+        "symbol": "USD",
+        "name": "US Dollar"
+      },
+      {
+        "id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+        "symbol": "EUR",
+        "name": "Euro"
+      }
+    ]
+  },
+  "assets": [
+    {
+      "id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "group": "coin",
+      "type": "cryptocoin",
+      "buy_active": true,
+      "sell_active": true,
+      "withdrawal_active": true,
+      "deposit_active": true
+    },
+    {
+      "id": "b86c113a-efe3-11eb-b56f-0691764446a7",
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "group": "coin",
+      "type": "cryptocoin",
+      "buy_active": true,
+      "sell_active": true,
+      "withdrawal_active": true,
+      "deposit_active": true
+    },
+    {
+      "id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+      "name": "Microsoft Corp",
+      "symbol": "MSFT",
+      "isin": "US5949181045",
+      "group": "equity_stock",
+      "type": "equity_security",
+      "buy_active": true,
+      "sell_active": true,
+      "withdrawal_active": false,
+      "deposit_active": false
+    },
+    {
+      "id": "b86d118b-efe3-11eb-b56f-0691764446a7",
+      "name": "Microsoft",
+      "symbol": "MSFT",
+      "isin": "US5949181045",
+      "group": "stock",
+      "type": "security",
+      "buy_active": false,
+      "sell_active": true,
+      "withdrawal_active": false,
+      "deposit_active": false
+    },
+    {
+      "id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9",
+      "name": "iShares Core S&P 500 UCITS ETF",
+      "symbol": "SXR8",
+      "isin": "IE00B5BMR087",
+      "group": "equity_etf",
+      "type": "equity_security",
+      "buy_active": true,
+      "sell_active": true,
+      "withdrawal_active": false,
+      "deposit_active": false
+    },
+    {
+      "id": "b86c88d4-efe3-11eb-b56f-0691764446a7",
+      "name": "Gold",
+      "symbol": "XAU",
+      "group": "metal",
+      "type": "commodity",
+      "buy_active": true,
+      "sell_active": true,
+      "withdrawal_active": false,
+      "deposit_active": false
+    }
+  ],
+  "operations": [
+    {
+      "data": [
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000014",
+          "operation_type": "interest",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000013",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "1.25",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-06-01T03:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000013",
+          "operation_type": "fee",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000014",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "1.50",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-05-30T03:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000012",
+          "operation_type": "sell",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000015",
+              "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000a1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.5",
+                "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-05-20T16:00:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000010",
+                "fee": {
+                  "value": "1.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0.25",
+                "rate": "440.00",
+                "rate_with_fee": "438.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000016",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "219.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-05-20T16:00:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000010",
+                "fee": {
+                  "value": "1.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0.25",
+                "rate": "440.00",
+                "rate_with_fee": "438.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000011",
+          "operation_type": "dividend",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000017",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.62",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-05-16T11:20:00.000Z"
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000018",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.17",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "transaction_type": "tax",
+              "flow": "OUTGOING",
+              "credited_at": "2024-05-16T11:20:00.000Z"
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000010",
+          "operation_type": "sell",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000019",
+              "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000b1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.004",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-05-10T09:45:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000008",
+                "fee": {
+                  "value": "3.60",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "60000.00",
+                "rate_with_fee": "59100.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000020",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "236.40",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-05-10T09:45:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000008",
+                "fee": {
+                  "value": "3.60",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "60000.00",
+                "rate_with_fee": "59100.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000009",
+          "operation_type": "withdrawal",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000021",
+              "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000b1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.001",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "fee_amount": {
+                "value": "0.0001",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-04-20T12:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000008",
+          "operation_type": "reward",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000022",
+              "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e2",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.0003",
+                "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-04-10T00:00:00.000Z"
+            }
+          ]
+        }
+      ],
+      "self_cursor": "",
+      "next_cursor": "MjAyNC0wNC0xMFQwMDowMDowMFo=",
+      "has_next_page": true
+    },
+    {
+      "data": [
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000007",
+          "operation_type": "stake",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000001",
+              "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e2",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.05",
+                "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-04-02T09:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000006",
+          "operation_type": "swap",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000002",
+              "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000b1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.002",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-04-01T10:15:30.120Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000006",
+                "fee": {
+                  "value": "1.80",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "0.04",
+                "rate_with_fee": "0.04",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000003",
+              "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e2",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.05",
+                "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-04-01T10:15:30.120Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000006",
+                "fee": {
+                  "value": "1.80",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "0.04",
+                "rate_with_fee": "0.04",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000005",
+          "operation_type": "buy",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000004",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "35.50",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-03-20T08:00:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000005",
+                "fee": {
+                  "value": "0.50",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "70.00",
+                "rate_with_fee": "71.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000005",
+              "asset_id": "b86c88d4-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000c1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.5",
+                "asset_id": "b86c88d4-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-03-20T08:00:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000005",
+                "fee": {
+                  "value": "0.50",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "70.00",
+                "rate_with_fee": "71.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000004",
+          "operation_type": "savings",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000006",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "100.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "transaction_type": "buy",
+              "flow": "OUTGOING",
+              "credited_at": "2024-03-15T07:30:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000004",
+                "fee": {
+                  "value": "0.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0",
+                "rate": "500.00",
+                "rate_with_fee": "500.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000007",
+              "asset_id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000a2",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.2",
+                "asset_id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9"
+              },
+              "transaction_type": "buy",
+              "flow": "INCOMING",
+              "credited_at": "2024-03-15T07:30:00.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000004",
+                "fee": {
+                  "value": "0.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0",
+                "rate": "500.00",
+                "rate_with_fee": "500.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000003",
+          "operation_type": "buy",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000008",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "401.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-03-05T15:31:07.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000003",
+                "fee": {
+                  "value": "1.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0.25",
+                "rate": "400.00",
+                "rate_with_fee": "401.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000009",
+              "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000a1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "1",
+                "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-03-05T15:31:07.000Z",
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000003",
+                "fee": {
+                  "value": "1.00",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "0.25",
+                "rate": "400.00",
+                "rate_with_fee": "401.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000002",
+          "operation_type": "buy",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000010",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "-500.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "OUTGOING",
+              "credited_at": "2024-03-04T14:31:07.482Z",
+              "asset_balance_after": {
+                "value": "1500.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000002",
+                "fee": {
+                  "value": "7.35",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "49265.00",
+                "rate_with_fee": "50000.00",
+                "to_eur_rate": "1"
+              }
+            },
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000011",
+              "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000b1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "0.01",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-03-04T14:31:07.482Z",
+              "asset_balance_after": {
+                "value": "0.01",
+                "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+              },
+              "trade": {
+                "trade_id": "7d000000-0000-4000-8000-000000000002",
+                "fee": {
+                  "value": "7.35",
+                  "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+                },
+                "fee_percentage": "1.49",
+                "rate": "49265.00",
+                "rate_with_fee": "50000.00",
+                "to_eur_rate": "1"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "09000000-0000-4000-8000-000000000001",
+          "operation_type": "deposit",
+          "transactions": [
+            {
+              "transaction_id": "7a000000-0000-4000-8000-000000000012",
+              "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+              "wallet_id": "0f000000-0000-4000-8000-0000000000e1",
+              "wallet_owner": "USER",
+              "asset_amount": {
+                "value": "2000.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              },
+              "flow": "INCOMING",
+              "credited_at": "2024-03-01T08:30:00.000Z",
+              "asset_balance_after": {
+                "value": "2000.00",
+                "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+              }
+            }
+          ]
+        }
+      ],
+      "self_cursor": "MjAyNC0wNC0xMFQwMDowMDowMFo=",
+      "has_next_page": false
+    }
+  ],
+  "portfolio": {
+    "data": [
+      {
+        "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7",
+        "balance": {
+          "value": "1419.10",
+          "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+        },
+        "available_balance": {
+          "value": "1419.10",
+          "currency_id": "b88b8466-efe3-11eb-b56f-0691764446a7"
+        }
+      },
+      {
+        "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7",
+        "balance": {
+          "value": "0.0029",
+          "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+        },
+        "available_balance": {
+          "value": "0.0029",
+          "asset_id": "b86c034b-efe3-11eb-b56f-0691764446a7"
+        }
+      },
+      {
+        "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7",
+        "balance": {
+          "value": "0.0503",
+          "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7"
+        },
+        "available_balance": {
+          "value": "0.0503",
+          "asset_id": "b86c113a-efe3-11eb-b56f-0691764446a7"
+        }
+      },
+      {
+        "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06",
+        "balance": {
+          "value": "0.5",
+          "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06"
+        },
+        "available_balance": {
+          "value": "0.5",
+          "asset_id": "1f0ea510-24fe-6f72-aec7-39e58f1b6f06"
+        }
+      },
+      {
+        "asset_id": "b86d118b-efe3-11eb-b56f-0691764446a7",
+        "balance": {
+          "value": "0.25",
+          "asset_id": "b86d118b-efe3-11eb-b56f-0691764446a7"
+        },
+        "available_balance": {
+          "value": "0.25",
+          "asset_id": "b86d118b-efe3-11eb-b56f-0691764446a7"
+        }
+      },
+      {
+        "asset_id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9",
+        "balance": {
+          "value": "0.2",
+          "asset_id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9"
+        },
+        "available_balance": {
+          "value": "0.2",
+          "asset_id": "1f0f1320-ec88-67f4-a683-4d0158d3ebe9"
+        }
+      },
+      {
+        "asset_id": "b86c88d4-efe3-11eb-b56f-0691764446a7",
+        "balance": {
+          "value": "0.5",
+          "asset_id": "b86c88d4-efe3-11eb-b56f-0691764446a7"
+        },
+        "available_balance": {
+          "value": "0.5",
+          "asset_id": "b86c88d4-efe3-11eb-b56f-0691764446a7"
+        }
+      }
+    ]
+  }
+}

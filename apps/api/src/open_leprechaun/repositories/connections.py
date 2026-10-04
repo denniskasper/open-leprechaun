@@ -133,6 +133,21 @@ def unpair_account(engine: Engine, connection_id: int, adapter_kind: str) -> boo
     return released.rowcount == 1
 
 
+def kinds_paired_with(engine: Engine, connection_id: int, account_id: int) -> list[str]:
+    """Every adapter kind of this Connection that writes into the Account."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT adapter_kind FROM connection_account"
+                    " WHERE connection_id = :connection_id AND account_id = :account_id"
+                    " ORDER BY adapter_kind"
+                ),
+                {"connection_id": connection_id, "account_id": account_id},
+            ).scalars()
+        )
+
+
 def paired_account(engine: Engine, connection_id: int, adapter_kind: str) -> int | None:
     with engine.connect() as connection:
         return connection.execute(

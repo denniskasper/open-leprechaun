@@ -8,6 +8,7 @@ authoritative source under a row lock, so exactly one ingestion mode writes
 per Account and two racing commits cannot both declare themselves.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -126,10 +127,18 @@ def find_instrument(
 
 
 def commit_batch(
-    engine: Engine, *, source: str, label: str, account_id: int, rows: list[WriteRow]
+    engine: Engine,
+    *,
+    source: str,
+    label: str,
+    account_id: int,
+    rows: list[WriteRow],
+    alongside: Sequence[str] = (),
 ) -> CommitOutcome | Refusal:
     """Write the batch, its Transactions and their registry rows in one
-    database transaction — an import lands whole or not at all."""
+    database transaction — an import lands whole or not at all. `alongside`
+    names the sources that are the same ingestion mode as this one, so either
+    may hold the Account's declaration."""
     with engine.begin() as connection:
         account = connection.execute(
             text("SELECT authoritative_source FROM account WHERE id = :account_id FOR UPDATE"),
@@ -137,7 +146,7 @@ def commit_batch(
         ).one_or_none()
         if account is None:
             return Refusal.no_such_account
-        if account.authoritative_source not in (None, source):
+        if account.authoritative_source not in (None, source, *alongside):
             return Refusal.not_authoritative
         if account.authoritative_source is None:
             connection.execute(

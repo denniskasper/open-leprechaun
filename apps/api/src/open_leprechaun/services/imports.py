@@ -166,10 +166,22 @@ class Committed:
     price_conditions: tuple[ProviderCondition, ...] = ()
 
 
-def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[ImportRow]) -> Preview:
+def evaluate(
+    engine: Engine,
+    *,
+    source: str,
+    account_id: int,
+    rows: Sequence[ImportRow],
+    alongside: Sequence[str] = (),
+) -> Preview:
     """Judge every row without writing anything: what would be created, what
     is already registered for this source, what is skipped and why, and which
-    Instruments would have to be created first."""
+    Instruments would have to be created first.
+
+    `alongside` names the sources that are the same ingestion mode as this
+    one — the other kinds of one Connection writing into the same Account —
+    so whichever of them declared itself authoritative does not lock the
+    rest out."""
     registered = imports.registered(engine, source)
     seen_in_file: set[str] = set()
     resolved: dict[tuple[str, ...], int | None] = {}
@@ -219,7 +231,7 @@ def evaluate(engine: Engine, *, source: str, account_id: int, rows: Sequence[Imp
         )
         refusal = CommitRefused(Refusal.withholding_unset, sentence)
         warnings.append(sentence)
-    elif account.authoritative_source not in (None, source):
+    elif account.authoritative_source not in (None, source, *alongside):
         sentence = _not_authoritative(account.authoritative_source, source)
         refusal = CommitRefused(Refusal.not_authoritative, sentence)
         warnings.append(sentence)
@@ -247,13 +259,14 @@ def commit(
     label: str,
     account_id: int,
     rows: Sequence[ImportRow],
+    alongside: Sequence[str] = (),
 ) -> Committed | CommitRefused:
     """The separate act the preview leads to: the same evaluation, then the
     batch, its Transactions and their registry rows written whole. Once the
     batch has landed, every row that states no price of its own is given the
     price of its own day (ticket 41) — after, so that no provider's failure
     can cost the import."""
-    preview = evaluate(engine, source=source, account_id=account_id, rows=rows)
+    preview = evaluate(engine, source=source, account_id=account_id, rows=rows, alongside=alongside)
     if preview.refusal is not None:
         return preview.refusal
     if not preview.creatable:
@@ -276,6 +289,7 @@ def commit(
         label=label,
         account_id=account_id,
         rows=[_write_row(engine, row, account_id, instrument_ids) for row in preview.creatable],
+        alongside=alongside,
     )
     if isinstance(outcome, Refusal):
         # The state changed between the evaluation and the write's row lock;

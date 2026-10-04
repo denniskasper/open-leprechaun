@@ -11,6 +11,7 @@ more.
 
 from dataclasses import dataclass
 
+from open_leprechaun.ports.bitpanda import BitpandaSecuritiesAdapter, BitpandaSpotAdapter
 from open_leprechaun.ports.broker import BrokerAdapter
 from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
 from open_leprechaun.ports.exchange import ExchangeAdapter
@@ -37,8 +38,9 @@ class Venue:
     requires_passphrase: bool
     # Of either account-authenticating port — an exchange's kinds or a
     # broker's; the sync service routes by what a kind pulls, never by name.
-    # Empty until the venue's adapters ship (ticket 49) — registration works
-    # ahead of them; testing and syncing answer nothing.
+    # A venue whose one account holds coins beside securities ships a kind of
+    # each. Empty for a venue whose adapters have not shipped — registration
+    # works ahead of them; testing and syncing answer nothing.
     adapters: tuple[ExchangeAdapter | BrokerAdapter, ...] = ()
 
 
@@ -96,9 +98,15 @@ VENUES: dict[str, Venue] = {
         Venue(
             venue="bitpanda",
             name="Bitpanda",
-            required_scope="Issue the API key with read scopes only — no trading scope.",
+            required_scope=(
+                "Generate the API key with exactly these scopes ticked: Balances and"
+                " Transaction. Leave Trade (Write) and Earn (Write) unticked; Trade (Read)"
+                " and Earn (Read) are not needed. A key lives a year at most — store its"
+                " successor before it expires."
+            ),
             requires_secret=False,
             requires_passphrase=False,
+            adapters=(BitpandaSpotAdapter(), BitpandaSecuritiesAdapter()),
         ),
     )
 }

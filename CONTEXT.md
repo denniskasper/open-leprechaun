@@ -71,6 +71,10 @@ cash. It is vocabulary, not a schema entity: there is no Depot table, no Depot s
 nothing branches on it. It appears in UI copy because it is what the Admin and the broker both
 call the thing.
 
+A Depot may hold coins beside its securities. Nothing about the Account says how a position is
+taxed: the regime follows the **Instrument** — a coin's sale is a private sale, a security's is
+capital income — whichever Account holds it.
+
 ### Connection
 
 The single credentialed link to one venue account: one key and secret, plus a passphrase where a
@@ -300,7 +304,10 @@ port touches the database, converts to EUR, or computes tax; core code never lea
 name. Each declares its capabilities, including maximum lookback.
 
 Exactly one ingestion mode is **authoritative per Account**. A second source may reconcile against
-it but may not write.
+it but may not write. The adapter kinds of one **Connection** are one ingestion mode — the same
+credentialed link to the same venue account — so those paired with one Account write into it
+together, each under its own provenance. That is how a venue whose one account holds coins beside
+securities is served: a kind of each port, both paired with the one **Depot**.
 
 _Avoid_: "connector" for a credentialed adapter, or "adapter" for a file parser — the distinction
 is which of the four shapes it is.

@@ -315,6 +315,13 @@ def _commit(
         label=f"{connection.venue} {adapter_kind} sync",
         account_id=account_id,
         rows=rows,
+        # The kinds of one Connection are one credentialed link to one venue
+        # account — one ingestion mode — so those paired with this Account
+        # write into it together, each under its own provenance.
+        alongside=tuple(
+            f"{connection.venue}:{kind}"
+            for kind in repository.kinds_paired_with(engine, connection.id, account_id)
+        ),
     )
     if isinstance(committed, CommitRefused):
         return None, committed.sentence

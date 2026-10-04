@@ -21,6 +21,8 @@ from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.ports import broker as port
+from open_leprechaun.ports import exchange as exchange_port
+from open_leprechaun.repositories import instruments
 
 BOUGHT_AT = datetime(2031, 3, 4, 14, 31, 7, tzinfo=UTC)
 PAID_AT = datetime(2031, 5, 16, 11, 20, tzinfo=UTC)
@@ -545,3 +547,81 @@ def test_a_position_in_a_security_the_ledger_never_saw_is_unresolved_not_minted(
     assert (line["status"], line["instrument_id"], line["live"]) == ("unresolved", None, "2")
     assert "US0378331005" in line["detail"]
     assert "AAPL" not in instruments_by_symbol(client)
+
+
+# --- One Depot, both ports (ticket 49) ---
+
+
+class FakeExchange:
+    """A fake of the exchange port: one kind and a scripted harvest."""
+
+    kind = "spot"
+    lookback_days = None
+
+    def __init__(self, harvest):
+        self.harvest = harvest
+
+    def test(self, credentials):
+        return "Authenticated."
+
+    def pull(self, credentials):
+        return self.harvest
+
+
+def a_coin_purchase() -> exchange_port.NormalizedTrade:
+    return exchange_port.NormalizedTrade(
+        external_id="trade-1",
+        occurred_at=BOUGHT_AT,
+        base_symbol="BTC",
+        quote_symbol="EUR",
+        side="buy",
+        base_quantity=Decimal("0.01"),
+        quote_quantity=Decimal("400"),
+    )
+
+
+def test_both_kinds_of_one_connection_write_into_the_same_depot(client, adapters, db):
+    """A venue that holds coins beside securities ships a kind of each port.
+    Paired with one Depot they are one ingestion mode — the same credentialed
+    link to the same venue account — so whichever commits first does not
+    lock the other out."""
+    instruments.create_native_coin(db, symbol="BTC", name="Bitcoin", chain="bitcoin")
+    instruments.create_cash(db, symbol="EUR", name="Euro")
+    connection_id, account_id = depot(client)
+    client.put(f"/api/connections/{connection_id}/pairings/spot", json={"account_id": account_id})
+    adapters["trading_212"] = (
+        FakeExchange(exchange_port.Harvest(trades=(a_coin_purchase(),))),
+        FakeBroker(harvest=harvest(trades=(a_purchase(fees=()),))),
+    )
+
+    spot, securities = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert (spot["ok"], spot["error"]) == (True, None)
+    assert (securities["ok"], securities["error"]) == (True, None)
+    transactions = client.get("/api/transactions").json()
+    assert {transaction["import_source"] for transaction in transactions} == {
+        "trading_212:spot",
+        "trading_212:securities",
+    }
+    assert {leg["account_id"] for t in transactions for leg in t["legs"]} == {account_id}
+
+
+def test_another_connections_kind_still_may_not_write_into_a_claimed_depot(client, adapters):
+    """Sharing an Account is for the kinds of one Connection alone: a second
+    Connection is a second source, and may reconcile but not write."""
+    connection_id, account_id = depot(client)
+    adapters["trading_212"] = (FakeBroker(harvest=harvest(trades=(a_purchase(fees=()),))),)
+    sync(client, connection_id)
+    platform_id = client.get("/api/platforms").json()[0]["id"]
+    other = client.post(
+        "/api/connections",
+        json=dict(platform_id=platform_id, venue="bitpanda", label="Other", key="another-key"),
+    ).json()["id"]
+    client.put(f"/api/connections/{other}/pairings/securities", json={"account_id": account_id})
+    adapters["bitpanda"] = (FakeBroker(harvest=harvest(cash_movements=(a_deposit(),))),)
+
+    result = sync(client, other)
+
+    assert result["ok"] is False
+    assert "trading_212:securities" in result["error"]
+    assert len(client.get("/api/transactions").json()) == 1
