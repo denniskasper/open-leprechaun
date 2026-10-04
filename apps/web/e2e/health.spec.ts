@@ -8,9 +8,9 @@ test("the health panel states providers, Connections, tasks and storage", async 
   await page.goto("/");
 
   const providers = page.getByRole("region", { name: "Data providers" });
-  await expect(providers.getByText("coingecko")).toBeVisible();
-  await expect(providers.getByText("defillama")).toBeVisible();
-  await expect(providers.getByText("ecb")).toBeVisible();
+  await expect(providers.getByText("coingecko", { exact: true })).toBeVisible();
+  await expect(providers.getByText("defillama", { exact: true })).toBeVisible();
+  await expect(providers.getByText("ecb", { exact: true })).toBeVisible();
 
   await expect(page.getByRole("region", { name: "Connections" })).toBeVisible();
 

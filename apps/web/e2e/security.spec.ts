@@ -181,7 +181,8 @@ test("nothing read under the old session is shown under the next one", async ({ 
     await route.fulfill({ json: { active: 8 } });
   });
 
-  await page.getByLabel("Password").fill(PASSWORD);
+  // The Security page and its password fields can still be on screen here.
+  await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Security" }).click();
 
