@@ -71,6 +71,7 @@ class BitBoxConnector:
     name = "BitBox"
     expects = "The transactions CSV the BitBoxApp exports for one account (⋯ → Export to CSV)."
     timezone = "Europe/Berlin"
+    file_format = "csv"
 
     def parse(self, content: str) -> ParsedFile:
         reader = csv.DictReader(io.StringIO(content.removeprefix("﻿")))

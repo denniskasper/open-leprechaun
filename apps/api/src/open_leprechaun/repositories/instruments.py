@@ -317,6 +317,25 @@ def wearing_symbol(engine: Engine, symbol: str, *, families: tuple[str, ...]) ->
         )
 
 
+def answering_to_ticker(engine: Engine, ticker: str) -> list[Row]:
+    """Every security a bare ticker could mean: one wearing it as its symbol,
+    or carrying it as a ticker alias. A resolution hint's lookup (ADR-0010) —
+    what several answers mean is the caller's judgement, never a pick."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    f"SELECT DISTINCT {_PREFIXED_COLUMNS} FROM instrument i"
+                    " LEFT JOIN instrument_identifier x"
+                    " ON x.instrument_id = i.id AND x.kind = 'ticker'"
+                    " WHERE i.family = 'security' AND (i.symbol = :ticker OR x.value = :ticker)"
+                    " ORDER BY i.id"
+                ),
+                {"ticker": ticker},
+            ).all()
+        )
+
+
 def get(engine: Engine, instrument_id: int) -> Row | None:
     with engine.connect() as connection:
         return connection.execute(

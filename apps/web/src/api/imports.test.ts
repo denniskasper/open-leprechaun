@@ -5,9 +5,11 @@ import {
   fetchAddressIndexers,
   fetchCsvConnectors,
   fetchImportBatches,
+  fileContent,
   previewAddressImport,
   previewCsvImport,
   reverseImportBatch,
+  toBase64,
 } from "./imports";
 
 const batch = {
@@ -66,6 +68,7 @@ const connector = {
   name: "BitBox",
   expects: "The transactions CSV the BitBoxApp exports for one account.",
   timezone: "Europe/Berlin",
+  file_format: "csv",
 };
 
 const preview = {
@@ -187,5 +190,23 @@ describe("commitAddressImport", () => {
     await expect(commitAddressImport(address)).rejects.toThrow(
       "'solana:0ther' is authoritative for this Account.",
     );
+  });
+});
+
+describe("fileContent", () => {
+  it("hands a CSV over as the text it is", async () => {
+    await expect(fileContent(new Blob(["Time,Type\n"]), "csv")).resolves.toBe("Time,Type\n");
+  });
+
+  it("hands a workbook over as its bytes in base64, since it is not text", async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
+
+    await expect(fileContent(new Blob([bytes]), "xlsx")).resolves.toBe("UEsDBP8A");
+  });
+
+  it("encodes a file larger than one slice without losing a byte", () => {
+    const bytes = new Uint8Array(0x8000 * 2 + 5).map((_, index) => index % 251);
+
+    expect(Uint8Array.from(atob(toBase64(bytes)), (c) => c.charCodeAt(0))).toEqual(bytes);
   });
 });

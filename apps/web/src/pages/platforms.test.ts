@@ -149,7 +149,7 @@ describe("servedBy", () => {
     const broker = platform({
       id: 2,
       kind: "broker",
-      accounts: [account({ authoritative_source: "csv:etoro" })],
+      accounts: [account({ authoritative_source: "etoro:7" })],
     });
 
     expect(servedBy(broker, [connection])).toBe("import");

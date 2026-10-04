@@ -35,6 +35,7 @@ class FakeConnector:
     name: str = "Fake wallet"
     expects: str = "The CSV the fake wallet exports."
     timezone: str = "UTC"
+    file_format: str = "csv"
     parsed: ParsedFile = field(default_factory=ParsedFile)
     rejects_with: str | None = None
 
@@ -84,8 +85,8 @@ def row(**overrides) -> NormalizedRow:
 
 def test_the_registry_names_each_connector_and_what_its_file_looks_like(client, connectors):
     """The screen renders its picker from this answer alone, so a new
-    connector appears without any UI change: name, the file to produce, and
-    the timezone its timestamps are read in."""
+    connector appears without any UI change: name, the file to produce, the
+    timezone its timestamps are read in, and the kind of file it is."""
     connectors["fake"] = FakeConnector()
 
     listed = client.get("/api/csv-connectors")
@@ -97,16 +98,18 @@ def test_the_registry_names_each_connector_and_what_its_file_looks_like(client, 
             "name": "Fake wallet",
             "expects": "The CSV the fake wallet exports.",
             "timezone": "UTC",
+            "file_format": "csv",
         }
     ]
 
 
-def test_the_shipped_registry_serves_the_two_hardware_wallet_connectors():
+def test_the_shipped_registry_serves_every_connector_under_its_own_name():
     """What production reads through the same dependency the fakes stand in
-    for: both hardware-wallet connectors, each keyed by its own name."""
+    for: both hardware-wallet connectors and the broker statement, each keyed
+    by its own name."""
     shipped = get_csv_connectors()
 
-    assert sorted(shipped) == ["bitbox", "ledger_live"]
+    assert sorted(shipped) == ["bitbox", "etoro", "ledger_live"]
     assert all(key == connector.connector for key, connector in shipped.items())
 
 

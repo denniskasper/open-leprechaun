@@ -2,7 +2,7 @@
 reads it, and the preview and commit of one exported file. Everything here is
 generic over the registry — adding a connector changes no line of this."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, StringConstraints
@@ -25,12 +25,14 @@ ConnectorName = Annotated[str, StringConstraints(strip_whitespace=True, min_leng
 class ConnectorResponse(BaseModel):
     """One connector as the picker offers it: which export to produce, and
     the timezone its timestamps are read in — stated so a local-time export
-    is a declared fact, never a surprise."""
+    is a declared fact, never a surprise. `file_format` is the kind of file
+    the export is, which decides how its content is sent."""
 
     connector: str
     name: str
     expects: str
     timezone: str
+    file_format: Literal["csv", "xlsx"]
 
 
 @router.get(
@@ -45,6 +47,7 @@ def list_connectors(admin: AdminDep, connectors: CsvConnectorsDep) -> list[Conne
             name=connector.name,
             expects=connector.expects,
             timezone=connector.timezone,
+            file_format=connector.file_format,
         )
         for connector in connectors.values()
     ]
@@ -53,8 +56,9 @@ def list_connectors(admin: AdminDep, connectors: CsvConnectorsDep) -> list[Conne
 class PreviewFileRequest(BaseModel):
     connector: ConnectorName
     account_id: int
-    # The exported file itself, as the text it is. CSV exports are small
-    # enough that a JSON field beats a multipart seam.
+    # The exported file itself, as the connector's declared file format
+    # travels: a CSV as the text it is, a workbook as its bytes in base64.
+    # Exports are small enough that a JSON field beats a multipart seam.
     content: str
 
 

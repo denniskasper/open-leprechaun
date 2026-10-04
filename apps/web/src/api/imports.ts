@@ -47,14 +47,41 @@ export async function reverseImportBatch(batchId: number): Promise<void> {
 /**
  * One exported file the ledger can read (ticket 32): which export to produce,
  * and the timezone its timestamps are read in — a local-time export is a
- * declared fact, never a surprise.
+ * declared fact, never a surprise. `file_format` is the kind of file the
+ * export is: a wallet's CSV, or the workbook a broker's statement comes as.
  */
 export const csvConnectorSchema = z.object({
   connector: z.string(),
   name: z.string(),
   expects: z.string(),
   timezone: z.string(),
+  file_format: z.enum(["csv", "xlsx"]),
 });
+
+export type FileFormat = z.infer<typeof csvConnectorSchema>["file_format"];
+
+/** What the file picker offers for each format. */
+export const FILE_ACCEPT: Record<FileFormat, string> = {
+  csv: ".csv,text/csv,text/plain",
+  xlsx: ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+/** Bytes as base64, in slices small enough to spread into one call. */
+export function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/**
+ * A chosen file as the import request carries it: a CSV as the text it is, a
+ * workbook — which is not text — as its bytes in base64.
+ */
+export async function fileContent(file: Blob, format: FileFormat): Promise<string> {
+  return format === "csv" ? file.text() : toBase64(new Uint8Array(await file.arrayBuffer()));
+}
 
 export type CsvConnector = z.infer<typeof csvConnectorSchema>;
 
@@ -110,7 +137,7 @@ export type CommittedImport = z.infer<typeof committedImportSchema>;
 export interface ImportFile {
   connector: string;
   account_id: number;
-  /** The exported file itself, as the text it is. */
+  /** The exported file itself, as `fileContent` reads it for its format. */
   content: string;
 }
 

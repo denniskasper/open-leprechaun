@@ -293,7 +293,9 @@ varies.
 ### Exchange Adapter · Broker Adapter · CSV Connector · Address Indexer
 
 The four shapes of ingestion, each a port with a fake. An **Exchange Adapter** and a **Broker
-Adapter** authenticate against an account. A **CSV Connector** parses an exported file. An
+Adapter** authenticate against an account. A **CSV Connector** parses an exported file — a
+wallet's export, or the statement of a broker that offers no API, which states the same records a
+Broker Adapter pulls and lands the same way (ADR-0027). An
 **Address Indexer** takes a chain and an address, requires no credentials, and is read-only by
 nature rather than by permission — it is the mode for a self-custody wallet that publishes neither
 an export nor an account, and the only one that sees unsolicited inflows as they arrive.
@@ -326,7 +328,9 @@ apart from every record that lands in the ledger and has exactly one consumer, *
 A broker states a security's position by its ISIN; the symbol beside it is only a label.
 
 A **Broker Adapter**'s records name a security by its ISIN — the ledger's own identity for it — so
-a paper the ledger has never seen arrives flagged for review instead of refusing the sync. What a
+a paper the ledger has never seen arrives flagged for review instead of refusing the sync. A
+statement that names a paper by its ticker alone states a resolution hint: exactly one security
+in the ledger may answer to it, and nothing is minted from it. What a
 broker's history states that is no transaction — a split, a return of capital — is **passed over
 by name**: reported for the Admin to record, never landed and never dropped.
 

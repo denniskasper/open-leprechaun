@@ -222,6 +222,7 @@ class MappingConnector:
     connector: str = "mapping"
     name: str = "Column mapping"
     expects: str = "Any exported CSV, read under the Admin's own column mapping."
+    file_format: str = "csv"
 
     @property
     def timezone(self) -> str:

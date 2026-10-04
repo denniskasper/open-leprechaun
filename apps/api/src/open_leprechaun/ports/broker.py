@@ -41,9 +41,14 @@ from open_leprechaun.ports.exchange import (
 @dataclass(frozen=True)
 class NormalizedSecurity:
     """How a broker names a security: the ISIN is its identity, the symbol
-    and name are display labels and nothing more."""
+    and name are display labels and nothing more.
 
-    isin: str
+    An API always states the ISIN. A statement may not — `isin` is None
+    where a file names a paper by its ticker alone, and the symbol is then a
+    resolution hint the ledger must answer before the record can land, never
+    an identity (ADR-0010)."""
+
+    isin: str | None
     symbol: str
     name: str
 

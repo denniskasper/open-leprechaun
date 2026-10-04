@@ -31,6 +31,7 @@ function connector(timezone: string): CsvConnector {
     name: "BitBox",
     expects: "The transactions CSV the BitBoxApp exports.",
     timezone,
+    file_format: "csv",
   };
 }
 

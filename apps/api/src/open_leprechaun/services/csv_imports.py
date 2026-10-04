@@ -13,16 +13,31 @@ lands in ("bitbox:3"), so deduplication holds a file to its Account: two
 Accounts fed by the same connector never swallow each other's rows — a
 transfer between two of the Admin's own wallets appears in both exports under
 one transaction id, and both sides are facts.
+
+A broker's statement (ticket 50) yields the broker port's Normalized records
+instead of symbol rows, and they become import rows by the same translation a
+Broker Adapter's harvest goes through (services/broker_sync) — every
+Instrument named by identity, so an unknown security arrives flagged for
+review instead of refusing the file. What a file yielded decides the path,
+never the connector's name.
 """
 
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Engine
 
+from open_leprechaun.ports.broker import (
+    BrokerHarvest,
+    CoveredPeriod,
+    NormalizedDividend,
+    NormalizedSecurityTrade,
+)
 from open_leprechaun.ports.csv_connector import CsvConnector, FileRejectedError, NormalizedRow
 from open_leprechaun.repositories import instruments as instruments_repository
-from open_leprechaun.services import imports
+from open_leprechaun.services import broker_sync, imports
 from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import CommitRefused, Committed, ImportLeg, ImportRow, Preview
 from open_leprechaun.services.transactions import TRANSACTION_TYPES
@@ -130,7 +145,85 @@ def _rows(
     resolved = _resolve_symbols(engine, {row.symbol for row in parsed.rows})
     if isinstance(resolved, FileRefused):
         return resolved
-    return parsed.warnings, [_import_row(row, resolved) for row in parsed.rows]
+    warnings = parsed.warnings
+    import_rows = [_import_row(row, resolved) for row in parsed.rows]
+    if parsed.statement is not None:
+        # A broker's statement: its records land as a Broker Adapter's do,
+        # and what it states that is no transaction is named, never dropped.
+        statement, unanswered = _resolve_tickers(engine, parsed.statement)
+        import_rows.extend(broker_sync.import_rows(statement))
+        warnings = (
+            _covered_words(statement.covered, connector.timezone),
+            *warnings,
+            *unanswered,
+            *broker_sync.passed_over(statement),
+        )
+    return warnings, import_rows
+
+
+def _resolve_tickers(engine: Engine, statement: BrokerHarvest) -> tuple[BrokerHarvest, list[str]]:
+    """A statement names a security by its ISIN where it states one. Where
+    it names only a ticker, that is a resolution hint (ADR-0010): exactly one
+    security in the ledger may answer to it — wearing it as its symbol or as a
+    ticker alias — and the record then lands under that security's ISIN. A
+    ticker nothing or several things answer to mints nothing and refuses
+    nothing: its rows are left out with a sentence, and the rest lands."""
+    answers: dict[str, set[str]] = {}
+    left_out: Counter[str] = Counter()
+
+    def named[Record: NormalizedSecurityTrade | NormalizedDividend](
+        records: tuple[Record, ...],
+    ) -> tuple[Record, ...]:
+        kept = []
+        for record in records:
+            security = record.security
+            if security is None or security.isin is not None:
+                kept.append(record)
+                continue
+            if security.symbol not in answers:
+                answers[security.symbol] = {
+                    row.isin
+                    for row in instruments_repository.answering_to_ticker(engine, security.symbol)
+                }
+            if len(answers[security.symbol]) == 1:
+                (isin,) = answers[security.symbol]
+                kept.append(replace(record, security=replace(security, isin=isin)))
+            else:
+                left_out[security.symbol] += 1
+        return tuple(kept)
+
+    resolved = replace(
+        statement, trades=named(statement.trades), dividends=named(statement.dividends)
+    )
+    # A hint that was answered is said too: the Admin sees which security
+    # the ledger took a ticker to mean before anything lands under it.
+    sentences = [
+        f"The statement names {ticker!r} by its ticker alone; its rows land under the one"
+        f" security in the ledger answering to it, {next(iter(isins))}."
+        for ticker, isins in sorted(answers.items())
+        if len(isins) == 1
+    ]
+    for ticker, count in sorted(left_out.items()):
+        rows = "1 row was" if count == 1 else f"{count} rows were"
+        sentences.append(
+            f"The statement names {ticker!r} by its ticker alone, and no security in the"
+            f" ledger answers to it — {rows} left out. Create the security with that symbol"
+            " or ticker, then import again."
+            if not answers[ticker]
+            else f"The statement names {ticker!r} by its ticker alone, and several securities"
+            f" in the ledger answer to it — {rows} left out, because the ledger cannot choose."
+        )
+    return resolved, sentences
+
+
+def _covered_words(covered: CoveredPeriod, timezone: str) -> str:
+    """How far the statement reaches, on its own declared clock — the dates
+    the broker printed. A broker served by import is current only this far."""
+    zone = ZoneInfo(timezone)
+    end = covered.end.astimezone(zone).date().isoformat()
+    if covered.start is None:
+        return f"The statement covers everything up to {end}."
+    return f"The statement covers {covered.start.astimezone(zone).date().isoformat()} to {end}."
 
 
 def _resolve_symbols(engine: Engine, symbols: set[str]) -> dict[str, int] | FileRefused:

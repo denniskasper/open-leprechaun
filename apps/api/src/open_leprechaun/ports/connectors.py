@@ -1,4 +1,5 @@
-"""The CSV connector registry: every exported file the ledger can read.
+"""The CSV connector registry: every exported file the ledger can read — a
+wallet's export and a broker's statement alike.
 
 This is the one place connector names live on the way in (ADR-0008, ticket
 32's "a registry so adding one touches no service, router or screen") — core
@@ -9,9 +10,11 @@ preview and the commit follow from the entry alone.
 
 from open_leprechaun.ports.bitbox import BitBoxConnector
 from open_leprechaun.ports.csv_connector import CsvConnector
+from open_leprechaun.ports.etoro import EtoroStatementConnector
 from open_leprechaun.ports.ledger_live import LedgerLiveConnector
 
 # Keyed by the connector string that stems every provenance source.
 CONNECTORS: dict[str, CsvConnector] = {
-    entry.connector: entry for entry in (LedgerLiveConnector(), BitBoxConnector())
+    entry.connector: entry
+    for entry in (LedgerLiveConnector(), BitBoxConnector(), EtoroStatementConnector())
 }

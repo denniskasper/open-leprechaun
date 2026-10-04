@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FileUp, Radar, Table2, Undo2 } from "lucide-react";
 import { useId, useState, type ChangeEvent } from "react";
 import {
+  FILE_ACCEPT,
   commitCsvImport,
+  fileContent,
   fetchAddressIndexers,
   fetchCsvConnectors,
   fetchImportBatches,
@@ -179,7 +181,7 @@ export function ImportsPage() {
         <EmptyState
           icon={Download}
           title="No imports yet"
-          description="Nothing has been imported. Choose a wallet's exported file, map an unsupported venue's columns yourself, or read a self-custody address straight off its chain — see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
+          description="Nothing has been imported. Choose a wallet's exported file or a broker's statement, map an unsupported venue's columns yourself, or read a self-custody address straight off its chain — see exactly what it would create, and commit it as one batch — inspectable, and reversible as a unit."
           action={
             <Button variant="outline" onClick={() => setFlow("connector")}>
               <FileUp aria-hidden />
@@ -194,6 +196,13 @@ export function ImportsPage() {
   );
 }
 
+/** One file on its way through a connector into an Account. */
+interface FileRequest {
+  connector: CsvConnector;
+  accountId: number;
+  file: File;
+}
+
 function FileImportPanel({
   connectors,
   platforms,
@@ -206,12 +215,27 @@ function FileImportPanel({
   const fieldId = useId();
   const [connectorKey, setConnectorKey] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [file, setFile] = useState<{ name: string; content: string } | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
 
-  const preview = useMutation({ mutationFn: previewCsvImport });
+  // The file is read when it is sent, in the chosen connector's format: a
+  // workbook is not text, and which of the two it is the connector declares.
+  const preview = useMutation({
+    mutationFn: async (request: FileRequest) =>
+      previewCsvImport({
+        connector: request.connector.connector,
+        account_id: request.accountId,
+        content: await fileContent(request.file, request.connector.file_format),
+      }),
+  });
   const commit = useMutation({
-    mutationFn: commitCsvImport,
+    mutationFn: async (request: FileRequest) =>
+      commitCsvImport({
+        connector: request.connector.connector,
+        account_id: request.accountId,
+        content: await fileContent(request.file, request.connector.file_format),
+        label: request.file.name,
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["import-batches"] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -227,10 +251,9 @@ function FileImportPanel({
     commit.reset();
   }
 
-  async function choose(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+  function choose(event: ChangeEvent<HTMLInputElement>): void {
     outdate();
-    const chosen = event.target.files?.[0];
-    setFile(chosen ? { name: chosen.name, content: await chosen.text() } : null);
+    setFile(event.target.files?.[0] ?? null);
   }
 
   return (
@@ -292,7 +315,11 @@ function FileImportPanel({
           <label htmlFor={`${fieldId}-file`} className="microlabel text-muted-foreground">
             Exported file
           </label>
-          <FileInput id={`${fieldId}-file`} onChange={(event) => void choose(event)} />
+          <FileInput
+            id={`${fieldId}-file`}
+            accept={chosen && FILE_ACCEPT[chosen.file_format]}
+            onChange={choose}
+          />
         </div>
       </div>
 
@@ -307,12 +334,8 @@ function FileImportPanel({
           variant="outline"
           disabled={!ready || preview.isPending || preview.isSuccess}
           onClick={() => {
-            if (!ready || !file) return;
-            preview.mutate({
-              connector: connectorKey,
-              account_id: Number(accountId),
-              content: file.content,
-            });
+            if (!chosen || !file || accountId === "") return;
+            preview.mutate({ connector: chosen, accountId: Number(accountId), file });
           }}
         >
           {preview.isPending ? "Previewing…" : "Preview"}
@@ -321,13 +344,8 @@ function FileImportPanel({
           <Button
             disabled={commit.isPending}
             onClick={() => {
-              if (!ready || !file) return;
-              commit.mutate({
-                connector: connectorKey,
-                account_id: Number(accountId),
-                content: file.content,
-                label: file.name,
-              });
+              if (!chosen || !file || accountId === "") return;
+              commit.mutate({ connector: chosen, accountId: Number(accountId), file });
             }}
           >
             {commit.isPending ? "Committing…" : "Commit import"}
@@ -361,16 +379,19 @@ function FileImportPanel({
 /** The one way a file is chosen, shared with the mapping flow. */
 export function FileInput({
   id,
+  accept = FILE_ACCEPT.csv,
   onChange,
 }: {
   id: string;
+  /** What the picker offers — a CSV unless the connector reads a workbook. */
+  accept?: string;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <input
       id={id}
       type="file"
-      accept=".csv,text/csv,text/plain"
+      accept={accept}
       onChange={onChange}
       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1.5 font-mono text-xs file:mr-3 file:border-0 file:bg-transparent file:p-0 file:font-mono file:text-xs file:font-medium"
     />

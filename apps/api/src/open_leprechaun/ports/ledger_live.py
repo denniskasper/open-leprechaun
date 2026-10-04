@@ -84,6 +84,7 @@ class LedgerLiveConnector:
         " (Accounts → the account → Export operations history)."
     )
     timezone = "UTC"
+    file_format = "csv"
 
     def parse(self, content: str) -> ParsedFile:
         reader = csv.DictReader(io.StringIO(content.removeprefix("﻿")))

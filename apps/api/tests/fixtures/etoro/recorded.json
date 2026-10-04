@@ -1,0 +1,49 @@
+{
+  "_provenance": "Authored, not recorded. The sheet names, the column headers, the Type vocabulary and the cell conventions (dates as DD/MM/YYYY HH:MM:SS text, '-' for an empty cell, Position ID as text, amounts as numbers) follow what open-source readers of real eToro account statements agree on — masbug/etoro-edavki, Yozer/tax-calculations, PBLIZZ/portfolio-tracker, GeiserX/DeclaRenta, nenadjakic/investiq — in the 2025.2.15+ layout. No account was available to record from and this repository is public, so every value is invented; the ISINs are the public identifiers of the securities named. The Account Summary's label/value layout is the least certain part.",
+  "Account Summary": [
+    ["Details", null],
+    ["Name", "Test Admin"],
+    ["Username", "testadmin"],
+    ["Currency", "USD"],
+    ["Date Created", "01/02/2030 09:00:00"],
+    ["Start Date", "01/01/2031 00:00:00"],
+    ["End Date", "31/12/2031 23:59:59"]
+  ],
+  "Closed Positions": [
+    ["Position ID", "Action", "Long / Short", "Amount", "Units / Contracts", "Open Date", "Close Date", "Leverage", "Spread Fees (USD)", "Market Spread (USD)", "Profit(USD)", "Profit(EUR)", "FX rate at open (USD)", "FX rate at close (USD)", "Open Rate", "Close Rate", "Take profit rate", "Stop loss rate", "Overnight Fees and Dividends", "Copied From", "Type", "ISIN", "Notes"],
+    ["2000000001", "Apple (AAPL)", "Long", 1800, 10, "03/01/2031 14:30:00", "10/03/2031 15:00:00", 1, 0, 0.5, 200, 185.19, "-", "-", 180, 200, 0, 0, 2.04, "-", "Stocks", "US0378331005", "-"],
+    ["2000000003", "EUR/USD", "Long", 500, 15000, "05/01/2031 10:00:00", "01/03/2031 09:15:00", 30, 0.9, 0, 20, 18.52, "-", "-", 1.08, 1.0813, 0, 0, -1.5, "-", "CFD", "-", "-"]
+  ],
+  "Account Activity": [
+    ["Date", "Type", "Details", "Amount", "Units / Contracts", "Realized Equity Change", "Realized Equity", "Balance", "Position ID", "Asset type", "NWA"],
+    ["02/01/2031 09:00:00", "Deposit", "-", 5000, "-", 5000, 5000, 5000, "-", "-", 0],
+    ["03/01/2031 14:30:00", "Open Position", "AAPL/USD", 1800, 10, 0, 5000, 3200, "2000000001", "Stocks", 0],
+    ["03/01/2031 14:35:00", "Open Position", "VUSA.L/GBX", 900, 10.5, 0, 5000, 2300, "2000000002", "ETF", 0],
+    ["03/01/2031 14:35:01", "SDRT", "-", -4.5, "-", -4.5, 4995.5, 2295.5, "2000000002", "ETF", 0],
+    ["05/01/2031 10:00:00", "Open Position", "EURUSD", 500, 15000, 0, 4995.5, 1795.5, "2000000003", "CFD", 0],
+    ["06/01/2031 22:00:00", "Overnight fee", "Daily", -1.5, "-", -1.5, 4994, 1794, "2000000003", "CFD", 0],
+    ["07/01/2031 11:00:00", "Edit Stop Loss", "EURUSD", 0, "-", 0, 4994, 1794, "2000000003", "CFD", 0],
+    ["10/01/2031 12:00:00", "Open Position", "BTC/USD", 400, 0.01, 0, 4994, 1394, "2000000004", "Crypto", 0],
+    ["12/01/2031 16:00:00", "Open Position", "NVDA/USD", 600, 5, 0, 4994, 794, "2000000005", "Stocks", 0],
+    ["15/02/2031 13:00:05", "Dividend", "AAPL/USD", 2.04, "-", 2.04, 4996.04, 796.04, "2000000001", "Stocks", 0],
+    ["20/02/2031 13:10:00", "Dividend", "VUSA.L/GBX", 3.1, "-", 3.1, 4999.14, 799.14, "2000000002", "ETF", 0],
+    ["01/03/2031 09:15:00", "Position closed", "EURUSD", 520, 15000, 20, 5019.14, 1319.14, "2000000003", "CFD", 0],
+    ["10/03/2031 15:00:00", "Position closed", "AAPL/USD", 2000, 10, 200, 5219.14, 3319.14, "2000000001", "Stocks", 0],
+    ["10/03/2031 15:00:01", "Commission", "On Close", -1, "-", -1, 5218.14, 3318.14, "2000000001", "Stocks", 0],
+    ["20/03/2031 08:00:00", "Interest Payment", "-", 0.75, "-", 0.75, 5218.89, 3318.89, "-", "-", 0],
+    ["25/03/2031 10:00:00", "Withdraw Request", "-", -300, "-", -300, 4918.89, 3018.89, "-", "-", 0],
+    ["25/03/2031 10:00:00", "Withdraw Fee", "-", -5, "-", -5, 4913.89, 3013.89, "-", "-", 0],
+    ["02/04/2031 07:30:00", "corp action: Split", "NVDA/USD 10:1", 0, "-", 0, 4913.89, 3013.89, "2000000005", "Stocks", 0],
+    ["05/04/2031 10:00:00", "Adjustment", "-", 1.23, "-", 1.23, 4915.12, 3015.12, "-", "-", 0],
+    ["06/04/2031 10:00:00", "Loyalty cashback", "-", 2, "-", 2, 4917.12, 3017.12, "-", "-", 0]
+  ],
+  "Dividends": [
+    ["Date of Payment", "Instrument Name", "Net Dividend Received (USD)", "Net dividends", "Currency", "Franked/Unfranked", "Franking Credits (AUD)", "Net Dividend Received (EUR)", "Withholding Tax Rate (%)", "Withholding Tax Amount (USD)", "Withholding Tax Amount (EUR)", "Position ID", "Type", "ISIN"],
+    ["15/02/2031", "Apple (AAPL)", 2.04, 2.04, "USD", "-", "-", 1.89, "15 %", 0.36, 0.33, "2000000001", "Stocks", "US0378331005"],
+    ["20/02/2031", "Vanguard S&P 500 UCITS ETF (VUSA.L)", 3.1, 3.1, "USD", "-", "-", 2.87, "0 %", 0, 0, "2000000002", "ETF", "IE00B3XXRP09"]
+  ],
+  "Financial Summary": [
+    ["Name", "Amount in (USD)", "Tax Rate"],
+    ["Stock and ETF Dividends (Profit)", 5.14, "-"]
+  ]
+}
