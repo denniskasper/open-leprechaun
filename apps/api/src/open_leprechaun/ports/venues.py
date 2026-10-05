@@ -15,7 +15,7 @@ from open_leprechaun.ports.bitpanda import BitpandaSecuritiesAdapter, BitpandaSp
 from open_leprechaun.ports.broker import BrokerAdapter
 from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
 from open_leprechaun.ports.exchange import ExchangeAdapter
-from open_leprechaun.ports.okx import OkxFuturesAdapter, OkxSpotAdapter
+from open_leprechaun.ports.okx import EEA_BASE_URL, OkxFuturesAdapter, OkxSpotAdapter
 from open_leprechaun.ports.pionex import PionexFuturesAdapter
 from open_leprechaun.ports.trading_212 import Trading212Adapter
 
@@ -69,6 +69,21 @@ VENUES: dict[str, Venue] = {
             requires_secret=True,
             requires_passphrase=True,
             adapters=(OkxSpotAdapter(), OkxFuturesAdapter()),
+        ),
+        # The venue's EEA entity (my.okx.com): the same API behind its own
+        # host, with accounts and keys the global entity does not know.
+        Venue(
+            venue="okx_eea",
+            name="OKX (EEA)",
+            required_scope=(
+                "Create the API key with the Read permission only — no Trade, no Withdraw."
+            ),
+            requires_secret=True,
+            requires_passphrase=True,
+            adapters=(
+                OkxSpotAdapter(base_url=EEA_BASE_URL),
+                OkxFuturesAdapter(base_url=EEA_BASE_URL),
+            ),
         ),
         Venue(
             venue="coinbase",

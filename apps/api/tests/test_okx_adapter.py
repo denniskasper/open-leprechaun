@@ -26,7 +26,13 @@ import pytest
 from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import okx
 from open_leprechaun.ports.exchange import AdapterError, StatesNormalizedPositions
-from open_leprechaun.ports.okx import BASE_URL, OkxFuturesAdapter, OkxSpotAdapter, _sign
+from open_leprechaun.ports.okx import (
+    BASE_URL,
+    EEA_BASE_URL,
+    OkxFuturesAdapter,
+    OkxSpotAdapter,
+    _sign,
+)
 from open_leprechaun.services.connections import Credentials
 
 CREDENTIALS = Credentials(key="the-key", secret="the-secret", passphrase="the-passphrase")
@@ -691,6 +697,34 @@ def test_okx_ships_as_two_adapters_plus_a_registry_entry():
     assert isinstance(adapters[0], OkxSpotAdapter)
     assert isinstance(adapters[1], OkxFuturesAdapter)
     assert all(adapter.lookback_days == 90 for adapter in adapters)
+
+
+def test_the_eea_entity_is_a_venue_of_its_own_asking_its_own_host():
+    """A key minted at the venue's EEA entity does not exist on the global
+    host; the entity ships as a second registry entry whose same two kinds
+    ask the EEA host and nothing else."""
+    requests = []
+
+    def answer(request):
+        requests.append(request)
+        return ok([{"acctLv": "2", "perm": "read_only", "uid": "1"}])
+
+    adapters = get_venue_adapters()["okx_eea"]
+    assert [adapter.kind for adapter in adapters] == ["spot", "futures"]
+    assert isinstance(adapters[0], OkxSpotAdapter)
+    assert isinstance(adapters[1], OkxFuturesAdapter)
+
+    adapter = OkxSpotAdapter(
+        client=httpx.Client(transport=httpx.MockTransport(answer)),
+        throttle_seconds=0,
+        base_url=EEA_BASE_URL,
+    )
+    adapter.test(CREDENTIALS)
+
+    (request,) = requests
+    assert str(request.url).startswith("https://eea.okx.com/")
+    assert all(entry._base_url == EEA_BASE_URL for entry in adapters)
+    assert all(entry._base_url == BASE_URL for entry in get_venue_adapters()["okx"])
 
 
 def test_the_recorded_payloads_are_json_clean():

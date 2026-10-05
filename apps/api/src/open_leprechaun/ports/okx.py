@@ -41,6 +41,9 @@ from open_leprechaun.ports.exchange import (
 )
 
 BASE_URL = "https://www.okx.com"
+# The venue's EEA entity keeps its own accounts and keys behind its own host:
+# a key minted there does not exist on the global one (error 50119).
+EEA_BASE_URL = "https://eea.okx.com"
 
 _CONFIG_PATH = "/api/v5/account/config"
 _FILLS_PATH = "/api/v5/trade/fills-history"
@@ -108,8 +111,14 @@ class _OkxAdapter:
 
     lookback_days = LOOKBACK_DAYS
 
-    def __init__(self, client: httpx.Client | None = None, throttle_seconds: float = 0.15) -> None:
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        throttle_seconds: float = 0.15,
+        base_url: str = BASE_URL,
+    ) -> None:
         self._client = client or httpx.Client(timeout=15.0)
+        self._base_url = base_url
         # A small pause between paged requests respects the venue's rate
         # limits; tests pass zero.
         self._throttle_seconds = throttle_seconds
@@ -153,7 +162,7 @@ class _OkxAdapter:
 
     def _get(self, path_url: str, headers: dict[str, str]) -> list[dict]:
         try:
-            response = self._client.get(f"{BASE_URL}{path_url}", headers=headers)
+            response = self._client.get(f"{self._base_url}{path_url}", headers=headers)
         except httpx.HTTPError as failed:
             raise AdapterError(f"The OKX request failed: {failed}") from failed
         try:
