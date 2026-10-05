@@ -3,6 +3,8 @@ import {
   addAccount,
   fetchPlatforms,
   registerPlatform,
+  removeAccount,
+  removePlatform,
   setWithholding,
   setWithholdingOverride,
 } from "./platforms";
@@ -247,6 +249,44 @@ describe("setWithholdingOverride", () => {
 
     await expect(setWithholdingOverride(1, "none")).rejects.toThrow(
       "Only an Account under a broker carries an override.",
+    );
+  });
+});
+
+describe("removePlatform", () => {
+  it("deletes by id", async () => {
+    respondWith(204, undefined);
+
+    await removePlatform(7);
+
+    expect(fetch).toHaveBeenCalledWith("/api/platforms/7", { method: "DELETE" });
+  });
+
+  it("surfaces the API's own reason for a refusal", async () => {
+    respondWith(409, {
+      detail: "This Platform still holds the Account 'Main' — remove it first.",
+    });
+
+    await expect(removePlatform(7)).rejects.toThrow(
+      "This Platform still holds the Account 'Main' — remove it first.",
+    );
+  });
+});
+
+describe("removeAccount", () => {
+  it("deletes by id", async () => {
+    respondWith(204, undefined);
+
+    await removeAccount(9);
+
+    expect(fetch).toHaveBeenCalledWith("/api/accounts/9", { method: "DELETE" });
+  });
+
+  it("surfaces the API's own reason for a refusal", async () => {
+    respondWith(409, { detail: "This Account has recorded history, so it stays for good." });
+
+    await expect(removeAccount(9)).rejects.toThrow(
+      "This Account has recorded history, so it stays for good.",
     );
   });
 });

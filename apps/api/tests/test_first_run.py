@@ -455,5 +455,14 @@ def test_nothing_done_is_sticky_removing_the_thing_reopens_its_step(client):
     assert item(client, "connect_or_import")["done"] is False
 
 
+def test_removing_the_last_account_reopens_adding_platforms_and_accounts(client):
+    _, account_id = an_account(client)
+    assert item(client, "platforms_and_accounts")["done"] is True
+
+    assert client.delete(f"/api/accounts/{account_id}").is_success
+
+    assert item(client, "platforms_and_accounts")["done"] is False
+
+
 def test_production_keeps_the_checklist_behind_authentication(make_client):
     assert make_client("production").get("/api/first-run-checklist").status_code == 401

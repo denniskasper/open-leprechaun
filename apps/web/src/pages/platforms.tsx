@@ -5,14 +5,17 @@ import {
   type LucideIcon,
   Plus,
   Briefcase,
+  Trash2,
   Vault,
   Wallet,
 } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import {
   addAccount,
   fetchPlatforms,
   registerPlatform,
+  removeAccount,
+  removePlatform,
   setWithholding,
   setWithholdingOverride,
   type Account,
@@ -297,9 +300,91 @@ function KindSection({ group, index }: { group: KindGroup; index: number }) {
   );
 }
 
+/**
+ * The inline two-step every removal on this screen goes through, the same one
+ * a Connection is removed by. The button is never disabled by a guess about what
+ * the row holds: the server is the one authority on whether removal is
+ * allowed, and its refusal is kept here to be shown at the row.
+ */
+function useRemoval(remove: () => Promise<void>) {
+  const [confirming, setConfirming] = useState(false);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: remove,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platforms"] }),
+  });
+
+  return {
+    confirming,
+    pending: mutation.isPending,
+    refusal: mutation.error?.message,
+    ask: () => setConfirming(true),
+    keep: () => setConfirming(false),
+    confirm: () => mutation.mutate(),
+    forget: mutation.reset,
+  };
+}
+
+type Removal = ReturnType<typeof useRemoval>;
+
+/** Remove → "Remove for good" / "Keep". `name` tells one row's buttons from the next. */
+function RemoveButtons({
+  removal,
+  name,
+  className = "",
+}: {
+  removal: Removal;
+  name: string;
+  className?: string;
+}) {
+  if (removal.confirming) {
+    return (
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`text-alarm ${className}`}
+          disabled={removal.pending}
+          aria-label={`Remove ${name} for good`}
+          onClick={removal.confirm}
+        >
+          {removal.pending ? "Removing…" : "Remove for good"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={className}
+          aria-label={`Keep ${name}`}
+          onClick={removal.keep}
+        >
+          Keep
+        </Button>
+      </>
+    );
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={`text-muted-foreground ${className}`}
+      aria-label={`Remove ${name}`}
+      onClick={removal.ask}
+    >
+      <Trash2 aria-hidden />
+      Remove
+    </Button>
+  );
+}
+
 function PlatformRow({ platform }: { platform: Platform }) {
   const [adding, setAdding] = useState(false);
   const noun = KIND_VOCABULARY[platform.kind].account;
+  const removal = useRemoval(() => removePlatform(platform.id));
+
+  // A refusal names the Accounts in the way; once that list changes it no
+  // longer describes this Platform, so it is not left standing.
+  const { forget } = removal;
+  useEffect(forget, [forget, platform.accounts.length]);
 
   return (
     <article className="py-4" aria-label={platform.name}>
@@ -308,16 +393,24 @@ function PlatformRow({ platform }: { platform: Platform }) {
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {accountCount(platform.kind, platform.accounts.length)}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto text-muted-foreground"
-          onClick={() => setAdding((open) => !open)}
-        >
-          <Plus aria-hidden />
-          Add {noun}
-        </Button>
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setAdding((open) => !open)}
+          >
+            <Plus aria-hidden />
+            Add {noun}
+          </Button>
+          <RemoveButtons removal={removal} name={platform.name} />
+        </span>
       </div>
+      {removal.refusal && (
+        <p role="alert" className="mt-1.5 text-sm text-alarm">
+          {removal.refusal}
+        </p>
+      )}
 
       {platform.kind === "broker" && <WithholdingLine platform={platform} />}
       {platform.kind === "broker" && <ServedByLine platform={platform} />}
@@ -485,6 +578,8 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
 }
 
 function AccountLine({ account, platform }: { account: Account; platform: Platform }) {
+  const removal = useRemoval(() => removeAccount(account.id));
+
   return (
     <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 pl-4 text-sm">
       <span className="font-medium">{account.name}</span>
@@ -510,7 +605,15 @@ function AccountLine({ account, platform }: { account: Account; platform: Platfo
           {account.base_currency}
         </span>
       )}
-      {platform.kind === "broker" && <OverrideSelect account={account} />}
+      <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+        {platform.kind === "broker" && <OverrideSelect account={account} />}
+        <RemoveButtons removal={removal} name={account.name} className="h-7 px-2" />
+      </span>
+      {removal.refusal && (
+        <p role="alert" className="basis-full text-sm text-alarm">
+          {removal.refusal}
+        </p>
+      )}
     </li>
   );
 }
@@ -524,7 +627,7 @@ function OverrideSelect({ account }: { account: Account }) {
   });
 
   return (
-    <span className="ml-auto flex items-center gap-2">
+    <span className="flex items-center gap-2">
       {record.isError && (
         <span role="alert" className="text-xs text-alarm">
           {record.error.message}

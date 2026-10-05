@@ -109,3 +109,19 @@ export async function setWithholdingOverride(
     throw await refusal(response, "The withholding override could not be recorded.");
   }
 }
+
+/** Refused by the API, in its own words, while anything still holds the Platform. */
+export async function removePlatform(platformId: number): Promise<void> {
+  const response = await request(`${PLATFORMS_URL}/${platformId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw await refusal(response, "The Platform could not be removed.");
+  }
+}
+
+/** Refused by the API, in its own words, once anything was recorded in the Account. */
+export async function removeAccount(accountId: number): Promise<void> {
+  const response = await request(`${ACCOUNTS_URL}/${accountId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw await refusal(response, "The Account could not be removed.");
+  }
+}

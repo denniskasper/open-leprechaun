@@ -7,12 +7,21 @@ schema's own constraints — and the HTTP endpoints through the app.
 """
 
 from collections import Counter
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from open_leprechaun.repositories import platforms
+from open_leprechaun.repositories import (
+    delegations,
+    instruments,
+    platforms,
+    stances,
+    transactions,
+)
+from open_leprechaun.repositories.transactions import Leg
 from open_leprechaun.seed import seed
 
 KINDS = ("exchange", "cold_storage", "software_wallet", "broker", "bank")
@@ -207,6 +216,190 @@ def test_the_api_answers_conflict_for_a_duplicate_account(client, db):
     response = client.post(f"/api/platforms/{platform_id}/accounts", json={"name": "Main"})
 
     assert response.status_code == 409
+
+
+def a_platform(client, name="Kraken", kind="exchange") -> int:
+    return client.post("/api/platforms", json={"name": name, "kind": kind}).json()["id"]
+
+
+def an_account(client, platform_id, name="Main") -> int:
+    return client.post(f"/api/platforms/{platform_id}/accounts", json={"name": name}).json()["id"]
+
+
+def test_the_api_removes_an_empty_platform(client, db):
+    """A Platform registered by mistake can be taken back while nothing sits
+    under it; afterwards it is gone from the list, and gone is not found."""
+    platform_id = a_platform(client)
+
+    assert client.delete(f"/api/platforms/{platform_id}").status_code == 204
+    assert client.get("/api/platforms").json() == []
+    assert client.delete(f"/api/platforms/{platform_id}").status_code == 404
+
+
+def a_connection(client, platform_id, label="Main account") -> int:
+    return client.post(
+        "/api/connections",
+        json={
+            "platform_id": platform_id,
+            "venue": "okx",
+            "label": label,
+            "key": "AJVqhlN2mUvg5rlIT4YDkbA1",
+            "secret": "wJmoXjRk8pdFqe37cChM/2Zt5yUwbBHGSA==",
+            "passphrase": "correct horse battery staple",
+        },
+    ).json()["id"]
+
+
+def test_the_api_refuses_to_remove_a_platform_holding_accounts_and_names_them(client, db):
+    platform_id = a_platform(client)
+    an_account(client, platform_id, "Main")
+    an_account(client, platform_id, "Savings")
+
+    refused = client.delete(f"/api/platforms/{platform_id}")
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "This Platform still holds the Accounts 'Main' and 'Savings' — remove them first."
+    )
+    (platform,) = client.get("/api/platforms").json()
+    assert [account["name"] for account in platform["accounts"]] == ["Main", "Savings"]
+
+
+def test_removing_a_platform_never_removes_a_connection(client, db):
+    """Discarding credentials stays its own explicit act: a Connection in the
+    way refuses the removal, by name, and is still there afterwards."""
+    platform_id = a_platform(client, "OKX")
+    a_connection(client, platform_id, "Main account")
+
+    refused = client.delete(f"/api/platforms/{platform_id}")
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "This Platform still holds the Connection 'Main account' — remove it first."
+    )
+    assert [connection["label"] for connection in client.get("/api/connections").json()] == [
+        "Main account"
+    ]
+    assert len(client.get("/api/platforms").json()) == 1
+
+
+def test_a_platform_held_by_both_is_refused_naming_both(client, db):
+    platform_id = a_platform(client, "OKX")
+    an_account(client, platform_id, "Trading")
+    a_connection(client, platform_id, "Bob's key")
+
+    refused = client.delete(f"/api/platforms/{platform_id}")
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "This Platform still holds the Account 'Trading' and the Connection 'Bob's key'"
+        " — remove them first."
+    )
+
+
+def test_the_api_removes_an_account_nothing_was_recorded_in(client, db):
+    platform_id = a_platform(client)
+    account_id = an_account(client, platform_id)
+
+    assert client.delete(f"/api/accounts/{account_id}").status_code == 204
+    (platform,) = client.get("/api/platforms").json()
+    assert platform["accounts"] == []
+    assert client.delete(f"/api/accounts/{account_id}").status_code == 404
+
+
+def test_what_the_admin_declared_about_an_account_goes_with_it(client, db):
+    """A Stance, a staking marker, the withholding override and the declared
+    authoritative source are settings, not history: they neither hold the
+    Account nor outlive it."""
+    platform_id = a_platform(client, "Scalable Capital", "broker")
+    account_id = an_account(client, platform_id, "Depot")
+    sol = instruments.create_native_coin(db, symbol="SOL", name="Solana", chain="solana")
+    assert stances.classify(db, sol, stance="kept", account_id=account_id) == []
+    assert delegations.mark(db, instrument_id=sol, account_id=account_id, note=None)
+    assert client.put(
+        f"/api/accounts/{account_id}/withholding-override", json={"behaviour": "none"}
+    ).is_success
+    assert client.put(
+        f"/api/accounts/{account_id}/authoritative-source", json={"source": "csv:scalable"}
+    ).is_success
+
+    assert client.delete(f"/api/accounts/{account_id}").status_code == 204
+
+    assert platforms.list_accounts(db) == []
+    assert stances.list_stances(db, sol) == []
+    assert delegations.unmark(db, instrument_id=sol, account_id=account_id) is False
+
+
+def _a_leg(db, account_id):
+    btc = instruments.create_native_coin(db, symbol="BTC", name="Bitcoin", chain="bitcoin")
+    transactions.create_transaction(
+        db,
+        type="transfer_in",
+        occurred_at=datetime(2031, 3, 14, 12, 0, tzinfo=UTC),
+        note=None,
+        legs=[Leg(account_id=account_id, instrument_id=btc, role="in", quantity=Decimal("0.5"))],
+    )
+
+
+def _an_import_batch(db, account_id):
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO import_batch (source, label, account_id)"
+                " VALUES ('csv:kraken', 'ledgers.csv', :account)"
+            ),
+            {"account": account_id},
+        )
+
+
+def _a_futures_record(db, account_id):
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO futures_derivation_issue (source, account_id, symbol, reason)"
+                " VALUES ('okx:futures', :account, 'BTC-USDT-SWAP', 'A close without an open.')"
+            ),
+            {"account": account_id},
+        )
+
+
+@pytest.mark.parametrize("record", [_a_leg, _an_import_batch, _a_futures_record])
+def test_the_api_refuses_to_remove_an_account_with_recorded_history(client, db, record):
+    """Past tax years point at it: a leg, an import batch — even one whose
+    rows all turned out duplicates — or a futures record keeps the Account for
+    good, and nothing is deleted."""
+    platform_id = a_platform(client)
+    account_id = an_account(client, platform_id)
+    record(db, account_id)
+
+    refused = client.delete(f"/api/accounts/{account_id}")
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "This Account has recorded history, so it stays for good."
+    assert [row.id for row in platforms.list_accounts(db)] == [account_id]
+
+
+def test_the_api_refuses_to_remove_a_paired_account_and_names_the_connection(client, db):
+    """A silently unpaired Connection would keep syncing and land nothing, so
+    the pairing is the Admin's to release — and it is still there afterwards."""
+    platform_id = a_platform(client, "OKX")
+    account_id = an_account(client, platform_id, "Trading")
+    connection_id = a_connection(client, platform_id, "Main account")
+    assert client.put(
+        f"/api/connections/{connection_id}/pairings/spot", json={"account_id": account_id}
+    ).is_success
+
+    refused = client.delete(f"/api/accounts/{account_id}")
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "This Account is paired with the Connection 'Main account' (spot) — unpair it first."
+    )
+    (connection,) = client.get("/api/connections").json()
+    assert connection["pairings"] == [{"adapter_kind": "spot", "account_id": account_id}]
+
+    assert client.delete(f"/api/connections/{connection_id}/pairings/spot").is_success
+    assert client.delete(f"/api/accounts/{account_id}").status_code == 204
 
 
 def test_the_seed_demonstrates_every_kind_and_the_evidence_scoped_boundary(db):

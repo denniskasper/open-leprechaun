@@ -4,9 +4,13 @@ Each creator returns the new row's id, or says why the schema refused it — the
 constraints are the arbiter, so a racing duplicate loses cleanly and no caller
 has to check first. Which constraint failed is read from the error rather than
 guessed, because "there is no such Platform" and "that name is taken" are
-different answers to the Admin. Decisions live in the service.
+different answers to the Admin. Decisions live in the service — except that a
+removal reads what holds the row under the same lock it deletes under, so no
+holder can arrive between the two; how a refusal is worded is still the
+service's.
 """
 
+from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
@@ -28,6 +32,37 @@ class Refusal(Enum):
     would_unset_a_held_depot = "would_unset_a_held_depot"
 
 
+@dataclass(frozen=True)
+class PlatformHolders:
+    """What still sits under a Platform and so keeps it from being removed —
+    by the names the Admin knows them by."""
+
+    accounts: tuple[str, ...]
+    connections: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AccountHolders:
+    """What keeps an Account from being removed: history recorded in it, or
+    the Connection kinds paired with it as (Connection label, adapter kind)."""
+
+    recorded: bool
+    pairings: tuple[tuple[str, str], ...]
+
+
+# Everything that records into an Account. Each holds it by RESTRICT; Tax Lots
+# are absent because they are derived — from legs or from futures records, both
+# of which are here.
+_RECORDED_IN = (
+    "transaction_leg",
+    "import_batch",
+    "futures_fill",
+    "futures_position",
+    "funding_payment",
+    "futures_derivation_issue",
+)
+
+
 def create_platform(engine: Engine, *, name: str, kind: str) -> int | None:
     """A place that holds value, one row per name within its kind — one brand
     may be a bank and a broker both, and those are two places."""
@@ -39,6 +74,41 @@ def create_platform(engine: Engine, *, name: str, kind: str) -> int | None:
             ).scalar_one()
     except IntegrityError:
         return None
+
+
+def delete_platform(engine: Engine, platform_id: int) -> PlatformHolders | Refusal | None:
+    """Remove a Platform that holds nothing. None means it is gone; otherwise
+    nothing was deleted, and the answer is what holds it.
+
+    The row is locked before it is judged: an Account or a Connection arriving
+    meanwhile needs the Platform's key, so it waits and then finds no Platform
+    — it can never slip in between the judgement and the delete. The RESTRICT
+    foreign keys stay the backstop.
+    """
+    with engine.begin() as connection:
+        found = connection.execute(
+            text("SELECT id FROM platform WHERE id = :platform_id FOR UPDATE"),
+            {"platform_id": platform_id},
+        ).scalar_one_or_none()
+        if found is None:
+            return Refusal.no_such_platform
+        accounts = connection.execute(
+            text("SELECT name FROM account WHERE platform_id = :platform_id ORDER BY name, id"),
+            {"platform_id": platform_id},
+        ).scalars()
+        connections = connection.execute(
+            text(
+                "SELECT label FROM connection WHERE platform_id = :platform_id ORDER BY label, id"
+            ),
+            {"platform_id": platform_id},
+        ).scalars()
+        holders = PlatformHolders(accounts=tuple(accounts), connections=tuple(connections))
+        if holders.accounts or holders.connections:
+            return holders
+        connection.execute(
+            text("DELETE FROM platform WHERE id = :platform_id"), {"platform_id": platform_id}
+        )
+    return None
 
 
 def list_platforms(engine: Engine) -> list[Row]:
@@ -171,6 +241,55 @@ def create_account(
         if isinstance(refused.orig, errors.ForeignKeyViolation):
             return Refusal.no_such_platform
         return Refusal.name_taken
+
+
+def delete_account(engine: Engine, account_id: int) -> AccountHolders | Refusal | None:
+    """Remove an Account nothing was ever recorded in and no Connection kind
+    is paired with. None means it is gone — and what the Admin declared about
+    it went along by cascade; otherwise nothing was deleted, and the answer is
+    what holds it.
+
+    Locked before it is judged, like a Platform: a leg, a batch or a pairing
+    arriving meanwhile needs the Account's key and waits. That matters most
+    for a pairing, whose foreign key cascades — without the lock one made in
+    that gap would be silently released along with the Account.
+    """
+    with engine.begin() as connection:
+        found = connection.execute(
+            text("SELECT id FROM account WHERE id = :account_id FOR UPDATE"),
+            {"account_id": account_id},
+        ).scalar_one_or_none()
+        if found is None:
+            return Refusal.no_such_account
+        recorded = connection.execute(
+            text(
+                "SELECT "
+                + " OR ".join(
+                    f"EXISTS (SELECT 1 FROM {table} WHERE account_id = :account_id)"
+                    for table in _RECORDED_IN
+                )
+            ),
+            {"account_id": account_id},
+        ).scalar_one()
+        pairings = connection.execute(
+            text(
+                "SELECT connection.label, connection_account.adapter_kind"
+                " FROM connection_account"
+                " JOIN connection ON connection.id = connection_account.connection_id"
+                " WHERE connection_account.account_id = :account_id"
+                " ORDER BY connection.label, connection_account.adapter_kind"
+            ),
+            {"account_id": account_id},
+        ).all()
+        holders = AccountHolders(
+            recorded=recorded, pairings=tuple((row.label, row.adapter_kind) for row in pairings)
+        )
+        if holders.recorded or holders.pairings:
+            return holders
+        connection.execute(
+            text("DELETE FROM account WHERE id = :account_id"), {"account_id": account_id}
+        )
+    return None
 
 
 def list_accounts(engine: Engine) -> list[Row]:

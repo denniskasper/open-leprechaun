@@ -16,7 +16,13 @@ from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories import platforms
 from open_leprechaun.repositories.platforms import Refusal
 from open_leprechaun.routers.fixed_point import decimal_text_only
-from open_leprechaun.services.platforms import PlatformOverview, overview
+from open_leprechaun.services.platforms import (
+    PlatformOverview,
+    Refused,
+    overview,
+    remove_account,
+    remove_platform,
+)
 
 router = APIRouter(tags=["platforms"])
 
@@ -141,6 +147,19 @@ def register_platform(
     return RegisteredResponse(id=platform_id)
 
 
+@router.delete(
+    "/platforms/{platform_id}",
+    summary="Remove a Platform that holds no Account and no Connection",
+    status_code=204,
+)
+def delete_platform(platform_id: int, admin: AdminDep, engine: EngineDep) -> None:
+    removal = remove_platform(engine, platform_id)
+    if removal is Refusal.no_such_platform:
+        raise HTTPException(status_code=404, detail="No such Platform.")
+    if isinstance(removal, Refused):
+        raise HTTPException(status_code=409, detail=removal.reason)
+
+
 @router.post(
     "/platforms/{platform_id}/accounts",
     summary="Add a holding under a Platform",
@@ -167,6 +186,19 @@ def add_account(
             detail=f"{request.name!r} already exists under this Platform.",
         )
     return RegisteredResponse(id=created)
+
+
+@router.delete(
+    "/accounts/{account_id}",
+    summary="Remove an Account nothing was recorded in and nothing is paired with",
+    status_code=204,
+)
+def delete_account(account_id: int, admin: AdminDep, engine: EngineDep) -> None:
+    removal = remove_account(engine, account_id)
+    if removal is Refusal.no_such_account:
+        raise HTTPException(status_code=404, detail="No such Account.")
+    if isinstance(removal, Refused):
+        raise HTTPException(status_code=409, detail=removal.reason)
 
 
 class WithholdingRequest(BaseModel):
