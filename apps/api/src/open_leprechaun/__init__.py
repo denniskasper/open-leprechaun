@@ -1,6 +1,6 @@
 """The Open Leprechaun API service."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 API_PREFIX = "/api"
 """Every route and the OpenAPI document live under this prefix, so that the web
