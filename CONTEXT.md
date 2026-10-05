@@ -25,6 +25,9 @@ already taxed at source. It lives here, on the Platform, because it is a fact ab
 institution rather than about any one holding — with a per-**Account** override for the case where
 one brand operates through several entities with different tax status.
 
+A Platform may be removed only while it holds no **Account** and no **Connection**. One that has
+either stays: removing a Platform never takes anything else with it.
+
 _Avoid_: "Exchange" used generically. It means only `kind = exchange`; used as the name for
 anything that holds value it asserts "trading venue" for things that are not one.
 
@@ -41,6 +44,10 @@ untidy — a boundary can only be drawn where the evidence supports it.
 
 An Account records an address, IBAN or reference as metadata only, never as a data source, and may
 record extra software required to reach it.
+
+An Account may be removed only while nothing was ever recorded in it and no **Connection** is
+paired with it. What the Admin declared about it — a **Stance**, a withholding override — goes
+with it; history never does, so an Account that has any stays for good.
 
 _Avoid_: "Wallet" for a brokerage account.
 _Avoid_: "account" for the credentialed link to a venue — that is a **Connection**.
