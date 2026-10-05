@@ -258,6 +258,7 @@ def venue(
     instruments=(),
     funding_balances=(),
     trading_details=(),
+    settle_ccy_list=(),
 ):
     """A recorded OKX behind a mock transport, answering each endpoint the
     way the documented API answers it."""
@@ -268,7 +269,16 @@ def venue(
         path = request.url.path
         params = request.url.params
         if path == "/api/v5/account/config":
-            return ok([{"uid": "44705892", "acctLv": "2", "perm": "read_only"}])
+            return ok(
+                [
+                    {
+                        "uid": "44705892",
+                        "acctLv": "2",
+                        "perm": "read_only",
+                        "settleCcyList": list(settle_ccy_list),
+                    }
+                ]
+            )
         if path == "/api/v5/public/instruments":
             return ok([row for row in instruments if row["instType"] == params["instType"]])
         if path == "/api/v5/trade/fills-history":
@@ -545,6 +555,55 @@ def test_a_fill_on_a_contract_the_venue_no_longer_describes_is_refused():
 def test_a_fill_fee_outside_the_settlement_asset_is_refused():
     foreign = {**A_SWAP_FILL, "feeCcy": "OKB"}
     adapter, _ = futures_venue(swap_fills=[foreign])
+
+    with pytest.raises(AdapterError, match="OKB"):
+        adapter.pull(CREDENTIALS)
+
+
+# The EEA entity's dollar-margined contract, as its public endpoint describes
+# one: settled in "USD", which there names a family of assets the account
+# chooses among rather than one asset.
+A_DOLLAR_MARGINED_CONTRACT = {
+    "instType": "FUTURES",
+    "instId": "XAG-USD_UM_XPERP-310509",
+    "settleCcy": "USD",
+    "ctType": "linear",
+    "ctVal": "0.01",
+    "ctMult": "1",
+    "ctValCcy": "XAG",
+}
+A_DOLLAR_MARGINED_FILL = {
+    **A_SWAP_FILL,
+    "instType": "FUTURES",
+    "instId": "XAG-USD_UM_XPERP-310509",
+    "feeCcy": "USDC",
+}
+
+
+def test_a_dollar_margined_fill_settles_in_the_asset_the_account_settles_in():
+    """Where the contract's stated settlement and the fee's asset are both
+    among the assets the account may settle its dollar-margined contracts
+    in, the fee names the one actually used — the asset the venue's own
+    bills move."""
+    adapter, _ = futures_venue(
+        instruments=[A_DOLLAR_MARGINED_CONTRACT],
+        futures_fills=[A_DOLLAR_MARGINED_FILL],
+        settle_ccy_list=["USDC", "USD", "USDG"],
+    )
+
+    (fill,) = adapter.pull(CREDENTIALS).fills
+
+    assert fill.settlement_symbol == "USDC"
+    assert fill.inverse is False
+
+
+def test_a_dollar_margined_fee_outside_the_accounts_settlement_assets_is_refused():
+    foreign = {**A_DOLLAR_MARGINED_FILL, "feeCcy": "OKB"}
+    adapter, _ = futures_venue(
+        instruments=[A_DOLLAR_MARGINED_CONTRACT],
+        futures_fills=[foreign],
+        settle_ccy_list=["USDC", "USD", "USDG"],
+    )
 
     with pytest.raises(AdapterError, match="OKB"):
         adapter.pull(CREDENTIALS)

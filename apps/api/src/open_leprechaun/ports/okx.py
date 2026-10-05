@@ -439,8 +439,9 @@ class OkxFuturesAdapter(_OkxAdapter):
         end_ms = int(time.time() * 1000)
         start_ms = end_ms - LOOKBACK_DAYS * _DAY_MS
         specs = self._instrument_descriptions()
+        settlement_assets = self._settlement_assets(credentials)
         fills = tuple(
-            self._fill(raw, specs)
+            self._fill(raw, specs, settlement_assets)
             for inst_type in _DERIVATIVE_TYPES
             for raw in self._paged_by_id(
                 credentials,
@@ -468,7 +469,17 @@ class OkxFuturesAdapter(_OkxAdapter):
             self._pause()
         return descriptions
 
-    def _fill(self, raw: dict, descriptions: dict[str, dict]) -> NormalizedFill:
+    def _settlement_assets(self, credentials: Credentials) -> frozenset[str]:
+        """The assets this account may settle its dollar-margined contracts
+        in, as its own configuration states them — empty where the venue
+        states none, which leaves every contract to its described asset."""
+        rows = self._signed_get(credentials, _CONFIG_PATH)
+        config = rows[0] if rows else {}
+        return frozenset(str(asset) for asset in config.get("settleCcyList") or ())
+
+    def _fill(
+        self, raw: dict, descriptions: dict[str, dict], settlement_assets: frozenset[str]
+    ) -> NormalizedFill:
         symbol = str(raw["instId"])
         description = descriptions.get(symbol)
         if description is None:
@@ -478,6 +489,12 @@ class OkxFuturesAdapter(_OkxAdapter):
             )
         settlement = str(description["settleCcy"])
         fee_ccy = raw.get("feeCcy")
+        # The EEA entity describes a dollar-margined contract as settled in
+        # "USD" whichever of the account's settlement assets it really moves
+        # — fee, result and funding all arrive in that one. Where both names
+        # are among those assets, the fee's is the asset actually used.
+        if fee_ccy and {settlement, fee_ccy} <= settlement_assets:
+            settlement = str(fee_ccy)
         if fee_ccy and fee_ccy != settlement:
             raise AdapterError(
                 f"A {symbol} fill's fee arrived in {fee_ccy!r} rather than the"
