@@ -462,10 +462,10 @@ result. Unattributable funding is surfaced, never dropped.
 ### Live Position
 
 The venue's own statement of an open futures position at the moment it is asked: its size, its
-entry, mark, liquidation and breakeven price, its floating result and its margin. Shown and never
-stored, and never an input to derivation or to any tax figure — the ledger's positions come from
-**Fills** alone. A Live Position the ledger derives no open position for is marked as such: its
-close would otherwise state a result from an incomplete history.
+entry, mark, liquidation and breakeven price, its floating result, its margin and its maintenance
+margin ratio. Shown and never stored, and never an input to derivation or to any tax figure — the
+ledger's positions come from **Fills** alone. A Live Position the ledger derives no open position
+for is marked as such: its close would otherwise state a result from an incomplete history.
 
 _Avoid_: "Normalized Position" for this — that one is a balance snapshot, and feeds only
 **Reconciliation**.

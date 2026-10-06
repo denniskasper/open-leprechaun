@@ -74,6 +74,49 @@ export function formatPercent(share: number, locale?: string): string {
   );
 }
 
+/**
+ * A share stated as a fixed-point string (0.02 for 2 %) in hundredths of a
+ * percent, worked out on the digits themselves — never through a float —
+ * and rounded half away from zero where the share states more.
+ */
+function hundredthsOfAPercent(share: string): string {
+  const negative = share.startsWith("-");
+  const [integer = "0", fraction = ""] = (negative ? share.slice(1) : share).split(".");
+  const scaled = BigInt(integer + fraction);
+  const excess = fraction.length - 4;
+  const hundredths =
+    excess <= 0
+      ? scaled * 10n ** BigInt(-excess)
+      : (scaled + 10n ** BigInt(excess) / 2n) / 10n ** BigInt(excess);
+  const digits = hundredths.toString().padStart(3, "0");
+  const magnitude = `${digits.slice(0, -2)}.${digits.slice(-2)}`;
+  return negative && hundredths !== 0n ? `-${magnitude}` : magnitude;
+}
+
+/** A figure set into the locale's own percent pattern, its digits untouched. */
+function asPercent(figure: string, locale?: string): string {
+  const digits = "\u0000";
+  const pattern = new Intl.NumberFormat(locale, { style: "percent" })
+    .formatToParts(1)
+    .map((part) => (part.type === "integer" ? digits : part.value))
+    .join("");
+  return pattern.replace(/\0+/, figure);
+}
+
+/**
+ * A share that arrives as a fixed-point string (0.02 for 2 %), to two
+ * decimals — the precision a venue states its own ratios in — without ever
+ * passing through a float.
+ */
+export function formatPercentExact(share: string, locale?: string): string {
+  return asPercent(formatQuantity(hundredthsOfAPercent(share), locale), locale);
+}
+
+/** formatPercentExact with the direction in the figure — a share that can fall either side of zero. */
+export function formatSignedPercentExact(share: string, locale?: string): string {
+  return asPercent(formatSignedQuantity(hundredthsOfAPercent(share), locale), locale);
+}
+
 const BYTE_UNITS = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"] as const;
 
 /** A size on disk, in the largest unit that keeps the figure at one or above. */
@@ -98,16 +141,34 @@ export function formatBytes(bytes: number, locale?: string): string {
  * satoshi and an eighteen-decimal token unit survive to the pixel.
  */
 export function formatQuantity(value: string, locale?: string): string {
-  const [integer = "0", fraction] = value.split(".");
-  const grouped = new Intl.NumberFormat(locale).format(BigInt(integer));
+  // The sign is carried apart from the digits: an integer part of zero
+  // ("-0.5") has none of its own to lend the figure.
+  const below = value.startsWith("-") && /[1-9]/.test(value);
+  const [integer = "0", fraction] = (value.startsWith("-") ? value.slice(1) : value).split(".");
+  const format = new Intl.NumberFormat(locale);
+  const sign = below
+    ? (format.formatToParts(-1).find((part) => part.type === "minusSign")?.value ?? "-")
+    : "";
+  const grouped = sign + format.format(BigInt(integer));
   if (!fraction) {
     return grouped;
   }
-  const separator =
-    new Intl.NumberFormat(locale)
-      .formatToParts(1.1)
-      .find((part) => part.type === "decimal")?.value ?? ".";
+  const separator = format.formatToParts(1.1).find((part) => part.type === "decimal")?.value ?? ".";
   return grouped + separator + fraction;
+}
+
+/**
+ * An amount of an asset that is no ISO currency — a coin, a stablecoin — with
+ * its symbol beside it, as the money rule asks of every amount. The digits
+ * stay verbatim, as formatQuantity keeps them.
+ */
+export function formatAssetAmount(value: string, symbol: string, locale?: string): string {
+  return `${formatQuantity(value, locale)} ${symbol}`;
+}
+
+/** formatAssetAmount with the direction in the figure — a result, a funding payment. */
+export function formatSignedAssetAmount(value: string, symbol: string, locale?: string): string {
+  return `${formatSignedQuantity(value, locale)} ${symbol}`;
 }
 
 /**

@@ -31,6 +31,8 @@ const unattributableFundingSchema = z.object({
   account_id: z.number(),
   symbol: z.string(),
   amount: z.string(),
+  /** What `amount` is an amount of. */
+  settlement_symbol: z.string(),
   occurred_at: z.string(),
 });
 
@@ -67,13 +69,12 @@ export const livePositionSchema = z.object({
   margin: z.string().nullable(),
   margin_ratio: z.string().nullable(),
   settlement_symbol: z.string(),
-  opened_at: z.string().nullable(),
-  as_of: z.string(),
   /** The ledger's open position for the same Account, symbol and side — null where it has none. */
   ledger_position_id: z.number().nullable(),
 });
 
-export const kindLiveSchema = z.object({
+/** One Connection's futures kind: what its venue states, or why nothing is stated. */
+export const venueStatementSchema = z.object({
   connection_id: z.number(),
   connection_label: z.string(),
   venue: z.string(),
@@ -81,6 +82,8 @@ export const kindLiveSchema = z.object({
   account_id: z.number().nullable(),
   supported: z.boolean(),
   error: z.string().nullable(),
+  /** When the venue answered — the time its statement stands for; null where it stated nothing. */
+  stated_at: z.string().nullable(),
   positions: z.array(livePositionSchema),
 });
 
@@ -99,10 +102,11 @@ export const positionEventsSchema = z.object({
   funding: z.array(z.object({ id: z.number(), amount: z.string(), occurred_at: z.string() })),
 });
 
-export type Position = z.infer<typeof positionSchema>;
+export type FuturesPosition = z.infer<typeof positionSchema>;
+export type UnattributableFunding = z.infer<typeof unattributableFundingSchema>;
 export type Futures = z.infer<typeof futuresSchema>;
 export type LivePosition = z.infer<typeof livePositionSchema>;
-export type KindLive = z.infer<typeof kindLiveSchema>;
+export type VenueStatement = z.infer<typeof venueStatementSchema>;
 export type PositionEvents = z.infer<typeof positionEventsSchema>;
 
 export async function fetchFutures(): Promise<Futures> {
@@ -114,12 +118,12 @@ export async function fetchFutures(): Promise<Futures> {
 }
 
 /** Asks every venue for its open positions — a live call, so nothing here is cached by the API. */
-export async function fetchLivePositions(): Promise<KindLive[]> {
+export async function fetchLivePositions(): Promise<VenueStatement[]> {
   const response = await request(`${FUTURES_URL}/live`);
   if (!response.ok) {
     throw new Error(`The API answered ${response.status} instead of the live positions.`);
   }
-  return z.array(kindLiveSchema).parse(await response.json());
+  return z.array(venueStatementSchema).parse(await response.json());
 }
 
 export async function fetchPositionEvents(positionId: number): Promise<PositionEvents> {

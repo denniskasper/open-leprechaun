@@ -101,8 +101,14 @@ amount is a fixed-point decimal string off the API, or `formatEur` where a
 column of EUR tax figures should align to the cent. Quantities use
 `formatNumber`, or `formatQuantity` where the value is a fixed-point decimal
 string — those must never pass through a float — and `formatSignedQuantity`
-where the sign is the point. A share is `formatPercent`, a file size
-`formatBytes`. Timestamps use `formatTimestamp` and date-only values
+where the sign is the point. An amount of an asset that is no ISO currency — a
+coin, a stablecoin — keeps its symbol adjacent the same way, through
+`formatAssetAmount` or `formatSignedAssetAmount`. A price is the one figure
+that may stand bare, and only where its source names no currency for it: a
+venue's mark or fill price is repeated as stated, never given a currency the
+venue did not say. A share is `formatPercent`, or `formatPercentExact` and
+`formatSignedPercentExact` where it arrives as a fixed-point string; a file
+size is `formatBytes`. Timestamps use `formatTimestamp` and date-only values
 `formatDate`; all format per locale.
 
 ## Charts

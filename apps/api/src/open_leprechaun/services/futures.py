@@ -51,7 +51,7 @@ from open_leprechaun.repositories.futures import (
     NormalizedFunding,
     Refusal,
 )
-from open_leprechaun.services import fx
+from open_leprechaun.services import fx, rounding
 
 __all__ = [
     "Derivation",
@@ -374,6 +374,12 @@ def _aggregate_of(row, bot_scopes) -> int | None:  # noqa: ANN001 — a position
     return None
 
 
+def _cents(amount_eur: Decimal | None) -> Decimal | None:
+    """A view's EUR figure at presentation, by the one rounding rule
+    (services/rounding). None stays None — nothing stored could value it."""
+    return None if amount_eur is None else rounding.cents(amount_eur)
+
+
 def net_figure(position) -> Decimal:  # noqa: ANN001 — a position row or overview alike
     """The one net a position states (ticket 28): realised result less
     trading fees plus attributed funding — the figure a close emits into the
@@ -425,6 +431,9 @@ class FundingOverview:
     settlement_instrument_id: int
     occurred_at: datetime
     position_side: str | None
+    # The symbol the settlement Instrument wears — what `amount` is an
+    # amount of.
+    settlement_symbol: str
 
 
 @dataclass(frozen=True)
@@ -455,7 +464,7 @@ def overview(engine: Engine) -> FuturesOverview:
         bot_scopes = aggregates_repository.bot_rows(connection)
     settlements = {
         instrument_id: instruments_repository.get(engine, instrument_id)
-        for instrument_id in {row.settlement_instrument_id for row in positions}
+        for instrument_id in {row.settlement_instrument_id for row in (*positions, *unattributable)}
     }
     return FuturesOverview(
         positions=tuple(
@@ -478,11 +487,13 @@ def overview(engine: Engine) -> FuturesOverview:
                 settlement_symbol=settlements[row.settlement_instrument_id].symbol,
                 net_eur=None
                 if row.closed_at is None
-                else fx.stored_value_eur(
-                    engine,
-                    instrument=settlements[row.settlement_instrument_id],
-                    quantity=net_figure(row),
-                    at=row.closed_at,
+                else _cents(
+                    fx.stored_value_eur(
+                        engine,
+                        instrument=settlements[row.settlement_instrument_id],
+                        quantity=net_figure(row),
+                        at=row.closed_at,
+                    )
                 ),
             )
             for row in positions
@@ -497,6 +508,7 @@ def overview(engine: Engine) -> FuturesOverview:
                 settlement_instrument_id=row.settlement_instrument_id,
                 occurred_at=row.occurred_at,
                 position_side=row.position_side,
+                settlement_symbol=settlements[row.settlement_instrument_id].symbol,
             )
             for row in unattributable
         ),

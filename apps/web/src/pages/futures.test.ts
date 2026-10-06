@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { KindLive, LivePosition, Position } from "@/api/futures";
+import type {
+  FuturesPosition,
+  LivePosition,
+  UnattributableFunding,
+  VenueStatement,
+} from "@/api/futures";
 import {
   closedNewestFirst,
+  groupUnattributableFunding,
   ledgerOnly,
-  marginRatioWords,
-  ratioWords,
-  signedSum,
-  toneOf,
+  nothingToShow,
 } from "./futures";
+import { toneOf } from "./futures-tables";
 
-function position(overrides: Partial<Position>): Position {
+function position(overrides: Partial<FuturesPosition>): FuturesPosition {
   return {
     id: 1,
     origin: "derived",
@@ -48,14 +52,12 @@ function live(overrides: Partial<LivePosition>): LivePosition {
     margin: null,
     margin_ratio: null,
     settlement_symbol: "USDT",
-    opened_at: null,
-    as_of: "2031-03-03T10:00:00Z",
     ledger_position_id: null,
     ...overrides,
   };
 }
 
-function kind(positions: LivePosition[]): KindLive {
+function statement(positions: LivePosition[]): VenueStatement {
   return {
     connection_id: 1,
     connection_label: "Main account",
@@ -64,7 +66,21 @@ function kind(positions: LivePosition[]): KindLive {
     account_id: 1,
     supported: true,
     error: null,
+    stated_at: "2031-03-03T10:00:00Z",
     positions,
+  };
+}
+
+function payment(overrides: Partial<UnattributableFunding>): UnattributableFunding {
+  return {
+    id: 1,
+    source: "okx:futures",
+    account_id: 1,
+    symbol: "BTC-USDT-SWAP",
+    amount: "-0.10",
+    settlement_symbol: "USDT",
+    occurred_at: "2031-03-02T10:00:00Z",
+    ...overrides,
   };
 }
 
@@ -88,27 +104,50 @@ describe("ledgerOnly", () => {
       position({ id: 3, closed_at: "2031-03-02T12:00:00Z" }),
     ];
 
-    const uncovered = ledgerOnly(positions, [kind([live({ ledger_position_id: 1 })])]);
+    const uncovered = ledgerOnly(positions, [statement([live({ ledger_position_id: 1 })])]);
 
     expect(uncovered.map((entry) => entry.id)).toEqual([2]);
   });
 
-  it("is every open position while no venue has answered", () => {
+  it("is every open position where no venue states any", () => {
     expect(ledgerOnly([position({ id: 1 })], []).map((entry) => entry.id)).toEqual([1]);
   });
 });
 
-describe("ratioWords", () => {
-  it("states a share with its direction in the figure", () => {
-    expect(ratioWords("-0.0425", "en-US")).toBe("−4.25%");
-    expect(ratioWords("0.02", "en-US")).toBe("+2.00%");
-    expect(ratioWords("0", "en-US")).toBe("0.00%");
-  });
-});
+describe("groupUnattributableFunding", () => {
+  it("gathers payments by Account and symbol, with their exact total and the span they cover", () => {
+    const groups = groupUnattributableFunding([
+      payment({ id: 1, amount: "-0.10", occurred_at: "2031-03-04T08:00:00Z" }),
+      payment({ id: 2, amount: "-0.20", occurred_at: "2031-03-02T08:00:00Z" }),
+      payment({ id: 3, amount: "0.05", occurred_at: "2031-03-03T08:00:00Z" }),
+    ]);
 
-describe("marginRatioWords", () => {
-  it("states the venue's ratio as the percentage its own screen shows", () => {
-    expect(marginRatioWords("7.5", "en-US")).toBe("750.00%");
+    expect(groups).toEqual([
+      {
+        account_id: 1,
+        symbol: "BTC-USDT-SWAP",
+        settlement_symbol: "USDT",
+        count: 3,
+        total: "-0.25",
+        first_at: "2031-03-02T08:00:00Z",
+        last_at: "2031-03-04T08:00:00Z",
+      },
+    ]);
+  });
+
+  it("keeps another Account, symbol or settlement asset apart", () => {
+    const groups = groupUnattributableFunding([
+      payment({ id: 1 }),
+      payment({ id: 2, account_id: 2 }),
+      payment({ id: 3, symbol: "ETH-USDT-SWAP" }),
+      payment({ id: 4, settlement_symbol: "USDC" }),
+    ]);
+
+    expect(groups.map((group) => group.count)).toEqual([1, 1, 1, 1]);
+  });
+
+  it("is empty where every payment found its position", () => {
+    expect(groupUnattributableFunding([])).toEqual([]);
   });
 });
 
@@ -121,12 +160,42 @@ describe("toneOf", () => {
   });
 });
 
-describe("signedSum", () => {
-  it("adds fixed-point amounts without a float in between", () => {
-    expect(signedSum(["-0.1", "-0.2", "0.05"])).toBe("-0.25");
-    expect(signedSum(["0.1", "0.2"])).toBe("0.3");
-    expect(signedSum(["1.5", "-1.5"])).toBe("0");
-    expect(signedSum([])).toBe("0");
-    expect(signedSum(["-0.000000000000000001", "1"])).toBe("0.999999999999999999");
+describe("nothingToShow", () => {
+  const empty = { positions: [], unattributable_funding: [], derivation_issues: [] };
+
+  it("is the empty screen: no position, no venue, nothing unresolved", () => {
+    expect(nothingToShow(empty, [])).toBe(true);
+  });
+
+  it("never hides what is unresolved behind the empty state", () => {
+    expect(nothingToShow({ ...empty, unattributable_funding: [payment({})] }, [])).toBe(false);
+    expect(
+      nothingToShow(
+        {
+          ...empty,
+          derivation_issues: [
+            {
+              id: 1,
+              source: "okx:futures",
+              account_id: 1,
+              symbol: "BTC-USDT-SWAP",
+              position_side: null,
+              reason: "The stream states no contract variant.",
+            },
+          ],
+        },
+        [],
+      ),
+    ).toBe(false);
+  });
+
+  it("concludes nothing while an answer is still out", () => {
+    expect(nothingToShow(undefined, [])).toBe(false);
+    expect(nothingToShow(empty, undefined)).toBe(false);
+  });
+
+  it("is not empty where a venue is there to ask, or a position stands", () => {
+    expect(nothingToShow(empty, [statement([])])).toBe(false);
+    expect(nothingToShow({ ...empty, positions: [position({})] }, [])).toBe(false);
   });
 });

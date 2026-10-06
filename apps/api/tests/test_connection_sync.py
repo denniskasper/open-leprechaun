@@ -750,6 +750,8 @@ def test_live_positions_repeat_the_venue_and_name_the_ledger_position_each_match
     assert (stated["connection_label"], stated["venue"]) == ("Main account", "okx")
     assert (stated["adapter_kind"], stated["account_id"]) == ("futures", account_id)
     assert (stated["supported"], stated["error"]) == (True, None)
+    # When the venue answered — the time its statement stands for.
+    assert datetime.fromisoformat(stated["stated_at"]) <= datetime.now(UTC)
     matched, unknown = stated["positions"]
     assert matched["symbol"] == "BTC_USDT_PERP"
     assert matched["ledger_position_id"] == derived["id"]
@@ -786,6 +788,8 @@ def test_a_venue_that_refuses_is_an_error_of_its_own_connection(client, adapters
     (stated,) = response.json()
     assert stated["error"] == "The key was revoked."
     assert stated["positions"] == []
+    # A venue that refused stated nothing, at no time.
+    assert stated["stated_at"] is None
 
 
 def test_a_futures_kind_that_states_no_live_positions_says_so(client, adapters):
@@ -794,6 +798,8 @@ def test_a_futures_kind_that_states_no_live_positions_says_so(client, adapters):
     (stated,) = client.get("/api/futures/live").json()
 
     assert (stated["supported"], stated["error"], stated["positions"]) == (False, None, [])
+    # Nothing was stated, so there is no time to give.
+    assert stated["stated_at"] is None
 
 
 def test_only_futures_kinds_are_asked(client, adapters):
@@ -843,4 +849,44 @@ def test_a_closed_position_states_its_settlement_and_its_eur_value_from_the_stor
     (position,) = client.get("/api/futures").json()["positions"]
     # Net 1997.5 USDT (2000 realised, 2 fees, 0.5 funding paid) at 1.25 USD per EUR.
     assert position["net"] == "1997.5"
-    assert Decimal(position["net_eur"]) == Decimal("1598")
+    assert position["net_eur"] == "1598.00"
+
+
+def test_a_closed_positions_eur_value_is_stated_to_the_cent(client, adapters, db):
+    """A view's figure at presentation, by the one rounding rule — never a
+    tail of division digits."""
+    usdt(db)
+    connection_id, _ = paired_futures_connection(client, adapters)
+    client.post(f"/api/connections/{connection_id}/sync")
+    reference_rates.store(
+        db, [ReferenceRate(currency="USD", rate_date=AN_INSTANT.date(), rate=Decimal("1.1"))]
+    )
+
+    (position,) = client.get("/api/futures").json()["positions"]
+
+    # 1997.5 / 1.1 = 1815.9090…
+    assert position["net_eur"] == "1815.91"
+
+
+def test_unattributable_funding_names_the_asset_it_was_paid_in(client, adapters, db):
+    """A payment no position could claim still states what it is an amount
+    of — the screen must never show it as a bare number."""
+    usdt(db)
+    stray = port.NormalizedFunding(
+        external_id="BTC_USDT_PERP|late",
+        occurred_at=AN_INSTANT + timedelta(days=3),
+        symbol="BTC_USDT_PERP",
+        amount=Decimal("-0.25"),
+        settlement_symbol="USDT",
+    )
+    harvest = futures_harvest()
+    connection_id, _ = paired_futures_connection(
+        client,
+        adapters,
+        harvest=port.Harvest(fills=harvest.fills, funding=(*harvest.funding, stray)),
+    )
+    client.post(f"/api/connections/{connection_id}/sync")
+
+    (payment,) = client.get("/api/futures").json()["unattributable_funding"]
+
+    assert (payment["amount"], payment["settlement_symbol"]) == ("-0.25", "USDT")

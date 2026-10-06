@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAssetAmount,
   formatEur,
   formatMoney,
   formatMoneyExact,
   formatNumber,
   formatBytes,
   formatPercent,
+  formatPercentExact,
   formatQuantity,
+  formatSignedAssetAmount,
+  formatSignedPercentExact,
   formatSignedQuantity,
   formatTimestamp,
 } from "./format";
@@ -126,6 +130,57 @@ describe("formatQuantity", () => {
 
   it("survives integer digits beyond float precision", () => {
     expect(formatQuantity("123456789012345678901", "en-US")).toBe("123,456,789,012,345,678,901");
+  });
+});
+
+describe("formatQuantity below zero", () => {
+  it("keeps the sign of a figure whose integer part is zero", () => {
+    expect(formatQuantity("-0.5", "en-US")).toBe("-0.5");
+    expect(formatQuantity("-98765.4", "en-US")).toBe("-98,765.4");
+    expect(formatQuantity("-1234.5", "de-DE")).toBe("-1.234,5");
+  });
+
+  it("writes no sign on a zero, however it arrived", () => {
+    expect(formatQuantity("-0.00", "en-US")).toBe("0.00");
+  });
+});
+
+describe("formatAssetAmount", () => {
+  it("keeps the asset beside its amount — never a bare number", () => {
+    expect(formatAssetAmount("1234.5", "USDC", "en-US")).toBe("1,234.5 USDC");
+    expect(formatAssetAmount("-0.25", "USDC", "en-US")).toBe("-0.25 USDC");
+  });
+});
+
+describe("formatSignedAssetAmount", () => {
+  it("states the direction in the figure, with the asset beside it", () => {
+    expect(formatSignedAssetAmount("346", "USDT", "en-US")).toBe("+346 USDT");
+    expect(formatSignedAssetAmount("-4.20", "USDC", "en-US")).toBe("−4.20 USDC");
+    expect(formatSignedAssetAmount("0", "USDC", "en-US")).toBe("0 USDC");
+  });
+});
+
+describe("formatPercentExact", () => {
+  it("states a share to two decimals, as a venue states its ratios", () => {
+    expect(formatPercentExact("7.5", "en-US")).toBe("750.00%");
+    expect(formatPercentExact("0.02", "de-DE")).toBe("2,00\u00a0%");
+    expect(formatPercentExact("12.3456", "de-DE")).toBe("1.234,56\u00a0%");
+  });
+
+  it("works on the digits, so no float can bend the figure", () => {
+    // 0.145 is not representable in binary; a float would state 14.49 %.
+    expect(formatPercentExact("0.14495", "en-US")).toBe("14.50%");
+    expect(formatPercentExact("0.000049", "en-US")).toBe("0.00%");
+    expect(formatPercentExact("0.00005", "en-US")).toBe("0.01%");
+  });
+});
+
+describe("formatSignedPercentExact", () => {
+  it("puts the direction in the figure", () => {
+    expect(formatSignedPercentExact("-0.0425", "en-US")).toBe("−4.25%");
+    expect(formatSignedPercentExact("0.02", "en-US")).toBe("+2.00%");
+    expect(formatSignedPercentExact("0", "en-US")).toBe("0.00%");
+    expect(formatSignedPercentExact("-0.00001", "en-US")).toBe("0.00%");
   });
 });
 

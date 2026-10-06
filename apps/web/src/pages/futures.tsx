@@ -1,31 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
-import { CandlestickChart, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
-import { Fragment, useId, useState, type ReactNode } from "react";
+import { CandlestickChart, RefreshCw } from "lucide-react";
+import { useId, useState } from "react";
 import { Link } from "react-router";
 import {
   fetchFutures,
   fetchLivePositions,
-  fetchPositionEvents,
   type Futures,
-  type KindLive,
-  type LivePosition,
-  type Position,
+  type FuturesPosition,
+  type UnattributableFunding,
+  type VenueStatement,
 } from "@/api/futures";
 import { fetchPlatforms, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
-import { TONE, type Tone } from "@/components/patterns/lamp";
 import { Button } from "@/components/ui/button";
-import {
-  formatMoney,
-  formatQuantity,
-  formatSignedQuantity,
-  formatTimestamp,
-} from "@/lib/format";
+import { formatNumber, formatSignedAssetAmount, formatTimestamp } from "@/lib/format";
+import { LedgerTable, LiveTable, type AccountName } from "./futures-tables";
+import { sumFixed } from "./holdings";
 
 /** The ledger's closed positions, the latest close on top. */
-export function closedNewestFirst(positions: Position[]): Position[] {
+export function closedNewestFirst(positions: FuturesPosition[]): FuturesPosition[] {
   return positions
     .filter((position) => position.closed_at !== null)
     .sort((a, b) => Date.parse(b.closed_at ?? "") - Date.parse(a.closed_at ?? ""));
@@ -36,65 +31,84 @@ export function closedNewestFirst(positions: Position[]): Position[] {
  * venue that did not answer, or a position entered by hand. They stay
  * visible: what the ledger says is open is never hidden by a venue's silence.
  */
-export function ledgerOnly(positions: Position[], live: KindLive[]): Position[] {
+export function ledgerOnly(
+  positions: FuturesPosition[],
+  statements: VenueStatement[],
+): FuturesPosition[] {
   const covered = new Set(
-    live.flatMap((kind) => kind.positions.map((position) => position.ledger_position_id)),
+    statements.flatMap((statement) =>
+      statement.positions.map((position) => position.ledger_position_id),
+    ),
   );
   return positions.filter((position) => position.closed_at === null && !covered.has(position.id));
 }
 
-/** A share (0.02 for 2 %) with its direction in the figure, to the venue's two decimals. */
-export function ratioWords(ratio: string, locale?: string): string {
-  const share = Number(ratio);
-  const words = new Intl.NumberFormat(locale, {
-    style: "percent",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(share));
-  return share === 0 ? words : `${share < 0 ? "−" : "+"}${words}`;
+export interface UnattributableFundingGroup {
+  account_id: number;
+  symbol: string;
+  settlement_symbol: string;
+  count: number;
+  /** The payments' exact sum — fixed-point, never through a float. */
+  total: string;
+  first_at: string;
+  last_at: string;
 }
 
-/** The venue's maintenance margin ratio, as the percentage its own screen shows. */
-export function marginRatioWords(ratio: string, locale?: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: "percent",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(ratio));
+/**
+ * Unattributable funding, gathered by where and on what it was paid: there can be dozens on one symbol, and a line each would bury the
+ * rest of what is unresolved.
+ */
+export function groupUnattributableFunding(
+  payments: UnattributableFunding[],
+): UnattributableFundingGroup[] {
+  const gathered = new Map<string, UnattributableFunding[]>();
+  for (const payment of payments) {
+    const key = `${payment.account_id}|${payment.symbol}|${payment.settlement_symbol}`;
+    gathered.set(key, [...(gathered.get(key) ?? []), payment]);
+  }
+  return [...gathered.values()].map((group) => {
+    const instants = group.map((payment) => payment.occurred_at).sort();
+    const first = group[0]!;
+    return {
+      account_id: first.account_id,
+      symbol: first.symbol,
+      settlement_symbol: first.settlement_symbol,
+      count: group.length,
+      total: sumFixed(group.map((payment) => payment.amount)),
+      first_at: instants[0]!,
+      last_at: instants[instants.length - 1]!,
+    };
+  });
 }
 
-/** How a signed figure reads: a gain, a loss, or nothing either way. */
-export function toneOf(value: string | null): Tone {
-  if (value === null || !/[1-9]/.test(value)) return "idle";
-  return value.startsWith("-") ? "alarm" : "signal";
+function accountNames(platforms: Platform[]): AccountName {
+  const names = new Map<number, string>();
+  for (const platform of platforms) {
+    for (const account of platform.accounts) {
+      names.set(account.id, `${platform.name}, ${account.name}`);
+    }
+  }
+  return (accountId) => (accountId === null ? null : (names.get(accountId) ?? null));
 }
 
-/** Fixed-point amounts summed exactly — scaled to integers, never through a float. */
-export function signedSum(values: string[]): string {
-  const scale = Math.max(0, ...values.map((value) => (value.split(".")[1] ?? "").length));
-  const total = values.reduce((sum, value) => {
-    const negative = value.startsWith("-");
-    const [integer = "0", fraction = ""] = (negative ? value.slice(1) : value).split(".");
-    const scaled = BigInt(integer + fraction.padEnd(scale, "0"));
-    return negative ? sum - scaled : sum + scaled;
-  }, 0n);
-  const digits = (total < 0n ? -total : total).toString().padStart(scale + 1, "0");
-  const integer = digits.slice(0, digits.length - scale);
-  const fraction = digits.slice(digits.length - scale).replace(/0+$/, "");
-  return `${total < 0n ? "-" : ""}${integer}${fraction ? `.${fraction}` : ""}`;
+/**
+ * Whether the whole screen has nothing to say: no position, no venue to ask,
+ * and nothing left unresolved. What is unresolved is never hidden behind an
+ * empty state — and while either answer is still out, nothing is concluded.
+ */
+export function nothingToShow(
+  futures: Futures | undefined,
+  statements: VenueStatement[] | undefined,
+): boolean {
+  return (
+    futures !== undefined &&
+    statements !== undefined &&
+    futures.positions.length === 0 &&
+    futures.unattributable_funding.length === 0 &&
+    futures.derivation_issues.length === 0 &&
+    statements.length === 0
+  );
 }
-
-/** A fixed-point figure that may be negative, digits verbatim, no plus on a gain. */
-function plain(value: string): string {
-  return value.startsWith("-") ? `−${formatQuantity(value.slice(1))}` : formatQuantity(value);
-}
-
-const HEAD = "microlabel py-2 pl-4 text-right font-normal text-muted-foreground whitespace-nowrap";
-// The symbol stays in view while the figures scroll sideways under it.
-const HEAD_FIRST =
-  "microlabel sticky left-0 bg-background py-2 pr-4 text-left font-normal text-muted-foreground";
-const FIGURE = "py-3 pl-4 text-right font-mono text-xs tabular-nums whitespace-nowrap";
-const UNSTATED = <span className="text-muted-foreground">—</span>;
 
 type Tab = "open" | "history";
 
@@ -109,6 +123,9 @@ export function FuturesPage() {
     queryKey: ["futures-live"],
     queryFn: fetchLivePositions,
     staleTime: Infinity,
+    // Never kept once the screen is left: coming back asks the venues again
+    // rather than repeating an old statement as if it were this moment's.
+    gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,
@@ -117,11 +134,7 @@ export function FuturesPage() {
   const accountName = accountNames(platforms.data ?? []);
   const positions = futures.data?.positions ?? [];
   const closed = closedNewestFirst(positions);
-  const nothingAnywhere =
-    futures.data !== undefined &&
-    positions.length === 0 &&
-    live.data !== undefined &&
-    live.data.length === 0;
+  const nothingAnywhere = nothingToShow(futures.data, live.data);
 
   return (
     <div className="space-y-8">
@@ -157,7 +170,7 @@ export function FuturesPage() {
               {(
                 [
                   ["open", "Open positions"],
-                  ["history", `Position history (${closed.length})`],
+                  ["history", `Position history (${formatNumber(closed.length)})`],
                 ] as const
               ).map(([value, label]) => (
                 <Button
@@ -178,12 +191,11 @@ export function FuturesPage() {
             {tab === "open" ? (
               <div role="tabpanel" id={`${id}-panel-open`} aria-labelledby={`${id}-tab-open`}>
                 <OpenPositions
-                  live={live.data}
+                  statements={live.data}
                   error={live.error}
-                  fetching={live.isFetching}
-                  askedAt={live.dataUpdatedAt}
+                  asking={live.isFetching}
                   onRefresh={() => void live.refetch()}
-                  ledgerOpen={ledgerOnly(positions, live.data ?? [])}
+                  positions={positions}
                   accountName={accountName}
                 />
               </div>
@@ -203,26 +215,15 @@ export function FuturesPage() {
   );
 }
 
-type AccountName = (accountId: number | null) => string | null;
-
-function accountNames(platforms: Platform[]): AccountName {
-  const names = new Map<number, string>();
-  for (const platform of platforms) {
-    for (const account of platform.accounts) {
-      names.set(account.id, `${platform.name}, ${account.name}`);
-    }
-  }
-  return (accountId) => (accountId === null ? null : (names.get(accountId) ?? null));
-}
-
 /**
- * What derivation could not settle: funding no position could claim, and fill
- * streams it refused to guess at. Both bear on the tax result, so they stand
- * above everything else — and are absent when there is nothing to say.
+ * What derivation could not settle: fill streams it refused to guess at, and
+ * funding no position could claim. Both bear on the tax result, so they
+ * stand above everything else — and are absent when there is nothing to say.
  */
 function Unresolved({ futures, accountName }: { futures: Futures; accountName: AccountName }) {
-  const { unattributable_funding: funding, derivation_issues: issues } = futures;
-  if (funding.length === 0 && issues.length === 0) return null;
+  const issues = futures.derivation_issues;
+  const funding = groupUnattributableFunding(futures.unattributable_funding);
+  if (issues.length === 0 && funding.length === 0) return null;
   return (
     <section
       aria-label="Unresolved"
@@ -234,59 +235,70 @@ function Unresolved({ futures, accountName }: { futures: Futures; accountName: A
           <li key={`issue-${issue.id}`}>
             <span className="font-mono text-xs">{issue.symbol}</span>
             <span className="text-muted-foreground">
-              {" "}
-              {accountName(issue.account_id) && `at ${accountName(issue.account_id)} `}derived no
+              {accountName(issue.account_id) && ` at ${accountName(issue.account_id)}`} derived no
               position: {issue.reason}
             </span>
           </li>
         ))}
-        {funding.length > 0 && (
-          <li>
-            <span className="font-mono text-xs tabular-nums">{funding.length}</span>
+        {funding.map((group) => (
+          <li key={`funding-${group.account_id}-${group.symbol}-${group.settlement_symbol}`}>
+            <span className="font-mono text-xs">{group.symbol}</span>
             <span className="text-muted-foreground">
-              {" "}
-              funding {funding.length === 1 ? "payment" : "payments"} on{" "}
-              {[...new Set(funding.map((payment) => payment.symbol))].join(", ")} matched no
-              position open at the time, and {funding.length === 1 ? "counts" : "count"} in no
-              result.
+              {accountName(group.account_id) && ` at ${accountName(group.account_id)}`}:{" "}
+              {formatNumber(group.count)} funding {group.count === 1 ? "payment" : "payments"}
+              {", "}
+            </span>
+            <span className="font-mono text-xs tabular-nums">
+              {formatSignedAssetAmount(group.total, group.settlement_symbol)}
+            </span>
+            <span className="text-muted-foreground">
+              {group.count === 1
+                ? ` on ${formatTimestamp(Date.parse(group.first_at))}`
+                : ` between ${formatTimestamp(Date.parse(group.first_at))} and ${formatTimestamp(Date.parse(group.last_at))}`}
             </span>
           </li>
-        )}
+        ))}
       </ul>
+      {funding.length > 0 && (
+        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+          No single position could claim these — none was open for the symbol when they were
+          paid, or more than one was — so they count in no result.
+        </p>
+      )}
     </section>
   );
 }
 
 function OpenPositions({
-  live,
+  statements,
   error,
-  fetching,
-  askedAt,
+  asking,
   onRefresh,
-  ledgerOpen,
+  positions,
   accountName,
 }: {
-  live: KindLive[] | undefined;
+  statements: VenueStatement[] | undefined;
   error: Error | null;
-  fetching: boolean;
-  askedAt: number;
+  asking: boolean;
   onRefresh: () => void;
-  ledgerOpen: Position[];
+  positions: FuturesPosition[];
   accountName: AccountName;
 }) {
+  // Only once the venues have answered, or could not be asked at all: while
+  // the first answer is still out, nothing is yet known to be uncovered.
+  const ledgerOpen =
+    statements !== undefined || error ? ledgerOnly(positions, statements ?? []) : [];
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <p className="max-w-xl text-sm text-muted-foreground">
-          {live === undefined && fetching
+          {statements === undefined && asking
             ? "Asking each venue for its open positions…"
-            : live !== undefined
-              ? `As the venues stated them at ${formatTimestamp(askedAt)}. Shown, never stored — the tax figures rest on fills alone.`
-              : "The venues have not been asked yet."}
+            : "Each venue is asked when this screen opens and on Refresh. Shown, never stored — the tax figures rest on fills alone."}
         </p>
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={fetching}>
-          <RefreshCw aria-hidden className={fetching ? "animate-spin" : undefined} />
-          {fetching ? "Asking…" : "Refresh"}
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={asking}>
+          <RefreshCw aria-hidden className={asking ? "animate-spin" : undefined} />
+          {asking ? "Asking…" : "Refresh"}
         </Button>
       </div>
 
@@ -298,38 +310,57 @@ function OpenPositions({
         />
       )}
 
-      {live?.map((kind) => (
-        <section key={`${kind.connection_id}-${kind.adapter_kind}`} aria-label={kind.connection_label}>
-          <div className="flex flex-wrap items-baseline gap-x-3">
-            <h2 className="text-base font-medium">{kind.connection_label}</h2>
+      {statements?.map((statement) => (
+        <section
+          key={`${statement.connection_id}-${statement.adapter_kind}`}
+          aria-label={statement.connection_label}
+          className="space-y-3"
+        >
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-base font-medium">{statement.connection_label}</h2>
             <span className="text-sm text-muted-foreground">
-              {accountName(kind.account_id) ?? "not paired with an Account"}
+              {accountName(statement.account_id) ?? "not paired with an Account"}
             </span>
+            {statement.stated_at && (
+              <span className="ml-auto text-sm text-muted-foreground">
+                stated at{" "}
+                <span className="font-mono text-xs tabular-nums">
+                  {formatTimestamp(Date.parse(statement.stated_at))}
+                </span>
+              </span>
+            )}
           </div>
-          {kind.error ? (
-            <p role="alert" className="mt-2 text-sm text-alarm">
-              {kind.error}
-            </p>
-          ) : !kind.supported ? (
-            <p className="mt-2 text-sm text-muted-foreground">
+          {statement.error ? (
+            <ErrorState
+              title="This venue did not state its positions"
+              detail={statement.error}
+              onRetry={onRefresh}
+            />
+          ) : !statement.supported ? (
+            <p className="text-sm text-muted-foreground">
               This venue does not state its open positions. What the ledger derived from its
               fills is below and under Position history.
             </p>
-          ) : kind.positions.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No position is open here.</p>
+          ) : statement.positions.length === 0 ? (
+            <EmptyState
+              title="No position is open here"
+              description="The venue states none right now. Closed ones are under Position history."
+            />
           ) : (
-            <LiveTable positions={kind.positions} />
+            <LiveTable positions={statement.positions} ledger={positions} />
           )}
         </section>
       ))}
 
       {ledgerOpen.length > 0 && (
-        <section aria-label="Open in the ledger only">
-          <h2 className="text-base font-medium">Open in the ledger only</h2>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            The ledger holds these open, and no venue statement above covers them — the venue
-            did not answer, states none, or the position was entered by hand.
-          </p>
+        <section aria-label="Open in the ledger only" className="space-y-3">
+          <div>
+            <h2 className="text-base font-medium">Open in the ledger only</h2>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              The ledger holds these open, and no venue statement above covers them — the venue
+              did not answer, states none, or the position was entered by hand.
+            </p>
+          </div>
           <LedgerTable positions={ledgerOpen} accountName={accountName} closed={false} />
         </section>
       )}
@@ -337,125 +368,13 @@ function OpenPositions({
   );
 }
 
-function LiveTable({ positions }: { positions: LivePosition[] }) {
-  const [open, setOpen] = useState<string | null>(null);
-  return (
-    <div className="mt-3 overflow-x-auto">
-      <table className="w-full min-w-5xl text-sm">
-        <thead>
-          <tr className="border-y border-border">
-            <th scope="col" className={HEAD_FIRST}>
-              Symbol
-            </th>
-            {[
-              "Size",
-              "Mark price",
-              "Entry price",
-              "Est. liq. price",
-              "Breakeven price",
-              "Floating result",
-              "MMR",
-              "Margin",
-            ].map((heading) => (
-              <th key={heading} scope="col" className={HEAD}>
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {positions.map((position) => {
-            const key = `${position.symbol}-${position.side}`;
-            const tone = toneOf(position.floating_result);
-            const matched = position.ledger_position_id;
-            return (
-              <Fragment key={key}>
-                <tr className="align-top">
-                  <th scope="row" className="sticky left-0 bg-background py-3 pr-4 text-left font-normal">
-                    <div className="flex items-start gap-1.5">
-                      {matched !== null ? (
-                        <Expander
-                          open={open === key}
-                          label={position.symbol}
-                          onToggle={() => setOpen(open === key ? null : key)}
-                        />
-                      ) : (
-                        <span className="size-6 shrink-0" />
-                      )}
-                      <div>
-                        <p className="font-mono text-xs whitespace-nowrap">{position.symbol}</p>
-                        <p className="mt-1 text-xs whitespace-nowrap text-muted-foreground">
-                          {position.side}
-                          {position.leverage && `, ${plain(position.leverage)}×`}
-                          {position.margin_mode && `, ${position.margin_mode}`}
-                        </p>
-                        {matched === null && (
-                          <p className="mt-1 text-xs whitespace-nowrap text-caution">
-                            Not in the ledger — opened before the synced history.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </th>
-                  <td className={FIGURE}>
-                    {plain(position.quantity)} {position.quantity_unit}
-                    {position.notional_usd && (
-                      <p className="mt-1 text-muted-foreground">
-                        {formatMoney(Number(position.notional_usd), "USD")}
-                      </p>
-                    )}
-                  </td>
-                  <td className={FIGURE}>{price(position.mark_price)}</td>
-                  <td className={FIGURE}>{price(position.entry_price)}</td>
-                  <td className={FIGURE}>{price(position.liquidation_price)}</td>
-                  <td className={FIGURE}>{price(position.breakeven_price)}</td>
-                  <td className={`${FIGURE} ${TONE[tone].text}`}>
-                    {position.floating_result === null ? (
-                      UNSTATED
-                    ) : (
-                      <>
-                        {formatSignedQuantity(position.floating_result)}{" "}
-                        {position.settlement_symbol}
-                        {position.floating_result_ratio && (
-                          <p className="mt-1">{ratioWords(position.floating_result_ratio)}</p>
-                        )}
-                      </>
-                    )}
-                  </td>
-                  <td className={FIGURE}>
-                    {position.margin_ratio ? marginRatioWords(position.margin_ratio) : UNSTATED}
-                  </td>
-                  <td className={FIGURE}>
-                    {position.margin === null ? (
-                      UNSTATED
-                    ) : (
-                      <>
-                        {plain(position.margin)} {position.settlement_symbol}
-                      </>
-                    )}
-                  </td>
-                </tr>
-                {matched !== null && open === key && (
-                  <tr>
-                    <td colSpan={9} className="pb-5">
-                      <Events positionId={matched} settlement={position.settlement_symbol} />
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function price(value: string | null): ReactNode {
-  return value === null ? UNSTATED : plain(value);
-}
-
-function History({ positions, accountName }: { positions: Position[]; accountName: AccountName }) {
+function History({
+  positions,
+  accountName,
+}: {
+  positions: FuturesPosition[];
+  accountName: AccountName;
+}) {
   if (positions.length === 0) {
     return (
       <EmptyState
@@ -472,241 +391,6 @@ function History({ positions, accountName }: { positions: Position[]; accountNam
         plus funding, and is what a close puts into the Termingeschäfte figure of its year.
       </p>
       <LedgerTable positions={positions} accountName={accountName} closed />
-    </div>
-  );
-}
-
-/** The ledger's own positions: closed ones with their close and EUR value, open ones without. */
-function LedgerTable({
-  positions,
-  accountName,
-  closed,
-}: {
-  positions: Position[];
-  accountName: AccountName;
-  closed: boolean;
-}) {
-  const [open, setOpen] = useState<number | null>(null);
-  const headings = [
-    "Opened",
-    ...(closed ? ["Closed"] : []),
-    "Result",
-    "Fees",
-    "Funding",
-    "Net",
-    ...(closed ? ["Net in EUR"] : []),
-  ];
-  return (
-    <div className="mt-3 overflow-x-auto">
-      <table className="w-full min-w-4xl text-sm">
-        <thead>
-          <tr className="border-y border-border">
-            <th scope="col" className={HEAD_FIRST}>
-              Symbol
-            </th>
-            {headings.map((heading) => (
-              <th key={heading} scope="col" className={HEAD}>
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {positions.map((position) => (
-            <Fragment key={position.id}>
-              <tr className="align-top">
-                <th scope="row" className="sticky left-0 bg-background py-3 pr-4 text-left font-normal">
-                  <div className="flex items-start gap-1.5">
-                    <Expander
-                      open={open === position.id}
-                      label={position.symbol}
-                      onToggle={() => setOpen(open === position.id ? null : position.id)}
-                    />
-                    <div>
-                      <p className="font-mono text-xs whitespace-nowrap">{position.symbol}</p>
-                      <p className="mt-1 text-xs whitespace-nowrap text-muted-foreground">
-                        {position.side}
-                        {accountName(position.account_id) &&
-                          `, ${accountName(position.account_id)}`}
-                        {position.origin === "manual" && ", entered by hand"}
-                      </p>
-                    </div>
-                  </div>
-                </th>
-                <td className={FIGURE}>{formatTimestamp(Date.parse(position.opened_at))}</td>
-                {closed && (
-                  <td className={FIGURE}>
-                    {position.closed_at && formatTimestamp(Date.parse(position.closed_at))}
-                  </td>
-                )}
-                <td className={FIGURE}>{formatSignedQuantity(position.realized)}</td>
-                <td className={FIGURE}>{plain(position.fees)}</td>
-                <td className={FIGURE}>{formatSignedQuantity(position.funding)}</td>
-                <td className={`${FIGURE} ${TONE[toneOf(position.net)].text}`}>
-                  {formatSignedQuantity(position.net)} {position.settlement_symbol}
-                </td>
-                {closed && (
-                  <td className={FIGURE}>
-                    {position.net_eur === null ? (
-                      <span className="font-sans text-caution">awaiting a rate</span>
-                    ) : (
-                      formatMoney(Number(position.net_eur), "EUR")
-                    )}
-                  </td>
-                )}
-              </tr>
-              {open === position.id && (
-                <tr>
-                  <td colSpan={headings.length + 1} className="pb-5">
-                    <Events positionId={position.id} settlement={position.settlement_symbol} />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Expander({
-  open,
-  label,
-  onToggle,
-}: {
-  open: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  const Icon = open ? ChevronDown : ChevronRight;
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      aria-label={`${open ? "Hide" : "Show"} the fills and funding of ${label}`}
-      onClick={onToggle}
-      className="-mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-    >
-      <Icon aria-hidden className="size-4" />
-    </button>
-  );
-}
-
-/**
- * What one position rests on: every fill it was derived from, and beneath
- * them the funding attributed to it — its sum first, then each payment in a
- * list that scrolls, because a long-held position collects hundreds.
- */
-function Events({ positionId, settlement }: { positionId: number; settlement: string }) {
-  const { data, error, isPending, refetch } = useQuery({
-    queryKey: ["futures-events", positionId],
-    queryFn: () => fetchPositionEvents(positionId),
-  });
-
-  if (error) {
-    return (
-      <ErrorState
-        title="The fills and funding could not be loaded"
-        detail="The API did not answer with what this position was derived from."
-        onRetry={() => void refetch()}
-      />
-    );
-  }
-  if (isPending) {
-    return (
-      <p role="status" className="microlabel text-muted-foreground">
-        reading the fills and funding
-      </p>
-    );
-  }
-
-  const figure = "py-1.5 font-mono text-xs tabular-nums whitespace-nowrap";
-  const cell = `${figure} pl-4 text-right`;
-  const time = `${figure} text-left`;
-  const head = "microlabel py-1.5 pl-4 text-right font-normal text-muted-foreground";
-  return (
-    <div className="sticky left-0 max-w-2xl space-y-5 pt-1">
-      <div>
-        <p className="text-sm font-medium">
-          Fills <span className="font-mono text-xs text-muted-foreground">{data.fills.length}</span>
-        </p>
-        {data.fills.length === 0 ? (
-          <p className="mt-1 text-sm text-muted-foreground">
-            None stored — a position entered by hand rests on no fills.
-          </p>
-        ) : (
-          <div className="mt-1 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th scope="col" className="microlabel py-1.5 text-left font-normal text-muted-foreground">
-                    Time
-                  </th>
-                  {["Side", "Price", "Size", "Fee", "Result"].map((heading) => (
-                    <th key={heading} scope="col" className={head}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.fills.map((fill) => (
-                  <tr key={fill.id}>
-                    <td className={time}>
-                      {formatTimestamp(Date.parse(fill.occurred_at))}
-                    </td>
-                    <td className={`${cell} font-sans`}>{fill.side}</td>
-                    <td className={cell}>{plain(fill.price)}</td>
-                    <td className={cell}>{plain(fill.size)}</td>
-                    <td className={cell}>{plain(fill.fee)}</td>
-                    <td className={cell}>
-                      {fill.realized === null ? UNSTATED : formatSignedQuantity(fill.realized)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <p className="text-sm font-medium">
-          Funding{" "}
-          <span className="font-mono text-xs text-muted-foreground">{data.funding.length}</span>
-        </p>
-        {data.funding.length === 0 ? (
-          <p className="mt-1 text-sm text-muted-foreground">No payment is attributed to it.</p>
-        ) : (
-          <>
-            <p className="mt-1 font-mono text-xs tabular-nums">
-              {formatSignedQuantity(signedSum(data.funding.map((payment) => payment.amount)))}{" "}
-              {settlement}
-              <span className="ml-2 font-sans text-muted-foreground">in total</span>
-            </p>
-            <div
-              className="mt-2 max-h-56 overflow-y-auto border-y border-border"
-              tabIndex={0}
-              role="group"
-              aria-label="Funding payments"
-            >
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-border">
-                  {data.funding.map((payment) => (
-                    <tr key={payment.id}>
-                      <td className={time}>
-                        {formatTimestamp(Date.parse(payment.occurred_at))}
-                      </td>
-                      <td className={cell}>{formatSignedQuantity(payment.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }

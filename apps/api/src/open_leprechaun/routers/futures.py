@@ -126,6 +126,7 @@ class UnattributableFundingResponse(BaseModel):
     settlement_instrument_id: int
     occurred_at: AwareDatetime
     position_side: PositionSide | None
+    settlement_symbol: str
 
     @classmethod
     def of(cls, payment: FundingOverview) -> UnattributableFundingResponse:
@@ -203,7 +204,7 @@ class LivePositionResponse(BaseModel):
     ledger_position_id: int | None
 
 
-class KindLiveResponse(BaseModel):
+class VenueStatementResponse(BaseModel):
     """One Connection's futures kind: its venue's Live Positions, or why
     there are none to show — the venue states none, or it failed."""
 
@@ -214,10 +215,13 @@ class KindLiveResponse(BaseModel):
     account_id: int | None
     supported: bool
     error: str | None
+    # When the venue answered — the time its statement stands for; null
+    # where it stated nothing.
+    stated_at: AwareDatetime | None
     positions: list[LivePositionResponse]
 
     @classmethod
-    def of(cls, result: futures_live.KindLive) -> KindLiveResponse:
+    def of(cls, result: futures_live.VenueStatement) -> VenueStatementResponse:
         return cls(
             connection_id=result.connection_id,
             connection_label=result.connection_label,
@@ -226,6 +230,7 @@ class KindLiveResponse(BaseModel):
             account_id=result.account_id,
             supported=result.supported,
             error=result.error,
+            stated_at=result.stated_at,
             positions=[
                 LivePositionResponse(
                     **vars(entry.stated), ledger_position_id=entry.ledger_position_id
@@ -238,14 +243,17 @@ class KindLiveResponse(BaseModel):
 @router.get(
     "/futures/live",
     summary="What every venue states about its open futures positions right now",
-    response_model=list[KindLiveResponse],
+    response_model=list[VenueStatementResponse],
 )
 def live_positions(
     admin: AdminDep, engine: EngineDep, settings: SettingsDep, adapters: VenueAdaptersDep
-) -> list[KindLiveResponse]:
+) -> list[VenueStatementResponse]:
     """Asks the venues and stores nothing: a Live Position is shown, never
     an input to derivation or to any tax figure (ADR-0008)."""
-    return [KindLiveResponse.of(result) for result in futures_live.live(engine, settings, adapters)]
+    return [
+        VenueStatementResponse.of(statement)
+        for statement in futures_live.ask_venues(engine, settings, adapters)
+    ]
 
 
 class FillEventResponse(BaseModel):

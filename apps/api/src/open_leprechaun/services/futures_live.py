@@ -6,6 +6,7 @@ which of its positions the ledger has a history for."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import Engine
 
@@ -32,7 +33,7 @@ class StatedPosition:
 
 
 @dataclass(frozen=True)
-class KindLive:
+class VenueStatement:
     """One Connection's futures kind: what its venue states, or why nothing
     is stated — a venue without the capability, or a failure in a sentence."""
 
@@ -43,40 +44,46 @@ class KindLive:
     account_id: int | None
     supported: bool
     error: str | None
+    # When the venue answered — the instant its statement stands for. None
+    # where it stated nothing: no capability, no answer.
+    stated_at: datetime | None
     positions: tuple[StatedPosition, ...]
 
 
-def live(
+def ask_venues(
     engine: Engine,
     settings: Settings,
     adapters: Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]],
-) -> tuple[KindLive, ...]:
+) -> tuple[VenueStatement, ...]:
     """Every Connection's futures kind asked in turn; one venue failing
     never hides another (ADR-0004)."""
     with engine.connect() as connection:
         open_positions = futures_repository.open_position_rows(connection)
-    results: list[KindLive] = []
+    statements: list[VenueStatement] = []
     for row in connections_repository.list_connections(engine):
         for adapter in adapters.get(row.venue, ()):
             if adapter.kind != FUTURES_KIND:
                 continue
             account_id = connections_repository.paired_account(engine, row.id, adapter.kind)
-            supported = isinstance(adapter, StatesLivePositions)
             error: str | None = None
+            stated_at: datetime | None = None
             stated: tuple[LivePosition, ...] = ()
+            supported = False
             if isinstance(adapter, StatesLivePositions):
+                supported = True
                 try:
                     credentials = connections.credentials_of(engine, settings, row.id)
                     if credentials is not None:
                         stated = adapter.live_positions(credentials)
+                        stated_at = datetime.now(UTC)
                 except CredentialsUnreadableError as sealed:
                     error = str(sealed)
                 # Broad on purpose, as in a sync: however one venue failed,
                 # the others are still asked.
                 except Exception as failed:
                     error = failure_sentence(failed)
-            results.append(
-                KindLive(
+            statements.append(
+                VenueStatement(
                     connection_id=row.id,
                     connection_label=row.label,
                     venue=row.venue,
@@ -84,10 +91,11 @@ def live(
                     account_id=account_id,
                     supported=supported,
                     error=error,
+                    stated_at=stated_at,
                     positions=_matched(stated, account_id, open_positions),
                 )
             )
-    return tuple(results)
+    return tuple(statements)
 
 
 def _matched(
