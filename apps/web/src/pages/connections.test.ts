@@ -81,6 +81,7 @@ function syncResult(overrides: Partial<KindSyncResult>): KindSyncResult {
     covered_period: null,
     passed_over: [],
     missing_symbols: [],
+    missing_instruments: [],
     ...overrides,
   };
 }

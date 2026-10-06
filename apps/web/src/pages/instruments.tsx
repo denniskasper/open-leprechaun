@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatMoneyExact, formatTimestamp } from "@/lib/format";
-import { AddInstrumentPanel } from "./add-instrument";
+import { AddInstrumentPanel, requestedKind } from "./add-instrument";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
 export interface InstrumentIdentity {
@@ -244,7 +244,8 @@ export function InstrumentsPage() {
     ...(securityPrices.data?.conditions ?? []),
   ]);
   // A refused sync sends the Admin here with the symbol it could not resolve
-  // (`?add=USDC`), so the form opens already knowing what is being added.
+  // (`?add=USD&kind=cash`), so the form opens already knowing what is being
+  // added, and on the kind that will answer to it.
   const [search, setSearch] = useSearchParams();
   const requested = search.get("add");
   const [adding, setAdding] = useState<"security" | "coin" | null>(
@@ -282,6 +283,7 @@ export function InstrumentsPage() {
         <AddInstrumentPanel
           instruments={data ?? []}
           symbol={requested ?? ""}
+          kind={requestedKind(search.get("kind"))}
           onDone={closeCoin}
         />
       )}

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Instrument } from "@/api/instruments";
-import { addInstrumentHref, addressProblem, instrumentPayload, wearing } from "./add-instrument";
+import {
+  addInstrumentHref,
+  addressProblem,
+  fieldProblems,
+  alreadyKeyed,
+  instrumentPayload,
+  requestedKind,
+  wearing,
+} from "./add-instrument";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
   return {
@@ -81,6 +89,125 @@ describe("instrumentPayload", () => {
   });
 });
 
+describe("fieldProblems", () => {
+  const sound = {
+    symbol: "USDC",
+    name: "USD Coin",
+    chain: "ethereum",
+    contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    peggedCurrency: "",
+  };
+
+  it("finds nothing wrong with a sound entry of any kind", () => {
+    expect(fieldProblems("token", sound)).toEqual({});
+    expect(fieldProblems("token", { ...sound, peggedCurrency: " usd " })).toEqual({});
+    expect(fieldProblems("native", { ...sound, symbol: "BTC" })).toEqual({});
+    expect(fieldProblems("cash", { ...sound, symbol: "usd" })).toEqual({});
+  });
+
+  it("says nothing about a field still empty — the form requires it itself", () => {
+    expect(
+      fieldProblems("token", {
+        symbol: "",
+        name: "",
+        chain: "",
+        contractAddress: "",
+        peggedCurrency: "",
+      }),
+    ).toEqual({});
+  });
+
+  it("refuses a field holding only spaces", () => {
+    expect(
+      fieldProblems("token", {
+        symbol: " ",
+        name: "  ",
+        chain: " ",
+        contractAddress: "  ",
+        peggedCurrency: "",
+      }),
+    ).toEqual({
+      symbol: "A symbol cannot be blank.",
+      name: "A name cannot be blank.",
+      chain: "A chain cannot be blank.",
+      contractAddress: "A contract address cannot be blank.",
+    });
+  });
+
+  it("holds a peg to three letters", () => {
+    for (const peggedCurrency of ["US", "U5D", "USDT"]) {
+      expect(fieldProblems("token", { ...sound, peggedCurrency })).toEqual({
+        peggedCurrency: "A currency code is three letters, like USD.",
+      });
+    }
+  });
+
+  it("holds a currency's code to three letters", () => {
+    for (const symbol of ["US", "  "]) {
+      expect(fieldProblems("cash", { ...sound, symbol })).toEqual({
+        symbol: "A currency code is three letters, like USD.",
+      });
+    }
+  });
+
+  it("holds a token's hex address to its form", () => {
+    expect(fieldProblems("token", { ...sound, contractAddress: "0xA0b8" })).toEqual({
+      contractAddress: "An address starting with 0x is 40 hex characters after it.",
+    });
+  });
+
+  it("judges only the fields the kind is made of", () => {
+    const leftover = { ...sound, chain: " ", contractAddress: "0xA0b8", peggedCurrency: "US" };
+
+    expect(fieldProblems("native", { ...leftover, chain: "bitcoin" })).toEqual({});
+    expect(fieldProblems("cash", { ...leftover, symbol: "USD" })).toEqual({});
+  });
+});
+
+describe("alreadyKeyed", () => {
+  const listed = [
+    instrument({ id: 1 }),
+    instrument({ id: 2, family: "cash", type: "fiat", symbol: "EUR", name: "Euro", chain: null }),
+    instrument({
+      id: 3,
+      type: "native",
+      symbol: "BTC",
+      name: "Bitcoin",
+      chain: "bitcoin",
+      contract_address: null,
+    }),
+    instrument({ id: 4, family: "security", type: "share", symbol: "ETH", name: "A share" }),
+  ];
+  const typed = { ...FIELDS, symbol: "BTC" };
+
+  it("finds the native coin already keyed on the symbol", () => {
+    expect(alreadyKeyed(listed, "native", typed)?.id).toBe(3);
+    expect(alreadyKeyed(listed, "native", { ...typed, symbol: " BTC " })?.id).toBe(3);
+  });
+
+  it("finds the currency already keyed on the code, in any casing", () => {
+    expect(alreadyKeyed(listed, "cash", { ...typed, symbol: "eur" })?.id).toBe(2);
+  });
+
+  it("finds the token already keyed on the chain and contract, in any casing", () => {
+    expect(alreadyKeyed(listed, "token", { ...FIELDS, symbol: "ANOTHER" })?.id).toBe(1);
+    expect(alreadyKeyed(listed, "token", { ...FIELDS, chain: "solana" })).toBeNull();
+  });
+
+  it("keeps the kinds apart: a symbol is an identity only within its own", () => {
+    // A token wearing a coin's symbol, a coin wearing a currency's code and a
+    // security wearing either are second Instruments, not the same one.
+    expect(alreadyKeyed(listed, "native", { ...typed, symbol: "USDC" })).toBeNull();
+    expect(alreadyKeyed(listed, "native", { ...typed, symbol: "EUR" })).toBeNull();
+    expect(alreadyKeyed(listed, "cash", { ...typed, symbol: "BTC" })).toBeNull();
+    expect(alreadyKeyed(listed, "native", { ...typed, symbol: "ETH" })).toBeNull();
+  });
+
+  it("finds nothing while nothing is typed", () => {
+    expect(alreadyKeyed(listed, "native", { ...typed, symbol: " " })).toBeNull();
+  });
+});
+
 describe("wearing", () => {
   const listed = [
     instrument({ id: 1 }),
@@ -102,5 +229,22 @@ describe("addInstrumentHref", () => {
   it("opens the form with the symbol a sync could not resolve", () => {
     expect(addInstrumentHref("USDC")).toBe("/instruments?add=USDC");
     expect(addInstrumentHref("A&B")).toBe("/instruments?add=A%26B");
+  });
+
+  it("names the kind where only one can answer to the symbol", () => {
+    expect(addInstrumentHref("USD", "cash")).toBe("/instruments?add=USD&kind=cash");
+    expect(addInstrumentHref("USDC", null)).toBe("/instruments?add=USDC");
+  });
+});
+
+describe("requestedKind", () => {
+  it("opens on the kind the link names", () => {
+    expect(requestedKind("cash")).toBe("cash");
+    expect(requestedKind("native")).toBe("native");
+  });
+
+  it("opens on a token where the link names none, or none the form knows", () => {
+    expect(requestedKind(null)).toBe("token");
+    expect(requestedKind("security")).toBe("token");
   });
 });

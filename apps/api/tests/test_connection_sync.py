@@ -420,6 +420,71 @@ def test_a_symbol_nothing_answers_to_refuses_the_kind(client, adapters):
     assert client.get("/api/futures").json()["positions"] == []
 
 
+def test_a_missing_symbol_states_the_kind_that_can_answer_to_it(client, adapters, db):
+    """A cash movement's currency resolves in the cash family alone, so only
+    a currency answers to it; a traded or transferred symbol is answered by
+    whatever wears it. The screen opens the add form on what will resolve."""
+    connection_id, _ = paired_spot_connection(client, adapters)
+
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["ok"] is False
+    assert result["missing_symbols"] == ["BTC", "EUR", "USDT"]
+    assert result["missing_instruments"] == [
+        {"symbol": "BTC", "kind": None},
+        {"symbol": "EUR", "kind": "cash"},
+        {"symbol": "USDT", "kind": None},
+    ]
+
+
+def test_a_symbol_missing_as_a_currency_too_needs_the_currency(client, adapters, db):
+    """Where a trade and a cash movement both name a symbol nothing wears, a
+    currency answers to both — stated once, as the kind that settles it."""
+    connection_id, _ = paired_spot_connection(client, adapters)
+    harvest = spot_harvest()
+    adapters["okx"] = (
+        FakeAdapter(
+            "spot",
+            harvest=port.Harvest(
+                transfers=(
+                    port.NormalizedTransfer(
+                        external_id="transfer-9",
+                        occurred_at=AN_INSTANT,
+                        direction="in",
+                        symbol="EUR",
+                        quantity=Decimal("3"),
+                    ),
+                ),
+                cash_movements=harvest.cash_movements,
+            ),
+        ),
+    )
+
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["missing_instruments"] == [{"symbol": "EUR", "kind": "cash"}]
+
+
+def test_a_refused_currency_resolves_once_added_as_the_kind_stated(client, adapters, db):
+    """The refusal's own answer is enough to act on: adding the symbol as the
+    kind it states lets the next sync through."""
+    instruments.create_native_coin(db, symbol="BTC", name="Bitcoin", chain="bitcoin")
+    usdt(db)
+    connection_id, _ = paired_spot_connection(client, adapters)
+    (refused,) = client.post(f"/api/connections/{connection_id}/sync").json()
+    (missing,) = refused["missing_instruments"]
+
+    added = client.post(
+        "/api/instruments",
+        json={"kind": missing["kind"], "symbol": missing["symbol"], "name": "Euro"},
+    )
+
+    assert added.status_code == 201
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+    assert result["ok"] is True
+    assert result["missing_instruments"] == []
+
+
 def test_a_symbol_two_instruments_wear_refuses_the_kind(client, adapters, db):
     """Two tokens legitimately share a ticker — the ledger cannot choose from
     a symbol alone, and says so instead of guessing (ADR-0010)."""

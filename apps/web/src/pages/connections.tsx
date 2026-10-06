@@ -328,8 +328,8 @@ interface KindOutcome {
   ok: boolean;
   text: string;
   passedOver: string[];
-  /** The symbols a refused sync named that no Instrument answers to. */
-  missingSymbols: string[];
+  /** The symbols a refused sync named that no Instrument answers to, each with the kind that would. */
+  missing: KindSyncResult["missing_instruments"];
 }
 
 function ConnectionRow({
@@ -354,7 +354,7 @@ function ConnectionRow({
   function recordOutcomes<Result extends { adapter_kind: string; ok: boolean }>(
     describe: (result: Result) => string,
     passedOverOf: (result: Result) => string[] = () => [],
-    missingSymbolsOf: (result: Result) => string[] = () => [],
+    missingOf: (result: Result) => KindSyncResult["missing_instruments"] = () => [],
   ) {
     return (results: Result[]) => {
       setOutcomes(
@@ -365,7 +365,7 @@ function ConnectionRow({
               ok: result.ok,
               text: describe(result),
               passedOver: passedOverOf(result),
-              missingSymbols: missingSymbolsOf(result),
+              missing: missingOf(result),
             },
           ]),
         ),
@@ -384,7 +384,7 @@ function ConnectionRow({
     onSuccess: recordOutcomes(
       (result: KindSyncResult) => describeSyncResult(result),
       (result) => result.passed_over,
-      (result) => result.missing_symbols,
+      (result) => result.missing_instruments,
     ),
   });
 
@@ -610,15 +610,16 @@ function KindLine({
           )
         )
       ) : null}
-      {outcome && outcome.missingSymbols.length > 0 && (
+      {outcome && outcome.missing.length > 0 && (
         <p className="basis-full pl-4 text-muted-foreground">
           Add{" "}
-          {outcome.missingSymbols.map((symbol, index) => (
+          {outcome.missing.map(({ symbol, kind }, index) => (
             <span key={symbol}>
               {index > 0 && ", "}
-              <Link to={addInstrumentHref(symbol)} className="underline underline-offset-2">
+              <Link to={addInstrumentHref(symbol, kind)} className="underline underline-offset-2">
                 {symbol}
               </Link>
+              {kind === "cash" && " as a currency"}
             </span>
           ))}{" "}
           on the Instruments page, then sync again.

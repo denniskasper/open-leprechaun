@@ -291,6 +291,11 @@ class CoveredPeriodResponse(BaseModel):
     end: AwareDatetime
 
 
+class MissingInstrumentResponse(BaseModel):
+    symbol: str
+    kind: Literal["cash"] | None
+
+
 class KindSyncResponse(BaseModel):
     """One adapter kind's sync outcome. What landed stays reported beside an
     error where part of the kind refused — stored is never unreported."""
@@ -312,6 +317,9 @@ class KindSyncResponse(BaseModel):
     # The symbols no Instrument answers to — each one to add by hand before
     # syncing again.
     missing_symbols: list[str]
+    # The same symbols, each with the kind that would answer to it — `cash`
+    # where only a currency does, null where a coin, token or currency may.
+    missing_instruments: list[MissingInstrumentResponse]
 
     @classmethod
     def of(cls, result: connection_sync.KindSync) -> KindSyncResponse:
@@ -326,7 +334,11 @@ class KindSyncResponse(BaseModel):
                 start=result.covered_period.start, end=result.covered_period.end
             ),
             passed_over=list(result.passed_over),
-            missing_symbols=list(result.missing_symbols),
+            missing_symbols=[missing.symbol for missing in result.missing],
+            missing_instruments=[
+                MissingInstrumentResponse(symbol=missing.symbol, kind=missing.kind)
+                for missing in result.missing
+            ],
             futures=None
             if result.futures is None
             else FuturesOutcomeResponse(

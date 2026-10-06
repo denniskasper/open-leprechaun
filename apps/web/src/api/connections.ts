@@ -83,6 +83,13 @@ export const kindSyncResultSchema = z.object({
   passed_over: z.array(z.string()),
   /** The symbols no Instrument answers to — each one to add by hand before syncing again. */
   missing_symbols: z.array(z.string()),
+  /**
+   * The same symbols, each with the kind that would answer to it — `cash`
+   * where only a currency does, null where a coin, token or currency may.
+   */
+  missing_instruments: z.array(
+    z.object({ symbol: z.string(), kind: z.enum(["cash"]).nullable() }),
+  ),
   futures: z.object({ new_fills: z.number(), new_funding: z.number() }).nullable(),
   imported: z
     .object({

@@ -159,15 +159,43 @@ def list_instruments(admin: AdminDep, engine: EngineDep) -> list[InstrumentRespo
     return [InstrumentResponse.of(instrument) for instrument in overview(engine)]
 
 
-# Typed by a human: trimmed before a stray space can become part of an
+# Trimmed by a human: trimmed before a stray space can become part of an
 # identity.
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]
+
+
+def _not_blank(what: str) -> AfterValidator:
+    """Refuses a field left blank in a sentence naming it — the Admin reads
+    the refusal, so it says the rule and never a pattern."""
+
+    def refuse_blank(value: str) -> str:
+        if not value:
+            raise ValueError(f"{what} cannot be blank.")
+        return value
+
+    return AfterValidator(refuse_blank)
+
+
+Symbol = Annotated[Trimmed, _not_blank("A symbol")]
+Name = Annotated[Trimmed, _not_blank("A name")]
 # A chain is half of a token's identity, so its casing must not mint a second
 # one: stored lowercase, whatever was typed.
-Chain = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, to_lower=True)]
+Chain = Annotated[
+    str, StringConstraints(strip_whitespace=True, to_lower=True), _not_blank("A chain")
+]
+
+_CURRENCY_CODE = re.compile(r"[A-Z]{3}")
+
+
+def _three_letters(code: str) -> str:
+    if not _CURRENCY_CODE.fullmatch(code):
+        raise ValueError("A currency code is three letters, like USD.")
+    return code
+
+
 # An ISO 4217 code, as the reference rates and the schema both spell it.
 CurrencyCode = Annotated[
-    str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")
+    str, StringConstraints(strip_whitespace=True, to_upper=True), AfterValidator(_three_letters)
 ]
 
 _HEX_ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
@@ -181,13 +209,15 @@ def _well_formed_address(address: str) -> str:
     return address
 
 
-ContractAddress = Annotated[NonBlank, AfterValidator(_well_formed_address)]
+ContractAddress = Annotated[
+    Trimmed, _not_blank("A contract address"), AfterValidator(_well_formed_address)
+]
 
 
 class AddTokenRequest(BaseModel):
     kind: Literal["token"]
-    symbol: NonBlank
-    name: NonBlank
+    symbol: Symbol
+    name: Name
     chain: Chain
     contract_address: ContractAddress
     # A stablecoin's peg, which routes its EUR value to the daily reference
@@ -197,15 +227,15 @@ class AddTokenRequest(BaseModel):
 
 class AddNativeCoinRequest(BaseModel):
     kind: Literal["native"]
-    symbol: NonBlank
-    name: NonBlank
+    symbol: Symbol
+    name: Name
     chain: Chain
 
 
 class AddCurrencyRequest(BaseModel):
     kind: Literal["cash"]
     symbol: CurrencyCode
-    name: NonBlank
+    name: Name
 
 
 AddInstrumentRequest = Annotated[

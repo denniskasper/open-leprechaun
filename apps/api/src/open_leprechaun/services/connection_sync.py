@@ -22,6 +22,7 @@ hands over adapters, and everything after that is generic.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy import Engine, Row
 
@@ -122,6 +123,17 @@ class ImportOutcome:
 
 
 @dataclass(frozen=True)
+class MissingSymbol:
+    """A symbol the venue stated that no Instrument answers to, and what would
+    answer: a cash movement's currency resolves in the cash family alone, so
+    only a currency does; any other symbol is answered by whatever wears it —
+    None, where the kind is the Admin's to state."""
+
+    symbol: str
+    kind: Literal["cash"] | None
+
+
+@dataclass(frozen=True)
 class KindSync:
     """One adapter kind's sync outcome. The outcomes stay present beside an
     error where part of the kind landed before the rest refused — what was
@@ -142,9 +154,9 @@ class KindSync:
     # capital — each a sentence naming what the Admin records by hand.
     passed_over: tuple[str, ...] = ()
     # The symbols the venue stated that no Instrument answers to — what the
-    # Admin adds by hand before syncing again; the error says the same in a
-    # sentence.
-    missing_symbols: tuple[str, ...] = ()
+    # Admin adds by hand before syncing again, each with the kind that would
+    # answer; the error says the same in a sentence.
+    missing: tuple[MissingSymbol, ...] = ()
 
 
 def sync_connection(
@@ -191,7 +203,7 @@ class _UnresolvableError(Exception):
     """A venue symbol the ledger cannot resolve to exactly one Instrument —
     the kind refuses with this sentence instead of guessing or minting."""
 
-    def __init__(self, sentence: str, *, missing: tuple[str, ...]) -> None:
+    def __init__(self, sentence: str, *, missing: tuple[MissingSymbol, ...]) -> None:
         super().__init__(sentence)
         self.missing = missing
 
@@ -226,7 +238,7 @@ def _sync_kind(
             error=str(unresolved),
             futures=None,
             imported=None,
-            missing_symbols=unresolved.missing,
+            missing=unresolved.missing,
         )
     # Broad on purpose: one kind failing, however it failed, must never hide
     # another succeeding (ADR-0004).
@@ -366,33 +378,40 @@ def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], 
     anywhere.update(payment.settlement_symbol for payment in harvest.funding)
     cash = {movement.currency for movement in harvest.cash_movements}
 
-    missing: list[str] = []
+    # What would answer to each missing symbol: a currency where a cash
+    # movement names it — that settles a trade naming it too — else any kind.
+    missing: dict[str, Literal["cash"] | None] = {}
     several: list[str] = []
     resolved: dict[str, int] = {}
     resolved_cash: dict[str, int] = {}
-    for symbol, families, into in [
-        *((symbol, ("crypto", "cash"), resolved) for symbol in sorted(anywhere)),
-        *((currency, ("cash",), resolved_cash) for currency in sorted(cash)),
+    for symbol, families, into, kind in [
+        *((symbol, ("crypto", "cash"), resolved, None) for symbol in sorted(anywhere)),
+        *((currency, ("cash",), resolved_cash, "cash") for currency in sorted(cash)),
     ]:
         ids = instruments_repository.wearing_symbol(engine, symbol, families=families)
         if len(ids) == 1:
             into[symbol] = ids[0]
         elif not ids:
-            missing.append(symbol)
+            missing[symbol] = kind
         else:
             several.append(symbol)
     if missing or several:
         sentences = []
         if missing:
             sentences.append(
-                f"No Instrument answers to {_listed(missing)} — create it, then sync again."
+                f"No Instrument answers to {_listed(list(missing))} — create it, then sync again."
             )
         if several:
             sentences.append(
                 f"{_listed(several)} names several Instruments — the venue states only a"
                 " symbol, so the ledger cannot choose."
             )
-        raise _UnresolvableError(" ".join(sentences), missing=tuple(sorted(set(missing))))
+        raise _UnresolvableError(
+            " ".join(sentences),
+            missing=tuple(
+                MissingSymbol(symbol=symbol, kind=missing[symbol]) for symbol in sorted(missing)
+            ),
+        )
     return resolved, resolved_cash
 
 

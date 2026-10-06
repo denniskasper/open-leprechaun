@@ -68,6 +68,32 @@ export function putJson(url: string, body: unknown): Promise<Response> {
   });
 }
 
+/** How FastAPI prefixes the sentence a validator of the API's own raised. */
+const OWN_SENTENCE = "Value error, ";
+
+/**
+ * A validation refusal as sentences: the API answers one entry per refused
+ * field, each with where it is (`loc`) and what was wrong (`msg`). A rule the
+ * API states itself is already a sentence; any other is led by its field's
+ * name, since the message alone does not say which field it is about. Null
+ * where the detail is no such list.
+ */
+function validationSentences(detail: unknown): string | null {
+  if (!Array.isArray(detail) || detail.length === 0) return null;
+  const sentences: string[] = [];
+  for (const entry of detail as { loc?: unknown; msg?: unknown }[]) {
+    if (typeof entry?.msg !== "string") return null;
+    if (entry.msg.startsWith(OWN_SENTENCE)) {
+      sentences.push(entry.msg.slice(OWN_SENTENCE.length));
+      continue;
+    }
+    const field = Array.isArray(entry.loc) ? entry.loc.at(-1) : undefined;
+    const said = /[.!?]$/.test(entry.msg) ? entry.msg : `${entry.msg}.`;
+    sentences.push(field === undefined ? said : `${String(field)}: ${said}`);
+  }
+  return sentences.join(" ");
+}
+
 /**
  * `fallback` names what failed. It is shown only when the API sent no
  * sentence of its own, and then with what to do about it appended.
@@ -78,6 +104,8 @@ export async function refusal(response: Response, fallback: string): Promise<Api
     const { detail } = (await response.json()) as { detail?: unknown };
     if (typeof detail === "string") {
       message = detail;
+    } else {
+      message = validationSentences(detail) ?? message;
     }
   } catch {
     // The body was not JSON; the fallback already says what failed and what to do.

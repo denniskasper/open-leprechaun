@@ -130,3 +130,24 @@ def test_a_blank_symbol_name_or_chain_is_refused(db, client):
     for field in ("symbol", "name", "chain"):
         response = client.post("/api/instruments", json={**USDC, field: "  "})
         assert response.status_code == 422, field
+
+
+def test_a_refused_field_is_named_with_a_sentence_of_its_own(db, client):
+    """A validation refusal is read by the Admin, not by a parser: each one
+    names the field it is about and says the rule in words."""
+    for request, field, says in (
+        ({**USDC, "pegged_currency": "US"}, "pegged_currency", "three letters"),
+        ({**USDC, "name": "   "}, "name", "A name"),
+        ({**USDC, "symbol": "   "}, "symbol", "A symbol"),
+        ({**USDC, "chain": "   "}, "chain", "A chain"),
+        ({**USDC, "contract_address": "   "}, "contract_address", "A contract address"),
+        ({**USDC, "contract_address": "0xA0b8"}, "contract_address", "40 hex characters"),
+        ({"kind": "cash", "symbol": "US", "name": "Dollar"}, "symbol", "three letters"),
+    ):
+        response = client.post("/api/instruments", json=request)
+
+        assert response.status_code == 422, field
+        (refused,) = response.json()["detail"]
+        assert refused["loc"][-1] == field
+        assert says in refused["msg"], refused["msg"]
+        assert "pattern" not in refused["msg"]
