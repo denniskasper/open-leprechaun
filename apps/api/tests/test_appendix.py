@@ -226,6 +226,27 @@ def test_a_report_generated_before_a_rename_wears_the_platforms_new_name(db, cli
     assert after == before.replace("Kraken / Main", "Payward / Main")
 
 
+def test_a_report_generated_before_an_account_edit_wears_the_accounts_new_name(db, client):
+    """The Account's label follows an edit just as its Platform's does (issue
+    14), and the notes changed along with it move no figure either."""
+    _ledger(db)
+    report_id = _report_id(client)
+    before = client.get(f"/api/reports/{report_id}/appendix.csv").text
+    (platform,) = client.get("/api/platforms").json()
+    (account,) = platform["accounts"]
+
+    edited = client.put(
+        f"/api/accounts/{account['id']}",
+        json={"name": "Spot", "external_reference": "ref-1", "access_software": "Kraken Pro"},
+    )
+    assert edited.status_code == 204
+
+    after = client.get(f"/api/reports/{report_id}/appendix.csv").text
+    assert "Kraken / Main" in before
+    assert "Kraken / Spot" in after
+    assert after == before.replace("Kraken / Main", "Kraken / Spot")
+
+
 def test_estimated_bases_are_marked_and_their_exposure_totalled(db, client):
     """The line resting on the Opening Balance estimate wears the mark, the
     documented purchase does not, and the summary states how much of the

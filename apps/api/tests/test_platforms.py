@@ -421,6 +421,200 @@ def test_what_the_admin_declared_about_an_account_goes_with_it(client, db):
     assert delegations.unmark(db, instrument_id=sol, account_id=account_id) is False
 
 
+def _accounts(client) -> dict[int, dict]:
+    return {
+        account["id"]: account
+        for platform in client.get("/api/platforms").json()
+        for account in platform["accounts"]
+    }
+
+
+def test_the_api_edits_an_accounts_name_reference_and_access_software(client, db):
+    """One act states all three: a misspelled name, a mistyped reference and
+    an outdated note are corrected together, under the same identity."""
+    platform_id = a_platform(client, "BitBox02", "cold_storage")
+    account_id = client.post(
+        f"/api/platforms/{platform_id}/accounts",
+        json={
+            "name": "Savngs",
+            "chain": "bitcoin",
+            "external_reference": "bc1qtypo",
+            "access_software": "Electrum",
+        },
+    ).json()["id"]
+
+    edited = client.put(
+        f"/api/accounts/{account_id}",
+        json={
+            "name": "Savings",
+            "external_reference": "bc1qcorrect",
+            "access_software": "BitBoxApp",
+        },
+    )
+
+    assert edited.status_code == 204
+    account = _accounts(client)[account_id]
+    assert (account["name"], account["external_reference"], account["access_software"]) == (
+        "Savings",
+        "bc1qcorrect",
+        "BitBoxApp",
+    )
+    # What the Account is, as opposed to what it is called, is not part of the edit.
+    assert account["chain"] == "bitcoin"
+
+
+def test_an_emptied_reference_or_access_software_is_cleared(client, db):
+    """A note that no longer applies disappears: emptied, blank and left out
+    all say the same thing."""
+    platform_id = a_platform(client, "BitBox02", "cold_storage")
+    noted = {"external_reference": "bc1qold", "access_software": "Electrum"}
+    emptied, omitted = (
+        client.post(f"/api/platforms/{platform_id}/accounts", json={"name": name, **noted}).json()[
+            "id"
+        ]
+        for name in ("Emptied", "Omitted")
+    )
+
+    assert client.put(
+        f"/api/accounts/{emptied}",
+        json={"name": "Emptied", "external_reference": "", "access_software": "   "},
+    ).is_success
+    assert client.put(f"/api/accounts/{omitted}", json={"name": "Omitted"}).is_success
+
+    for account in _accounts(client).values():
+        assert (account["external_reference"], account["access_software"]) == (None, None)
+
+
+def test_a_name_taken_under_the_platform_refuses_the_edit_and_changes_nothing(client, db):
+    """Two holdings of one place the Admin could not tell apart: refused in
+    the words adding an Account uses, and not even the notes sent along with
+    the refused name are kept."""
+    platform_id = a_platform(client)
+    an_account(client, platform_id, "Main")
+    account_id = client.post(
+        f"/api/platforms/{platform_id}/accounts",
+        json={"name": "Savings", "external_reference": "ref-1", "access_software": "App"},
+    ).json()["id"]
+
+    refused = client.put(
+        f"/api/accounts/{account_id}",
+        json={"name": "Main", "external_reference": "ref-2", "access_software": None},
+    )
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "'Main' already exists under this Platform."
+    account = _accounts(client)[account_id]
+    assert (account["name"], account["external_reference"], account["access_software"]) == (
+        "Savings",
+        "ref-1",
+        "App",
+    )
+
+
+def test_adding_an_account_under_a_taken_name_is_refused_in_the_same_words(client, db):
+    platform_id = a_platform(client)
+    an_account(client, platform_id, "Main")
+
+    refused = client.post(f"/api/platforms/{platform_id}/accounts", json={"name": "Main"})
+
+    assert refused.json()["detail"] == "'Main' already exists under this Platform."
+
+
+def test_an_account_may_take_a_name_an_account_under_another_platform_has(client, db):
+    """ "Main" can exist at more than one place."""
+    kraken_main = an_account(client, a_platform(client, "Kraken"), "Main")
+    okx_trading = an_account(client, a_platform(client, "OKX"), "Trading")
+
+    assert client.put(f"/api/accounts/{okx_trading}", json={"name": "Main"}).status_code == 204
+    accounts = _accounts(client)
+    assert (accounts[kraken_main]["name"], accounts[okx_trading]["name"]) == ("Main", "Main")
+
+
+def test_a_change_of_capitalisation_is_an_ordinary_account_edit(client, db):
+    account_id = an_account(client, a_platform(client), "main")
+
+    assert client.put(f"/api/accounts/{account_id}", json={"name": "Main"}).status_code == 204
+    assert _accounts(client)[account_id]["name"] == "Main"
+
+
+def test_saving_an_account_as_it_stood_succeeds(client, db):
+    """Opening the form and saving it unchanged is never an error."""
+    platform_id = a_platform(client)
+    as_it_stood = {"name": "Main", "external_reference": "ref-1", "access_software": "App"}
+    account_id = client.post(f"/api/platforms/{platform_id}/accounts", json=as_it_stood).json()[
+        "id"
+    ]
+    before = _accounts(client)
+
+    assert client.put(f"/api/accounts/{account_id}", json=as_it_stood).status_code == 204
+    assert _accounts(client) == before
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_an_account_is_never_renamed_to_nothing(client, db, blank):
+    account_id = an_account(client, a_platform(client), "Main")
+
+    assert client.put(f"/api/accounts/{account_id}", json={"name": blank}).status_code == 422
+    assert _accounts(client)[account_id]["name"] == "Main"
+
+
+def test_a_new_account_name_is_trimmed_as_when_it_was_added(client, db):
+    account_id = an_account(client, a_platform(client), "Mian")
+
+    assert client.put(f"/api/accounts/{account_id}", json={"name": "  Main "}).status_code == 204
+    assert _accounts(client)[account_id]["name"] == "Main"
+
+
+def test_editing_an_account_that_is_not_there_answers_not_found(client, db):
+    """A stale id is told apart from a refused name."""
+    assert client.put("/api/accounts/12345", json={"name": "Main"}).status_code == 404
+
+
+def test_an_account_in_use_is_edited_and_keeps_everything_else(client, db):
+    """The one case removal cannot fix: an edit is never refused because of
+    recorded history or a paired Connection, and the pairing, the declared
+    authoritative source, the Stance and the withholding override stay."""
+    platform_id = a_platform(client, "Scalable Capital", "broker")
+    account_id = an_account(client, platform_id, "Deopt")
+    connection_id = a_connection(client, platform_id, "Main account")
+    assert client.put(
+        f"/api/connections/{connection_id}/pairings/spot", json={"account_id": account_id}
+    ).is_success
+    assert client.put(
+        f"/api/accounts/{account_id}/withholding-override", json={"behaviour": "none"}
+    ).is_success
+    assert client.put(
+        f"/api/accounts/{account_id}/authoritative-source", json={"source": "csv:scalable"}
+    ).is_success
+    sol = instruments.create_native_coin(db, symbol="SOL", name="Solana", chain="solana")
+    assert stances.classify(db, sol, stance="kept", account_id=account_id) == []
+    _a_leg(db, account_id)
+    stances_before = stances.list_stances(db, sol)
+
+    edited = client.put(
+        f"/api/accounts/{account_id}",
+        json={"name": "Depot", "external_reference": "DE-1", "access_software": "App"},
+    )
+
+    assert edited.status_code == 204
+    account = _accounts(client)[account_id]
+    assert account == {
+        "id": account_id,
+        "name": "Depot",
+        "chain": None,
+        "external_reference": "DE-1",
+        "access_software": "App",
+        "authoritative_source": "csv:scalable",
+        "withholding_override": "none",
+        "base_currency": None,
+    }
+    (connection,) = client.get("/api/connections").json()
+    assert connection["pairings"] == [{"adapter_kind": "spot", "account_id": account_id}]
+    assert stances.list_stances(db, sol) == stances_before != []
+    # Still held by its history, as before the edit.
+    assert client.delete(f"/api/accounts/{account_id}").status_code == 409
+
+
 def _a_leg(db, account_id):
     btc = instruments.create_native_coin(db, symbol="BTC", name="Bitcoin", chain="bitcoin")
     transactions.create_transaction(

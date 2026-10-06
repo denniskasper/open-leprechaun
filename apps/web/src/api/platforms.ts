@@ -62,6 +62,13 @@ export interface NewAccount {
   base_currency: string | null;
 }
 
+/** The whole editable set of an Account; its chain and base currency are not in it. */
+export interface AccountEdit {
+  name: string;
+  external_reference: string | null;
+  access_software: string | null;
+}
+
 export interface NewWithholding {
   behaviour: Withholding;
   /** Fixed-point decimal string — money never crosses JSON as a number. */
@@ -115,6 +122,14 @@ export async function renamePlatform(platformId: number, name: string): Promise<
   const response = await putJson(`${PLATFORMS_URL}/${platformId}`, { name });
   if (!response.ok) {
     throw await refusal(response, "The Platform could not be renamed.");
+  }
+}
+
+/** A plain overwrite, refused only where another Account under the Platform has the name. */
+export async function editAccount(accountId: number, edit: AccountEdit): Promise<void> {
+  const response = await putJson(`${ACCOUNTS_URL}/${accountId}`, edit);
+  if (!response.ok) {
+    throw await refusal(response, "The Account could not be edited.");
   }
 }
 

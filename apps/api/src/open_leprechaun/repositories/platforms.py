@@ -259,6 +259,41 @@ def create_account(
         return Refusal.name_taken
 
 
+def edit_account(
+    engine: Engine,
+    account_id: int,
+    *,
+    name: str,
+    external_reference: str | None,
+    access_software: str | None,
+) -> Refusal | None:
+    """Overwrite what an Account is called and the two notes beside it — all
+    three at once, None clearing a note. Labels and metadata nothing refers to
+    it by, so its history, pairings and declarations stay as they were and
+    none of them stands in the way. None means it was edited; a name another
+    Account under its Platform already has loses to the same constraint an
+    added Account would."""
+    try:
+        with engine.begin() as connection:
+            edited = connection.execute(
+                text(
+                    "UPDATE account SET name = :name,"
+                    " external_reference = :external_reference,"
+                    " access_software = :access_software"
+                    " WHERE id = :account_id"
+                ),
+                {
+                    "name": name,
+                    "external_reference": external_reference,
+                    "access_software": access_software,
+                    "account_id": account_id,
+                },
+            )
+    except IntegrityError:
+        return Refusal.name_taken
+    return None if edited.rowcount == 1 else Refusal.no_such_account
+
+
 def delete_account(engine: Engine, account_id: int) -> AccountHolders | Refusal | None:
     """Remove an Account nothing was ever recorded in and no Connection kind
     is paired with. None means it is gone — and what the Admin declared about

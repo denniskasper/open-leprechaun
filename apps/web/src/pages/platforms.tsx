@@ -10,9 +10,10 @@ import {
   Vault,
   Wallet,
 } from "lucide-react";
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   addAccount,
+  editAccount,
   fetchPlatforms,
   registerPlatform,
   removeAccount,
@@ -457,37 +458,88 @@ function PlatformRow({ platform }: { platform: Platform }) {
 }
 
 /**
- * The row-level edit: the heading line itself becomes the form, filled with
- * what stands, so the name is changed where it is read. Like a removal, a
- * save is never held back by a guess — the server alone says whether the name
- * is free, and its reason is shown here at the row.
+ * The row-level edit every row on this screen goes through: the row itself
+ * becomes the form, filled with what stands, so a value is changed where it is
+ * read. Like a removal, a save is never held back by a guess — the server
+ * alone says whether the name is free, and its reason is kept here to be shown
+ * at the row.
  */
-function RenamePlatformForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
-  const [name, setName] = useState(platform.name);
-  const nameId = useId();
+function useRowEdit(save: () => Promise<void>, onDone: () => void) {
+  const refusalId = useId();
   const queryClient = useQueryClient();
-
-  const rename = useMutation({
-    mutationFn: () => renamePlatform(platform.id, name.trim()),
+  const mutation = useMutation({
+    mutationFn: save,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["platforms"] });
       onDone();
     },
   });
+  // Not while a save is on its way: it would land after being cancelled.
+  const cancel = () => {
+    if (!mutation.isPending) onDone();
+  };
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    rename.mutate();
-  }
+  return {
+    pending: mutation.isPending,
+    refusal: mutation.error?.message,
+    refusalId,
+    cancel,
+    /** Spread onto the `<form>`: Enter saves, Escape cancels. */
+    form: {
+      onSubmit: (event: FormEvent) => {
+        event.preventDefault();
+        mutation.mutate();
+      },
+      onKeyDown: (event: KeyboardEvent) => {
+        if (event.key === "Escape") cancel();
+      },
+    },
+    /** Spread onto the field a refusal is about — the name, the one thing the server refuses. */
+    refusedField: {
+      "aria-invalid": mutation.isError || undefined,
+      "aria-describedby": mutation.isError ? refusalId : undefined,
+    },
+  };
+}
+
+type RowEdit = ReturnType<typeof useRowEdit>;
+
+/** Save / Cancel. `incomplete` holds Save back while the form could not be sent at all. */
+function EditButtons({ edit, incomplete }: { edit: RowEdit; incomplete: boolean }) {
+  return (
+    <span className="ml-auto flex items-center gap-1">
+      <Button type="submit" size="sm" disabled={edit.pending || incomplete}>
+        {edit.pending ? "Saving…" : "Save"}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={edit.pending}
+        onClick={edit.cancel}
+      >
+        Cancel
+      </Button>
+    </span>
+  );
+}
+
+function EditRefusal({ edit }: { edit: RowEdit }) {
+  if (!edit.refusal) return null;
+  return (
+    <p id={edit.refusalId} role="alert" className="mt-1.5 text-sm text-alarm">
+      {edit.refusal}
+    </p>
+  );
+}
+
+function RenamePlatformForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+  const [name, setName] = useState(platform.name);
+  const nameId = useId();
+  const edit = useRowEdit(() => renamePlatform(platform.id, name.trim()), onDone);
 
   return (
-    <form
-      onSubmit={submit}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !rename.isPending) onDone();
-      }}
-      aria-label={`Edit ${platform.name}`}
-    >
+    <form {...edit.form} aria-label={`Edit ${platform.name}`}>
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor={nameId} className="sr-only">
           Name
@@ -498,31 +550,12 @@ function RenamePlatformForm({ platform, onDone }: { platform: Platform; onDone: 
           value={name}
           onChange={(event) => setName(event.target.value)}
           className="h-8 min-w-48 max-w-sm flex-1 text-base font-medium"
-          aria-invalid={rename.isError || undefined}
-          aria-describedby={rename.isError ? `${nameId}-refusal` : undefined}
+          {...edit.refusedField}
           autoFocus
         />
-        <span className="ml-auto flex items-center gap-1">
-          <Button type="submit" size="sm" disabled={rename.isPending || !name.trim()}>
-            {rename.isPending ? "Saving…" : "Save"}
-          </Button>
-          {/* Not while a save is on its way: it would land after being cancelled. */}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={rename.isPending}
-            onClick={onDone}
-          >
-            Cancel
-          </Button>
-        </span>
+        <EditButtons edit={edit} incomplete={!name.trim()} />
       </div>
-      {rename.isError && (
-        <p id={`${nameId}-refusal`} role="alert" className="mt-1.5 text-sm text-alarm">
-          {rename.error.message}
-        </p>
-      )}
+      <EditRefusal edit={edit} />
     </form>
   );
 }
@@ -672,7 +705,16 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
 }
 
 function AccountLine({ account, platform }: { account: Account; platform: Platform }) {
+  const [editing, setEditing] = useState(false);
   const removal = useRemoval(() => removeAccount(account.id));
+
+  if (editing) {
+    return (
+      <li className="pl-4 text-sm">
+        <EditAccountForm account={account} platform={platform} onDone={() => setEditing(false)} />
+      </li>
+    );
+  }
 
   return (
     <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 pl-4 text-sm">
@@ -701,6 +743,22 @@ function AccountLine({ account, platform }: { account: Account; platform: Platfo
       )}
       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
         {platform.kind === "broker" && <OverrideSelect account={account} />}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-muted-foreground"
+          aria-label={`Edit ${account.name}`}
+          onClick={() => {
+            // As on the Platform's own line: a removal half asked for, or
+            // refused, does not stand beside the edit.
+            removal.keep();
+            removal.forget();
+            setEditing(true);
+          }}
+        >
+          <Pencil aria-hidden />
+          Edit
+        </Button>
         <RemoveButtons removal={removal} name={account.name} className="h-7 px-2" />
       </span>
       {removal.refusal && (
@@ -709,6 +767,82 @@ function AccountLine({ account, platform }: { account: Account; platform: Platfo
         </p>
       )}
     </li>
+  );
+}
+
+/**
+ * An Account's line as a form: its name and the two notes beside it, all three
+ * saved in one act. An emptied note is a cleared one. The chain and the base
+ * currency are part of what the Account is, so they are not offered.
+ */
+function EditAccountForm({
+  account,
+  platform,
+  onDone,
+}: {
+  account: Account;
+  platform: Platform;
+  onDone: () => void;
+}) {
+  const noun = KIND_VOCABULARY[platform.kind].account;
+  const [name, setName] = useState(account.name);
+  const [reference, setReference] = useState(account.external_reference ?? "");
+  const [software, setSoftware] = useState(account.access_software ?? "");
+  const id = useId();
+  const edit = useRowEdit(
+    () =>
+      editAccount(account.id, {
+        name: name.trim(),
+        external_reference: reference.trim() || null,
+        access_software: software.trim() || null,
+      }),
+    onDone,
+  );
+
+  return (
+    <form {...edit.form} aria-label={`Edit the ${noun} ${account.name}`}>
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        <div className="min-w-36 flex-1 space-y-1.5">
+          <label htmlFor={`${id}-name`} className="microlabel block text-muted-foreground">
+            {noun} name
+          </label>
+          <Input
+            id={`${id}-name`}
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="h-8 font-medium"
+            {...edit.refusedField}
+            autoFocus
+          />
+        </div>
+        <div className="min-w-48 flex-[2] space-y-1.5">
+          <label htmlFor={`${id}-reference`} className="microlabel block text-muted-foreground">
+            Address / IBAN / reference
+          </label>
+          <Input
+            id={`${id}-reference`}
+            value={reference}
+            onChange={(event) => setReference(event.target.value)}
+            className="h-8 font-mono text-xs tabular-nums"
+            title="Identification only — never a data source."
+          />
+        </div>
+        <div className="min-w-36 flex-1 space-y-1.5">
+          <label htmlFor={`${id}-software`} className="microlabel block text-muted-foreground">
+            Access software
+          </label>
+          <Input
+            id={`${id}-software`}
+            value={software}
+            onChange={(event) => setSoftware(event.target.value)}
+            className="h-8"
+          />
+        </div>
+        <EditButtons edit={edit} incomplete={!name.trim()} />
+      </div>
+      <EditRefusal edit={edit} />
+    </form>
   );
 }
 

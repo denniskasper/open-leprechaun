@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addAccount,
+  editAccount,
   fetchPlatforms,
   registerPlatform,
   removeAccount,
@@ -273,6 +274,28 @@ describe("renamePlatform", () => {
     await expect(renamePlatform(7, "Kraken")).rejects.toThrow(
       "'Kraken' is already registered as this kind.",
     );
+  });
+});
+
+describe("editAccount", () => {
+  it("puts the name and both notes on the account, a cleared note as null", async () => {
+    respondWith(204, null);
+
+    await editAccount(4, { name: "Savings", external_reference: "bc1q", access_software: null });
+
+    expect(fetch).toHaveBeenCalledWith("/api/accounts/4", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Savings", external_reference: "bc1q", access_software: null }),
+    });
+  });
+
+  it("surfaces the API's own reason for a refusal", async () => {
+    respondWith(409, { detail: "'Main' already exists under this Platform." });
+
+    await expect(
+      editAccount(4, { name: "Main", external_reference: null, access_software: null }),
+    ).rejects.toThrow("'Main' already exists under this Platform.");
   });
 });
 

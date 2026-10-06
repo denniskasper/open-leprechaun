@@ -34,6 +34,17 @@ PlatformKind = Literal["exchange", "cold_storage", "software_wallet", "broker", 
 # trimmed before it can become an identity nobody can tell from another.
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
+# An emptied note is a cleared one: whatever is left after trimming is stored,
+# and nothing left means nothing stored.
+ClearableText = Annotated[
+    str | None,
+    BeforeValidator(lambda value: (value.strip() or None) if isinstance(value, str) else value),
+]
+
+# A stale id, told apart from a refused name — in one wording wherever it is answered.
+_NO_SUCH_PLATFORM = "No such Platform."
+_NO_SUCH_ACCOUNT = "No such Account."
+
 # How a broker treats income at source (ticket 43): withheld already, or
 # arriving gross with everything still to declare.
 Withholding = Literal["at_source", "none"]
@@ -168,7 +179,7 @@ def rename_platform(
     decides withholding and the scope the name is unique in."""
     refused = platforms.rename_platform(engine, platform_id, name=request.name)
     if refused is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail="No such Platform.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
     if refused is Refusal.name_taken:
         raise HTTPException(status_code=409, detail=_platform_name_taken(request.name))
 
@@ -181,7 +192,7 @@ def rename_platform(
 def delete_platform(platform_id: int, admin: AdminDep, engine: EngineDep) -> None:
     removal = remove_platform(engine, platform_id)
     if removal is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail="No such Platform.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
     if isinstance(removal, Refused):
         raise HTTPException(status_code=409, detail=removal.reason)
 
@@ -205,13 +216,49 @@ def add_account(
         base_currency=request.base_currency,
     )
     if created is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail="No such Platform.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
     if created is Refusal.name_taken:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{request.name!r} already exists under this Platform.",
-        )
+        raise HTTPException(status_code=409, detail=_account_name_taken(request.name))
     return RegisteredResponse(id=created)
+
+
+def _account_name_taken(name: str) -> str:
+    """One wording for a taken name, whether it was asked for when the Account
+    was added or by an edit."""
+    return f"{name!r} already exists under this Platform."
+
+
+class EditAccountRequest(BaseModel):
+    name: Name
+    # Omitted or emptied clears the stored value: the request states the whole
+    # editable set, so what it does not state is not kept.
+    external_reference: ClearableText = None
+    access_software: ClearableText = None
+
+
+@router.put(
+    "/accounts/{account_id}",
+    summary="Edit an Account's name, external reference and access software",
+    status_code=204,
+)
+def edit_account(
+    account_id: int, request: EditAccountRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """The name and the two notes are the whole editable set of an Account
+    (issue 12), overwritten whatever was recorded in it or is paired with it.
+    Its chain and base currency are not: they are part of what the Account
+    is, not of what it is called."""
+    refused = platforms.edit_account(
+        engine,
+        account_id,
+        name=request.name,
+        external_reference=request.external_reference,
+        access_software=request.access_software,
+    )
+    if refused is Refusal.no_such_account:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_ACCOUNT)
+    if refused is Refusal.name_taken:
+        raise HTTPException(status_code=409, detail=_account_name_taken(request.name))
 
 
 @router.delete(
@@ -222,7 +269,7 @@ def add_account(
 def delete_account(account_id: int, admin: AdminDep, engine: EngineDep) -> None:
     removal = remove_account(engine, account_id)
     if removal is Refusal.no_such_account:
-        raise HTTPException(status_code=404, detail="No such Account.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_ACCOUNT)
     if isinstance(removal, Refused):
         raise HTTPException(status_code=409, detail=removal.reason)
 
@@ -258,7 +305,7 @@ def record_withholding(
         exemption_order_eur=request.exemption_order_eur,
     )
     if refused is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail="No such Platform.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
     if refused is Refusal.not_a_broker:
         raise HTTPException(
             status_code=409, detail="Only a broker Platform carries withholding behaviour."
@@ -283,7 +330,7 @@ def record_withholding_override(
     exception."""
     refused = platforms.set_withholding_override(engine, account_id, behaviour=request.behaviour)
     if refused is Refusal.no_such_account:
-        raise HTTPException(status_code=404, detail="No such Account.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_ACCOUNT)
     if refused is Refusal.not_under_a_broker:
         raise HTTPException(
             status_code=409, detail="Only an Account under a broker carries an override."
@@ -314,4 +361,4 @@ def declare_authoritative_source(
     """Exactly one ingestion mode is authoritative per Account (ticket 31);
     any other source may reconcile against it but may not write."""
     if not platforms.set_authoritative_source(engine, account_id, request.source):
-        raise HTTPException(status_code=404, detail="No such Account.")
+        raise HTTPException(status_code=404, detail=_NO_SUCH_ACCOUNT)

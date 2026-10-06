@@ -92,3 +92,60 @@ test("a Platform is refused a taken name, then renamed", async ({ page, request 
     expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
   }
 });
+
+// Editing an Account (issue 14), end to end, under a broker so the form speaks
+// of a Depot: the row's Edit action opens the three values in place, a taken
+// name is refused in the server's words at the row, a free one is saved along
+// with a corrected reference and a cleared note. One Platform under a name
+// unique to the run, removed again with both its Depots.
+test("a Depot is refused a taken name, then edited", async ({ page, request }) => {
+  const name = `E2E Broker ${Date.now()}`;
+  const registered = await request.post("/api/platforms", { data: { name, kind: "broker" } });
+  expect(registered.status()).toBe(201);
+  const { id } = await registered.json();
+  const accountIds: number[] = [];
+  for (const account of [
+    { name: "Taken" },
+    { name: "Typo", external_reference: "DE00 TYPO", access_software: "Old app" },
+  ]) {
+    const added = await request.post(`/api/platforms/${id}/accounts`, { data: account });
+    expect(added.status()).toBe(201);
+    accountIds.push((await added.json()).id);
+  }
+
+  await page.goto("/settings/platforms");
+  const row = page.getByRole("article", { name, exact: true });
+  const form = row.getByRole("form", { name: "Edit the Depot Typo" });
+
+  // Cancel leaves everything as it was.
+  await row.getByRole("button", { name: "Edit Typo", exact: true }).click();
+  await expect(form.getByLabel("Depot name")).toHaveValue("Typo");
+  await expect(form.getByLabel("Address / IBAN / reference")).toHaveValue("DE00 TYPO");
+  await expect(form.getByLabel("Access software")).toHaveValue("Old app");
+  await form.getByLabel("Depot name").fill("Never saved");
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await expect(row.getByText("Typo", { exact: true })).toBeVisible();
+  await expect(row.getByText("Never saved")).toHaveCount(0);
+
+  await row.getByRole("button", { name: "Edit Typo", exact: true }).click();
+  await form.getByLabel("Depot name").fill("Taken");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(form.getByRole("alert")).toHaveText("'Taken' already exists under this Platform.");
+
+  // The form is still open on the refused name; a free one goes through, with
+  // the reference corrected and the access software emptied.
+  await form.getByLabel("Depot name").fill("Corrected");
+  await form.getByLabel("Address / IBAN / reference").fill("DE00 RIGHT");
+  await form.getByLabel("Access software").fill("");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(form).toHaveCount(0);
+  await expect(row.getByText("Corrected", { exact: true })).toBeVisible();
+  await expect(row.getByText("DE00 RIGHT", { exact: true })).toBeVisible();
+  await expect(row.getByText("Old app")).toHaveCount(0);
+  await expect(row.getByText("Typo", { exact: true })).toHaveCount(0);
+
+  for (const accountId of accountIds) {
+    expect((await request.delete(`/api/accounts/${accountId}`)).status()).toBe(204);
+  }
+  expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
+});
