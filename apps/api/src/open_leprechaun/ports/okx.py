@@ -32,6 +32,7 @@ from open_leprechaun.ports.exchange import (
     AdapterError,
     Credentials,
     Harvest,
+    LivePosition,
     NormalizedCashMovement,
     NormalizedFill,
     NormalizedFunding,
@@ -55,6 +56,7 @@ _FIAT_WITHDRAWALS_PATH = "/api/v5/fiat/withdrawal-order-history"
 _INSTRUMENTS_PATH = "/api/v5/public/instruments"
 _FUNDING_BALANCES_PATH = "/api/v5/asset/balances"
 _TRADING_BALANCE_PATH = "/api/v5/account/balance"
+_POSITIONS_PATH = "/api/v5/account/positions"
 
 # The venue serves three months of trade and bill history; the adapter asks
 # for exactly that and nothing pretends to reach further (ticket 40 will say
@@ -458,6 +460,83 @@ class OkxFuturesAdapter(_OkxAdapter):
             )
         )
         return Harvest(fills=fills, funding=funding)
+
+    def live_positions(self, credentials: Credentials) -> tuple[LivePosition, ...]:
+        """Every open contract as the venue states it right now — its own
+        mark, liquidation and breakeven prices, floating result and margin,
+        repeated and never recomputed. Sized like a fill, by the public
+        description's face value. Stamped with the instant it was asked for:
+        the venue dates a position by its last change, which is not when the
+        statement was true."""
+        as_of = datetime.now(UTC)
+        specs = self._instrument_descriptions()
+        stated: list[LivePosition] = []
+        for inst_type in _DERIVATIVE_TYPES:
+            for raw in self._signed_get(credentials, _POSITIONS_PATH, {"instType": inst_type}):
+                try:
+                    position = self._live_position(raw, specs, as_of)
+                except (KeyError, ArithmeticError, ValueError) as failed:
+                    raise AdapterError(
+                        "OKX answered a position the adapter could not read — a row"
+                        " without its contract or its size."
+                    ) from failed
+                if position is not None:
+                    stated.append(position)
+            self._pause()
+        return tuple(stated)
+
+    @staticmethod
+    def _live_position(
+        raw: dict, descriptions: dict[str, dict], as_of: datetime
+    ) -> LivePosition | None:
+        contracts = Decimal(str(raw["pos"]))
+        # A row the venue keeps for a position already flat states nothing
+        # that is open.
+        if contracts == 0:
+            return None
+        symbol = str(raw["instId"])
+        description = descriptions.get(symbol)
+        if description is None:
+            raise AdapterError(
+                f"The venue no longer describes {symbol!r}, so its contract"
+                " value is unknown and the position cannot be sized."
+            )
+        face = Decimal(str(description["ctVal"])) * Decimal(str(description.get("ctMult") or "1"))
+        # Hedge mode names the side; net mode states it by the sign.
+        stated_side = str(raw.get("posSide") or "")
+        side: Literal["long", "short"] = (
+            "long"
+            if stated_side == "long" or (stated_side != "short" and contracts > 0)
+            else "short"
+        )
+
+        def figure(key: str) -> Decimal | None:
+            value = raw.get(key)
+            return None if value in (None, "") else Decimal(str(value))
+
+        opened_ms = raw.get("cTime")
+        return LivePosition(
+            symbol=symbol,
+            side=side,
+            quantity=abs(contracts) * face,
+            quantity_unit=str(description["ctValCcy"]) if description.get("ctValCcy") else None,
+            notional_usd=figure("notionalUsd"),
+            leverage=figure("lever"),
+            margin_mode=str(raw["mgnMode"]) if raw.get("mgnMode") else None,
+            entry_price=figure("avgPx"),
+            mark_price=figure("markPx"),
+            liquidation_price=figure("liqPx"),
+            breakeven_price=figure("bePx"),
+            floating_result=figure("upl"),
+            floating_result_ratio=figure("uplRatio"),
+            # An isolated position carries its own margin; a cross one states
+            # the initial requirement it draws on the shared balance.
+            margin=figure("margin") if figure("margin") is not None else figure("imr"),
+            margin_ratio=figure("mgnRatio"),
+            settlement_symbol=str(raw["ccy"]),
+            opened_at=_at(int(opened_ms)) if opened_ms else None,
+            as_of=as_of,
+        )
 
     def _instrument_descriptions(self) -> dict[str, dict]:
         """Every live contract's description from the public endpoint —

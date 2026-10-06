@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Split,
   Vault,
+  CandlestickChart,
 } from "lucide-react";
 
 export interface NavItem {
@@ -58,6 +59,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/portfolio", label: "Portfolio", icon: ChartLine },
       { to: "/inbox", label: "Inbox", icon: Inbox },
       { to: "/transactions", label: "Transactions", icon: Scale },
+      { to: "/futures", label: "Futures", icon: CandlestickChart },
       { to: "/transfers", label: "Transfers", icon: ArrowLeftRight },
       { to: "/imports", label: "Imports", icon: Download },
       { to: "/instruments", label: "Instruments", icon: Shapes },

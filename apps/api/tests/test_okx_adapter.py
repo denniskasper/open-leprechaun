@@ -25,7 +25,11 @@ import pytest
 
 from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import okx
-from open_leprechaun.ports.exchange import AdapterError, StatesNormalizedPositions
+from open_leprechaun.ports.exchange import (
+    AdapterError,
+    StatesLivePositions,
+    StatesNormalizedPositions,
+)
 from open_leprechaun.ports.okx import (
     BASE_URL,
     EEA_BASE_URL,
@@ -259,6 +263,7 @@ def venue(
     funding_balances=(),
     trading_details=(),
     settle_ccy_list=(),
+    positions=(),
 ):
     """A recorded OKX behind a mock transport, answering each endpoint the
     way the documented API answers it."""
@@ -295,6 +300,8 @@ def venue(
             return ok(by_fiat_window(fiat_deposits, params))
         if path == "/api/v5/fiat/withdrawal-order-history":
             return ok(by_fiat_window(fiat_withdrawals, params))
+        if path == "/api/v5/account/positions":
+            return ok([row for row in positions if row["instType"] == params["instType"]])
         if path == "/api/v5/asset/balances":
             return ok(funding_balances)
         if path == "/api/v5/account/balance":
@@ -741,6 +748,103 @@ def test_an_account_with_no_history_pulls_a_clean_empty_harvest():
         assert harvest.cash_movements == ()
         assert harvest.fills == ()
         assert harvest.funding == ()
+
+
+# --- Live positions: the venue's own statement, repeated ---
+
+A_LIVE_POSITION = {
+    "instType": "FUTURES",
+    "instId": "XAG-USD_UM_XPERP-310509",
+    "posSide": "net",
+    "pos": "300",
+    "avgPx": "40",
+    "markPx": "41.5",
+    "liqPx": "21.25",
+    "bePx": "40.2",
+    "upl": "4.5",
+    "uplRatio": "0.075",
+    "lever": "2",
+    "mgnMode": "isolated",
+    "margin": "60",
+    "imr": "",
+    "mgnRatio": "7.5",
+    "notionalUsd": "124.5",
+    "ccy": "USDC",
+    "cTime": str(NOW_MS - 3 * DAY_MS),
+    "uTime": str(NOW_MS - DAY_MS),
+}
+
+
+def test_a_live_position_repeats_what_the_venue_states():
+    adapter, _ = futures_venue(
+        instruments=[A_DOLLAR_MARGINED_CONTRACT], positions=[A_LIVE_POSITION]
+    )
+    asked = datetime.now(UTC)
+
+    (position,) = adapter.live_positions(CREDENTIALS)
+
+    assert (position.symbol, position.side) == ("XAG-USD_UM_XPERP-310509", "long")
+    # 300 contracts of 0.01 face value each.
+    assert (position.quantity, position.quantity_unit) == (Decimal("3.00"), "XAG")
+    assert position.entry_price == Decimal("40")
+    assert position.mark_price == Decimal("41.5")
+    assert position.liquidation_price == Decimal("21.25")
+    assert position.breakeven_price == Decimal("40.2")
+    assert position.floating_result == Decimal("4.5")
+    assert position.floating_result_ratio == Decimal("0.075")
+    assert (position.leverage, position.margin_mode) == (Decimal("2"), "isolated")
+    assert position.margin == Decimal("60")
+    assert position.margin_ratio == Decimal("7.5")
+    assert position.notional_usd == Decimal("124.5")
+    assert position.settlement_symbol == "USDC"
+    assert position.opened_at == datetime.fromtimestamp((NOW_MS - 3 * DAY_MS) / 1000, tz=UTC)
+    # Stamped when it was asked for, not when the position last changed.
+    assert position.as_of >= asked
+
+
+def test_net_mode_states_a_short_by_its_sign_and_hedge_mode_by_its_name():
+    net_short = {**A_LIVE_POSITION, "pos": "-300"}
+    hedge_short = {**A_LIVE_POSITION, "posSide": "short", "pos": "300"}
+    adapter, _ = futures_venue(
+        instruments=[A_DOLLAR_MARGINED_CONTRACT], positions=[net_short, hedge_short]
+    )
+
+    sides = [(p.side, p.quantity) for p in adapter.live_positions(CREDENTIALS)]
+
+    assert sides == [("short", Decimal("3.00")), ("short", Decimal("3.00"))]
+
+
+def test_a_figure_the_venue_leaves_unstated_stays_unstated():
+    """A cross position has no liquidation price of its own and no margin
+    column — the initial requirement stands in for the margin, and nothing
+    is defaulted to zero."""
+    cross = {**A_LIVE_POSITION, "mgnMode": "cross", "liqPx": "", "margin": "", "imr": "12.5"}
+    adapter, _ = futures_venue(instruments=[A_DOLLAR_MARGINED_CONTRACT], positions=[cross])
+
+    (position,) = adapter.live_positions(CREDENTIALS)
+
+    assert position.liquidation_price is None
+    assert position.margin == Decimal("12.5")
+
+
+def test_a_flat_row_states_no_open_position():
+    flat = {**A_LIVE_POSITION, "pos": "0"}
+    adapter, _ = futures_venue(instruments=[A_DOLLAR_MARGINED_CONTRACT], positions=[flat])
+
+    assert adapter.live_positions(CREDENTIALS) == ()
+
+
+def test_a_position_row_the_adapter_cannot_read_is_an_adapter_error():
+    unreadable = {key: value for key, value in A_LIVE_POSITION.items() if key != "pos"}
+    adapter, _ = futures_venue(instruments=[A_DOLLAR_MARGINED_CONTRACT], positions=[unreadable])
+
+    with pytest.raises(AdapterError, match="could not read"):
+        adapter.live_positions(CREDENTIALS)
+
+
+def test_only_the_futures_kind_states_live_positions():
+    assert isinstance(OkxFuturesAdapter(), StatesLivePositions)
+    assert not isinstance(OkxSpotAdapter(), StatesLivePositions)
 
 
 # --- The registry entry ---

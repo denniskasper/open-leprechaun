@@ -134,6 +134,36 @@ class NormalizedPosition:
 
 
 @dataclass(frozen=True)
+class LivePosition:
+    """What the venue itself states about one open futures position at the
+    moment it is asked (CONTEXT.md) — shown and never stored, and no input to
+    derivation or to any tax figure: the ledger's positions come from fills
+    alone (ADR-0008). Every figure is the venue's own, in its own units; one
+    the venue leaves unstated is None, never a default."""
+
+    symbol: str
+    side: Literal["long", "short"]
+    # In the contract's face unit — the base asset for a linear contract.
+    quantity: Decimal
+    quantity_unit: str | None
+    notional_usd: Decimal | None
+    leverage: Decimal | None
+    margin_mode: str | None
+    entry_price: Decimal | None
+    mark_price: Decimal | None
+    liquidation_price: Decimal | None
+    breakeven_price: Decimal | None
+    # Signed, in the settlement asset, with its share of the margin.
+    floating_result: Decimal | None
+    floating_result_ratio: Decimal | None
+    margin: Decimal | None
+    margin_ratio: Decimal | None
+    settlement_symbol: str
+    opened_at: datetime | None
+    as_of: datetime
+
+
+@dataclass(frozen=True)
 class Harvest:
     """Everything one adapter kind pulled in one sync. A kind fills the
     fields it serves and leaves the rest empty — the sync service routes by
@@ -182,3 +212,13 @@ class StatesNormalizedPositions(Protocol):
     on failure."""
 
     def normalized_positions(self, credentials: Credentials) -> tuple[NormalizedPosition, ...]: ...
+
+
+@runtime_checkable
+class StatesLivePositions(Protocol):
+    """The capability of a kind whose venue states its open futures positions
+    as they stand right now — declared by having the method, so a kind with
+    nothing to state simply lacks it and the screen says so. Raises
+    AdapterError and nothing else on failure."""
+
+    def live_positions(self, credentials: Credentials) -> tuple[LivePosition, ...]: ...

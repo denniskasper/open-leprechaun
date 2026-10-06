@@ -20,6 +20,7 @@ import { PlatformsPage } from "@/pages/platforms";
 import { ScheduledTasksPage } from "@/pages/scheduled-tasks";
 import { SecurityPage } from "@/pages/security";
 import { StatutoryPage } from "@/pages/statutory";
+import { FuturesPage } from "@/pages/futures";
 import { TransactionsPage } from "@/pages/transactions";
 import { TransfersPage } from "@/pages/transfers";
 import { SETTINGS_INDEX } from "@/navigation";
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
           { path: "portfolio", element: <PortfolioPage /> },
           { path: "inbox", element: <InboxPage /> },
           { path: "transactions", element: <TransactionsPage /> },
+          { path: "futures", element: <FuturesPage /> },
           { path: "transfers", element: <TransfersPage /> },
           { path: "imports", element: <ImportsPage /> },
           { path: "instruments", element: <InstrumentsPage /> },

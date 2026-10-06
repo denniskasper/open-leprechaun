@@ -22,7 +22,8 @@ from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.db import get_engine
 from open_leprechaun.main import create_app
 from open_leprechaun.ports import exchange as port
-from open_leprechaun.repositories import instruments
+from open_leprechaun.ports.reference_rates import ReferenceRate
+from open_leprechaun.repositories import instruments, reference_rates
 
 KEY = "AJVqhlN2mUvg5rlIT4YDkbA1"
 SECRET = "wJmoXjRk8pdFqe37cChM/2Zt5yUwbBHGSA=="
@@ -679,3 +680,167 @@ def test_unpairing_releases_the_kind(client):
     (listed,) = client.get("/api/connections").json()
     assert listed["pairings"] == []
     assert client.delete(f"/api/connections/{connection_id}/pairings/futures").status_code == 404
+
+
+# --- The Futures screen: Live Positions, and what a position was derived from ---
+
+
+class LiveFakeAdapter(FakeAdapter):
+    """A futures kind whose venue also states its open positions."""
+
+    def __init__(self, *, live=(), **kwargs):
+        super().__init__("futures", **kwargs)
+        self.live = tuple(live)
+
+    def live_positions(self, credentials):
+        self._answer(credentials)
+        return self.live
+
+
+def live_position(symbol="BTC_USDT_PERP", side="long", **overrides):
+    stated = dict(
+        symbol=symbol,
+        side=side,
+        quantity=Decimal("2"),
+        quantity_unit="BTC",
+        notional_usd=Decimal("100000"),
+        leverage=Decimal("2"),
+        margin_mode="isolated",
+        entry_price=Decimal("50000"),
+        mark_price=Decimal("50500"),
+        liquidation_price=Decimal("26000"),
+        breakeven_price=Decimal("50010"),
+        floating_result=Decimal("1000"),
+        floating_result_ratio=Decimal("0.02"),
+        margin=Decimal("50000"),
+        margin_ratio=Decimal("48.5"),
+        settlement_symbol="USDT",
+        opened_at=AN_INSTANT,
+        as_of=AN_INSTANT + timedelta(days=1),
+    )
+    stated.update(overrides)
+    return port.LivePosition(**stated)
+
+
+def opening_fill_only():
+    """A long opened and still open — the ledger derives an open position."""
+    return port.Harvest(fills=(futures_harvest().fills[0],))
+
+
+def test_live_positions_repeat_the_venue_and_name_the_ledger_position_each_matches(
+    client, adapters, db
+):
+    """The venue states two open positions; the ledger derived one of them
+    from its fills. The matched one carries the ledger position's id, the
+    other none — its history is not in the ledger."""
+    usdt(db)
+    connection_id, account_id = paired_futures_connection(client, adapters)
+    adapters["okx"] = (
+        LiveFakeAdapter(
+            harvest=opening_fill_only(),
+            live=[live_position(), live_position(symbol="ETH_USDT_PERP", side="short")],
+        ),
+    )
+    client.post(f"/api/connections/{connection_id}/sync")
+    (derived,) = client.get("/api/futures").json()["positions"]
+
+    (stated,) = client.get("/api/futures/live").json()
+
+    assert stated["connection_id"] == connection_id
+    assert (stated["connection_label"], stated["venue"]) == ("Main account", "okx")
+    assert (stated["adapter_kind"], stated["account_id"]) == ("futures", account_id)
+    assert (stated["supported"], stated["error"]) == (True, None)
+    matched, unknown = stated["positions"]
+    assert matched["symbol"] == "BTC_USDT_PERP"
+    assert matched["ledger_position_id"] == derived["id"]
+    assert (matched["mark_price"], matched["floating_result"]) == ("50500", "1000")
+    assert matched["floating_result_ratio"] == "0.02"
+    assert unknown["symbol"] == "ETH_USDT_PERP"
+    assert unknown["ledger_position_id"] is None
+    # Shown and never stored: asking wrote no position.
+    assert len(client.get("/api/futures").json()["positions"]) == 1
+
+
+def test_a_closed_ledger_position_matches_no_live_position(client, adapters, db):
+    """The ledger's position for the symbol has closed; what the venue now
+    states as open is another position, with no history here."""
+    usdt(db)
+    connection_id, _ = paired_futures_connection(client, adapters)
+    adapters["okx"] = (LiveFakeAdapter(harvest=futures_harvest(), live=[live_position()]),)
+    client.post(f"/api/connections/{connection_id}/sync")
+
+    (stated,) = client.get("/api/futures/live").json()
+
+    assert stated["positions"][0]["ledger_position_id"] is None
+
+
+def test_a_venue_that_refuses_is_an_error_of_its_own_connection(client, adapters):
+    """One venue failing never hides another: the refusal is stated in its
+    place, and the answer is still an answer."""
+    paired_futures_connection(client, adapters)
+    adapters["okx"] = (LiveFakeAdapter(failure="The key was revoked."),)
+
+    response = client.get("/api/futures/live")
+
+    assert response.status_code == 200
+    (stated,) = response.json()
+    assert stated["error"] == "The key was revoked."
+    assert stated["positions"] == []
+
+
+def test_a_futures_kind_that_states_no_live_positions_says_so(client, adapters):
+    paired_futures_connection(client, adapters)
+
+    (stated,) = client.get("/api/futures/live").json()
+
+    assert (stated["supported"], stated["error"], stated["positions"]) == (False, None, [])
+
+
+def test_only_futures_kinds_are_asked(client, adapters):
+    platform_id = okx(client)
+    connect(client, platform_id)
+    adapters["okx"] = (FakeAdapter("spot"),)
+
+    assert client.get("/api/futures/live").json() == []
+
+
+def test_a_position_states_the_fills_and_funding_it_was_derived_from(client, adapters, db):
+    usdt(db)
+    connection_id, _ = paired_futures_connection(client, adapters)
+    client.post(f"/api/connections/{connection_id}/sync")
+    (position,) = client.get("/api/futures").json()["positions"]
+
+    events = client.get(f"/api/futures/positions/{position['id']}/events").json()
+
+    assert [
+        (fill["side"], fill["price"], fill["size"], fill["fee"]) for fill in events["fills"]
+    ] == [
+        ("buy", "50000", "2", "1"),
+        ("sell", "51000", "2", "1"),
+    ]
+    (payment,) = events["funding"]
+    assert payment["amount"] == "-0.5"
+    assert client.get("/api/futures/positions/999999/events").status_code == 404
+
+
+def test_a_closed_position_states_its_settlement_and_its_eur_value_from_the_store(
+    client, adapters, db
+):
+    """The net in EUR by the stored reference rate of the close day — and no
+    figure at all while the store holds none, never a guess."""
+    usdt(db)
+    connection_id, _ = paired_futures_connection(client, adapters)
+    client.post(f"/api/connections/{connection_id}/sync")
+
+    (position,) = client.get("/api/futures").json()["positions"]
+    assert position["settlement_symbol"] == "USDT"
+    assert position["net_eur"] is None
+
+    reference_rates.store(
+        db,
+        [ReferenceRate(currency="USD", rate_date=AN_INSTANT.date(), rate=Decimal("1.25"))],
+    )
+    (position,) = client.get("/api/futures").json()["positions"]
+    # Net 1997.5 USDT (2000 realised, 2 fees, 0.5 funding paid) at 1.25 USD per EUR.
+    assert position["net"] == "1997.5"
+    assert Decimal(position["net_eur"]) == Decimal("1598")

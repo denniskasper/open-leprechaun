@@ -117,10 +117,12 @@ describe("resolveLabel", () => {
   it("names the screen a blocker's path leads to", () => {
     expect(resolveLabel("/transfers")).toBe("Transfers");
     expect(resolveLabel("/settings/statutory")).toBe("Statutory");
+    // Where a futures blocker is resolved.
+    expect(resolveLabel("/futures")).toBe("Futures");
   });
 
   it("answers nothing for a path no screen is registered at", () => {
-    expect(resolveLabel("/futures")).toBeNull();
+    expect(resolveLabel("/no-such-screen")).toBeNull();
   });
 });
 

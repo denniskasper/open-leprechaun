@@ -293,6 +293,71 @@ def position_rows(connection: Connection) -> list[Row]:
     )
 
 
+def open_position_rows(connection: Connection) -> list[Row]:
+    """Every position the ledger holds open, oldest first — what a venue's
+    statement of its open positions is matched against."""
+    return list(
+        connection.execute(
+            text(
+                "SELECT id, account_id, symbol, side FROM futures_position"
+                " WHERE closed_at IS NULL ORDER BY opened_at, id"
+            )
+        ).all()
+    )
+
+
+def position_row(connection: Connection, position_id: int) -> Row | None:
+    return connection.execute(
+        text(
+            "SELECT id, source, account_id, symbol, side, opened_at, closed_at"
+            " FROM futures_position WHERE id = :id"
+        ),
+        {"id": position_id},
+    ).one_or_none()
+
+
+def fills_of_position(connection: Connection, position: Row) -> list[Row]:
+    """The fills one position was derived from: its source's stream for its
+    Account and symbol, over the interval it stood open — in hedge mode its
+    own side's alone. A fill that closes one position and opens the next in
+    one execution belongs to both intervals and is listed under each. Empty
+    for a position entered by hand, which has no source."""
+    return list(
+        connection.execute(
+            text(
+                "SELECT id, external_id, side, price, size, fee, realized, occurred_at"
+                " FROM futures_fill"
+                " WHERE source = :source AND account_id = :account_id AND symbol = :symbol"
+                " AND (position_side IS NULL OR position_side = :side)"
+                " AND occurred_at >= :opened_at"
+                " AND (CAST(:closed_at AS timestamptz) IS NULL OR occurred_at <= :closed_at)"
+                " ORDER BY occurred_at, id"
+            ),
+            {
+                "source": position.source,
+                "account_id": position.account_id,
+                "symbol": position.symbol,
+                "side": position.side,
+                "opened_at": position.opened_at,
+                "closed_at": position.closed_at,
+            },
+        ).all()
+    )
+
+
+def funding_of_position(connection: Connection, position_id: int) -> list[Row]:
+    """The payments attributed to one position, newest first."""
+    return list(
+        connection.execute(
+            text(
+                "SELECT id, amount, occurred_at FROM funding_payment"
+                " WHERE position_id = :id ORDER BY occurred_at DESC, id DESC"
+            ),
+            {"id": position_id},
+        ).all()
+    )
+
+
 def closed_position_rows(connection: Connection) -> list[Row]:
     """The positions that have a year to count in, oldest close first, each
     with its attributed funding summed — the §20 producer's whole input."""

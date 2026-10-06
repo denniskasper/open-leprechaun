@@ -43,6 +43,7 @@ from sqlalchemy.exc import IntegrityError
 
 from open_leprechaun.repositories import aggregates as aggregates_repository
 from open_leprechaun.repositories import futures as repository
+from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories.futures import (
     DerivationIssue,
     FuturesPosition,
@@ -50,6 +51,7 @@ from open_leprechaun.repositories.futures import (
     NormalizedFunding,
     Refusal,
 )
+from open_leprechaun.services import fx
 
 __all__ = [
     "Derivation",
@@ -402,6 +404,12 @@ class PositionOverview:
     # The bot aggregate whose scope covers this position (ticket 30) — a
     # presentation marker the summary collapses on, never a tax input.
     aggregate_id: int | None
+    # The symbol the settlement Instrument wears — a label for the figures.
+    settlement_symbol: str
+    # A closed position's net in EUR by what the store holds for the close
+    # day — a view's figure, never the tax engine's own (ADR-0019). None
+    # while open, and while nothing stored can value it.
+    net_eur: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -445,6 +453,10 @@ def overview(engine: Engine) -> FuturesOverview:
         unattributable = repository.unattributable_rows(connection)
         issues = repository.issue_rows(connection)
         bot_scopes = aggregates_repository.bot_rows(connection)
+    settlements = {
+        instrument_id: instruments_repository.get(engine, instrument_id)
+        for instrument_id in {row.settlement_instrument_id for row in positions}
+    }
     return FuturesOverview(
         positions=tuple(
             PositionOverview(
@@ -463,6 +475,15 @@ def overview(engine: Engine) -> FuturesOverview:
                 funding=row.funding,
                 net=net_figure(row),
                 aggregate_id=_aggregate_of(row, bot_scopes),
+                settlement_symbol=settlements[row.settlement_instrument_id].symbol,
+                net_eur=None
+                if row.closed_at is None
+                else fx.stored_value_eur(
+                    engine,
+                    instrument=settlements[row.settlement_instrument_id],
+                    quantity=net_figure(row),
+                    at=row.closed_at,
+                ),
             )
             for row in positions
         ),
@@ -489,5 +510,66 @@ def overview(engine: Engine) -> FuturesOverview:
                 reason=row.reason,
             )
             for row in issues
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class FillEvent:
+    id: int
+    external_id: str
+    side: str
+    price: Decimal
+    size: Decimal
+    fee: Decimal
+    # The venue's own per-fill result, where it stated one.
+    realized: Decimal | None
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class FundingEvent:
+    id: int
+    amount: Decimal
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class PositionEvents:
+    """What one position rests on: the fills it was derived from, in the
+    order derivation walked them, and the funding attributed to it, newest
+    first."""
+
+    fills: tuple[FillEvent, ...]
+    funding: tuple[FundingEvent, ...]
+
+
+def events(engine: Engine, position_id: int) -> PositionEvents | None:
+    """None when there is no such position."""
+    with engine.connect() as connection:
+        position = repository.position_row(connection, position_id)
+        if position is None:
+            return None
+        fills = (
+            [] if position.source is None else repository.fills_of_position(connection, position)
+        )
+        funding = repository.funding_of_position(connection, position_id)
+    return PositionEvents(
+        fills=tuple(
+            FillEvent(
+                id=row.id,
+                external_id=row.external_id,
+                side=row.side,
+                price=row.price,
+                size=row.size,
+                fee=row.fee,
+                realized=row.realized,
+                occurred_at=row.occurred_at,
+            )
+            for row in fills
+        ),
+        funding=tuple(
+            FundingEvent(id=row.id, amount=row.amount, occurred_at=row.occurred_at)
+            for row in funding
         ),
     )

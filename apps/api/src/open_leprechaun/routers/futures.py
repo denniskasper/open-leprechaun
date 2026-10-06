@@ -11,17 +11,19 @@ from pydantic import (
     model_validator,
 )
 
+from open_leprechaun.adapters import VenueAdaptersDep
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories.futures import FuturesPosition, Refusal
 from open_leprechaun.routers.fixed_point import decimal_text_only
-from open_leprechaun.services import futures
+from open_leprechaun.services import futures, futures_live
 from open_leprechaun.services.futures import (
     FundingOverview,
     FuturesOverview,
     IssueOverview,
     PositionOverview,
 )
+from open_leprechaun.settings import SettingsDep
 
 router = APIRouter(tags=["futures"])
 
@@ -50,6 +52,11 @@ SignedAmount = Annotated[
     Field(allow_inf_nan=False),
     PlainSerializer(lambda amount: format(amount, "f"), return_type=str),
 ]
+
+
+# A figure on the way out only — a price, a ratio, a venue's own statement:
+# fixed-point as everywhere, a decimal string and never a float.
+Figure = Annotated[Decimal, PlainSerializer(lambda value: format(value, "f"), return_type=str)]
 
 
 class ManualPositionRequest(BaseModel):
@@ -98,6 +105,10 @@ class PositionResponse(BaseModel):
     # The bot aggregate whose scope covers this position (ticket 30) — the
     # marker the summary presentation collapses on.
     aggregate_id: int | None
+    settlement_symbol: str
+    # A closed position's net in EUR by the stored rate of its close day —
+    # null while open, and while nothing stored can value it.
+    net_eur: Figure | None
 
     @classmethod
     def of(cls, position: PositionOverview) -> PositionResponse:
@@ -163,6 +174,115 @@ class FuturesResponse(BaseModel):
 )
 def futures_overview(admin: AdminDep, engine: EngineDep) -> FuturesResponse:
     return FuturesResponse.of(futures.overview(engine))
+
+
+class LivePositionResponse(BaseModel):
+    """One open position as the venue states it right now (CONTEXT.md) —
+    every figure the venue's own; one it left unstated is null."""
+
+    symbol: str
+    side: PositionSide
+    quantity: Figure
+    quantity_unit: str | None
+    notional_usd: Figure | None
+    leverage: Figure | None
+    margin_mode: str | None
+    entry_price: Figure | None
+    mark_price: Figure | None
+    liquidation_price: Figure | None
+    breakeven_price: Figure | None
+    floating_result: Figure | None
+    floating_result_ratio: Figure | None
+    margin: Figure | None
+    margin_ratio: Figure | None
+    settlement_symbol: str
+    opened_at: AwareDatetime | None
+    as_of: AwareDatetime
+    # The ledger's open position for the same Account, symbol and side —
+    # null where the ledger has no history for it.
+    ledger_position_id: int | None
+
+
+class KindLiveResponse(BaseModel):
+    """One Connection's futures kind: its venue's Live Positions, or why
+    there are none to show — the venue states none, or it failed."""
+
+    connection_id: int
+    connection_label: str
+    venue: str
+    adapter_kind: str
+    account_id: int | None
+    supported: bool
+    error: str | None
+    positions: list[LivePositionResponse]
+
+    @classmethod
+    def of(cls, result: futures_live.KindLive) -> KindLiveResponse:
+        return cls(
+            connection_id=result.connection_id,
+            connection_label=result.connection_label,
+            venue=result.venue,
+            adapter_kind=result.adapter_kind,
+            account_id=result.account_id,
+            supported=result.supported,
+            error=result.error,
+            positions=[
+                LivePositionResponse(
+                    **vars(entry.stated), ledger_position_id=entry.ledger_position_id
+                )
+                for entry in result.positions
+            ],
+        )
+
+
+@router.get(
+    "/futures/live",
+    summary="What every venue states about its open futures positions right now",
+    response_model=list[KindLiveResponse],
+)
+def live_positions(
+    admin: AdminDep, engine: EngineDep, settings: SettingsDep, adapters: VenueAdaptersDep
+) -> list[KindLiveResponse]:
+    """Asks the venues and stores nothing: a Live Position is shown, never
+    an input to derivation or to any tax figure (ADR-0008)."""
+    return [KindLiveResponse.of(result) for result in futures_live.live(engine, settings, adapters)]
+
+
+class FillEventResponse(BaseModel):
+    id: int
+    external_id: str
+    side: Literal["buy", "sell"]
+    price: Figure
+    size: Figure
+    fee: Figure
+    realized: Figure | None
+    occurred_at: AwareDatetime
+
+
+class FundingEventResponse(BaseModel):
+    id: int
+    amount: Figure
+    occurred_at: AwareDatetime
+
+
+class PositionEventsResponse(BaseModel):
+    fills: list[FillEventResponse]
+    funding: list[FundingEventResponse]
+
+
+@router.get(
+    "/futures/positions/{position_id}/events",
+    summary="The fills a position was derived from and the funding attributed to it",
+    response_model=PositionEventsResponse,
+)
+def position_events(position_id: int, admin: AdminDep, engine: EngineDep) -> PositionEventsResponse:
+    found = futures.events(engine, position_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="No such position.")
+    return PositionEventsResponse(
+        fills=[FillEventResponse(**vars(fill)) for fill in found.fills],
+        funding=[FundingEventResponse(**vars(payment)) for payment in found.funding],
+    )
 
 
 @router.post(
