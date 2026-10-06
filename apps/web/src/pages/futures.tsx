@@ -14,8 +14,9 @@ import { fetchPlatforms, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount } from "@/components/patterns/figure";
 import { Button } from "@/components/ui/button";
-import { formatNumber, formatSignedAssetAmount, formatTimestamp } from "@/lib/format";
+import { formatNumber, formatTimestamp } from "@/lib/format";
 import { LedgerTable, LiveTable, type AccountName } from "./futures-tables";
 import { sumFixed } from "./holdings";
 
@@ -249,7 +250,7 @@ function Unresolved({ futures, accountName }: { futures: Futures; accountName: A
               {", "}
             </span>
             <span className="font-mono text-xs tabular-nums">
-              {formatSignedAssetAmount(group.total, group.settlement_symbol)}
+              <Amount value={group.total} symbol={group.settlement_symbol} signed />
             </span>
             <span className="text-muted-foreground">
               {group.count === 1

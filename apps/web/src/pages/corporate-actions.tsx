@@ -20,6 +20,7 @@ import { DECIMAL_PATTERN } from "@/api/transactions";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount } from "@/components/patterns/figure";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -583,7 +584,7 @@ function ActionCard({
 function StateCell({ state, symbolOf }: { state: LotState; symbolOf: (id: number) => string }) {
   return (
     <p className="font-mono text-sm tabular-nums">
-      {formatQuantity(trimDecimal(state.quantity))} {symbolOf(state.instrument_id)}
+      <Amount value={state.quantity} symbol={symbolOf(state.instrument_id)} />
       <span className="ml-3 text-muted-foreground">
         {state.basis_eur === null ? "basis awaiting valuation" : formatMoneyExact(state.basis_eur, "EUR")}
       </span>

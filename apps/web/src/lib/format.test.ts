@@ -4,11 +4,17 @@ import {
   formatEur,
   formatMoney,
   formatMoneyExact,
+  formatMoneyRounded,
   formatNumber,
   formatBytes,
   formatPercent,
   formatPercentExact,
+  formatPrice,
   formatQuantity,
+  formatRoundedAssetAmount,
+  formatRoundedQuantity,
+  formatRoundedSignedAssetAmount,
+  formatRoundedSignedQuantity,
   formatSignedAssetAmount,
   formatSignedPercentExact,
   formatSignedQuantity,
@@ -202,5 +208,86 @@ describe("formatTimestamp", () => {
   it("renders a wall-clock time for the given locale", () => {
     const noon = Date.UTC(2026, 0, 5, 12, 34, 56);
     expect(formatTimestamp(noon, "de-DE", "UTC")).toBe("05.01.2026, 12:34:56");
+  });
+});
+
+// A list rounds for reading; the digits as stated stay with the verbatim
+// formatters, for forms, reconciliations and tax figures.
+
+describe("formatRoundedAssetAmount", () => {
+  it("reads money and stablecoins to the cent, half away from zero", () => {
+    expect(formatRoundedAssetAmount("56.921676", "USDC", "en-US")).toBe("56.92 USDC");
+    expect(formatRoundedAssetAmount("5.695", "USDC", "en-US")).toBe("5.70 USDC");
+    expect(formatRoundedAssetAmount("-5.695", "USDC", "en-US")).toBe("-5.70 USDC");
+    expect(formatRoundedAssetAmount("1234.999", "EUR", "en-US")).toBe("1,235 EUR");
+    expect(formatRoundedAssetAmount("100", "USDC", "en-US")).toBe("100 USDC");
+  });
+
+  it("reads a coin to eight places, so two would not flatten it", () => {
+    expect(formatRoundedAssetAmount("0.00041", "BTC", "en-US")).toBe("0.00041 BTC");
+    expect(formatRoundedAssetAmount("1.234567891234", "ETH", "en-US")).toBe("1.23456789 ETH");
+    // A ticker that spells a currency code — silver, Mantle — is still an asset.
+    expect(formatRoundedAssetAmount("2.0412", "XAG", "en-US")).toBe("2.0412 XAG");
+    expect(formatRoundedAssetAmount("1.239", "MNT", "en-US")).toBe("1.239 MNT");
+    expect(formatRoundedAssetAmount("1234.6", "JPY", "en-US")).toBe("1,235 JPY");
+  });
+
+  it("never reads an amount that is not zero as zero", () => {
+    expect(formatRoundedAssetAmount("0.004", "USDC", "en-US")).toBe("0.004 USDC");
+    expect(formatRoundedAssetAmount("0.00049", "USDC", "en-US")).toBe("0.0005 USDC");
+    expect(formatRoundedAssetAmount("0.000000000123", "ETH", "en-US")).toBe("0.0000000001 ETH");
+    expect(formatRoundedAssetAmount("0.000", "USDC", "en-US")).toBe("0 USDC");
+    // A carry into the widened places gives them back.
+    expect(formatRoundedAssetAmount("0.0096", "USDC", "en-US")).toBe("0.01 USDC");
+    expect(formatRoundedAssetAmount("0.00096", "USDC", "en-US")).toBe("0.001 USDC");
+  });
+
+  it("works on the digits, so no float can bend the figure", () => {
+    // 1.005 is not representable in binary; a float would state 1 USDC.
+    expect(formatRoundedAssetAmount("1.005", "USDC", "en-US")).toBe("1.01 USDC");
+    expect(formatRoundedAssetAmount("123456789012345678.999", "USDC", "en-US")).toBe(
+      "123,456,789,012,345,679 USDC",
+    );
+  });
+});
+
+describe("formatRoundedSignedAssetAmount", () => {
+  it("keeps the direction in the rounded figure", () => {
+    expect(formatRoundedSignedAssetAmount("-4.2049", "USDC", "en-US")).toBe("−4.20 USDC");
+    expect(formatRoundedSignedAssetAmount("0.126", "USDC", "en-US")).toBe("+0.13 USDC");
+    expect(formatRoundedSignedAssetAmount("-0.004", "USDC", "en-US")).toBe("−0.004 USDC");
+  });
+});
+
+describe("formatRoundedQuantity", () => {
+  it("reads to eight places where no asset is named", () => {
+    expect(formatRoundedQuantity("500.000000004", undefined, "de-DE")).toBe("500");
+    expect(formatRoundedQuantity("1234.5", undefined, "de-DE")).toBe("1.234,5");
+    expect(formatRoundedSignedQuantity("-0.1234567891", undefined, "en-US")).toBe("−0.12345679");
+  });
+});
+
+describe("formatMoneyRounded", () => {
+  it("reads a venue's long dollar value to the cent, padded so a column aligns", () => {
+    expect(formatMoneyRounded("248.20000000000002", "USD", "en-US")).toBe("$248.20");
+    expect(formatMoneyRounded("125.4804", "USD", "en-US")).toBe("$125.48");
+    expect(formatMoneyRounded("-125.485", "USD", "en-US")).toBe("-$125.49");
+    expect(formatMoneyRounded("0.004", "USD", "en-US")).toBe("$0.004");
+    expect(formatMoneyRounded("0.0096", "USD", "en-US")).toBe("$0.01");
+  });
+});
+
+describe("formatPrice", () => {
+  it("reads two decimals at one or above", () => {
+    expect(formatPrice("30.554649471486155", "en-US")).toBe("30.55");
+    expect(formatPrice("61.51", "en-US")).toBe("61.51");
+    expect(formatPrice("63", "en-US")).toBe("63");
+  });
+
+  it("reads four significant digits below one, so mark and entry stay apart", () => {
+    expect(formatPrice("0.4964", "en-US")).toBe("0.4964");
+    expect(formatPrice("0.501304", "en-US")).toBe("0.5013");
+    expect(formatPrice("0.254899135927236", "en-US")).toBe("0.2549");
+    expect(formatPrice("0.000012345678", "en-US")).toBe("0.00001235");
   });
 });

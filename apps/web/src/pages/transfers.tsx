@@ -13,8 +13,9 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount } from "@/components/patterns/figure";
 import { Button } from "@/components/ui/button";
-import { formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatQuantity, formatRoundedAssetAmount, formatTimestamp } from "@/lib/format";
 
 /** "Kraken · Main" — one side of a move, as the Admin names it. */
 export function placeOf(leg: TransferLeg): string {
@@ -207,7 +208,7 @@ function ParcelStrip({ incoming }: { incoming: TransferLeg }) {
     <div className="flex items-center gap-3" aria-hidden>
       <div className="h-px flex-1 bg-border" />
       <p className="font-mono text-sm tabular-nums">
-        {formatQuantity(incoming.quantity)} {incoming.instrument_symbol}
+        <Amount value={incoming.quantity} symbol={incoming.instrument_symbol} />
         <span className="ml-2 text-muted-foreground">→</span>
       </p>
       <div className="h-px flex-1 bg-border" />
@@ -229,7 +230,7 @@ function CandidateCard({ candidate, index }: { candidate: Candidate; index: numb
     <li
       className="rise rounded-xl border border-border p-5"
       style={{ animationDelay: `${120 + index * 40}ms` }}
-      aria-label={`Proposed match: ${formatQuantity(incoming.quantity)} ${incoming.instrument_symbol} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
+      aria-label={`Proposed match: ${formatRoundedAssetAmount(incoming.quantity, incoming.instrument_symbol)} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
     >
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 max-sm:grid-cols-1">
         <SideBlock leg={outgoing} label="Left" />
@@ -283,12 +284,12 @@ function UnmatchedRow({
     <li
       className="rise flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-border py-3 first:border-t"
       style={{ animationDelay: `${120 + index * 40}ms` }}
-      aria-label={`Unmatched transfer ${direction}: ${formatQuantity(leg.quantity)} ${leg.instrument_symbol} at ${placeOf(leg)}`}
+      aria-label={`Unmatched transfer ${direction}: ${formatRoundedAssetAmount(leg.quantity, leg.instrument_symbol)} at ${placeOf(leg)}`}
     >
       <Arrow aria-hidden className="size-4 self-center text-muted-foreground" />
       <p className="font-mono text-sm tabular-nums">
         {direction === "out" ? "−" : "+"}
-        {formatQuantity(leg.quantity)} {leg.instrument_symbol}
+        <Amount value={leg.quantity} symbol={leg.instrument_symbol} />
       </p>
       <p className="text-sm">{placeOf(leg)}</p>
       <p className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -311,7 +312,7 @@ function DecisionCard({ decision, index }: { decision: Decision; index: number }
     <li
       className="rise rounded-xl border border-border p-5"
       style={{ animationDelay: `${120 + index * 40}ms` }}
-      aria-label={`Confirmed self-transfer: ${formatQuantity(incoming.quantity)} ${incoming.instrument_symbol} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
+      aria-label={`Confirmed self-transfer: ${formatRoundedAssetAmount(incoming.quantity, incoming.instrument_symbol)} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
     >
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 max-sm:grid-cols-1">
         <SideBlock leg={outgoing} label="Left" />
@@ -359,7 +360,7 @@ function RejectedRow({ decision, index }: { decision: Decision; index: number })
       aria-label={`Rejected proposal: ${placeOf(decision.outgoing)} to ${placeOf(decision.incoming)}`}
     >
       <p className="font-mono text-sm tabular-nums">
-        {formatQuantity(decision.incoming.quantity)} {decision.incoming.instrument_symbol}
+        <Amount value={decision.incoming.quantity} symbol={decision.incoming.instrument_symbol} />
       </p>
       <p className="text-sm">
         {placeOf(decision.outgoing)} → {placeOf(decision.incoming)}

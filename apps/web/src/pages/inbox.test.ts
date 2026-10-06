@@ -33,7 +33,7 @@ describe("describeArrivals", () => {
         item({ unclassified_inflow_count: 3, unclassified_quantity: "2000.00" }),
         "en",
       ),
-    ).toBe("3 unclassified inflows · 2,000.00 USDC");
+    ).toBe("3 unclassified inflows · 2,000 USDC");
   });
 
   it("says when only deliberate records await the stance", () => {

@@ -3,15 +3,13 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 import { fetchPositionEvents, type FuturesPosition, type LivePosition } from "@/api/futures";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount, Money, Price } from "@/components/patterns/figure";
 import { TONE, type Tone } from "@/components/patterns/lamp";
 import {
-  formatAssetAmount,
   formatEur,
-  formatMoneyExact,
   formatNumber,
   formatPercentExact,
   formatQuantity,
-  formatSignedAssetAmount,
   formatSignedPercentExact,
   formatTimestamp,
 } from "@/lib/format";
@@ -34,7 +32,7 @@ const UNSTATED = <span className="text-muted-foreground">—</span>;
 
 /** A price as the venue states it: a plain figure, because the venue names no currency for it. */
 function price(value: string | null): ReactNode {
-  return value === null ? UNSTATED : formatQuantity(value);
+  return value === null ? UNSTATED : <Price value={value} />;
 }
 
 function TableFrame({
@@ -166,12 +164,10 @@ export function LiveTable({
                 onToggle={matched ? () => setOpen(open === key ? null : key) : undefined}
               />
               <td className={FIGURE}>
-                {position.quantity_unit
-                  ? formatAssetAmount(position.quantity, position.quantity_unit)
-                  : formatQuantity(position.quantity)}
+                <Amount value={position.quantity} symbol={position.quantity_unit ?? undefined} />
                 {position.notional_usd && (
                   <p className="mt-1 text-muted-foreground">
-                    {formatMoneyExact(position.notional_usd, "USD")}
+                    <Money value={position.notional_usd} currency="USD" />
                   </p>
                 )}
               </td>
@@ -184,7 +180,7 @@ export function LiveTable({
                   UNSTATED
                 ) : (
                   <>
-                    {formatSignedAssetAmount(position.floating_result, unit)}
+                    <Amount value={position.floating_result} symbol={unit} signed />
                     {position.floating_result_ratio && (
                       <p className="mt-1">
                         {formatSignedPercentExact(position.floating_result_ratio)}
@@ -197,7 +193,11 @@ export function LiveTable({
                 {position.margin_ratio ? formatPercentExact(position.margin_ratio) : UNSTATED}
               </td>
               <td className={FIGURE}>
-                {position.margin === null ? UNSTATED : formatAssetAmount(position.margin, unit)}
+                {position.margin === null ? (
+                  UNSTATED
+                ) : (
+                  <Amount value={position.margin} symbol={unit} />
+                )}
                 {position.margin_mode && (
                   <p className="mt-1 font-sans text-muted-foreground">{position.margin_mode}</p>
                 )}
@@ -257,11 +257,17 @@ export function LedgerTable({
                   {position.closed_at && formatTimestamp(Date.parse(position.closed_at))}
                 </td>
               )}
-              <td className={FIGURE}>{formatSignedAssetAmount(position.realized, unit)}</td>
-              <td className={FIGURE}>{formatAssetAmount(position.fees, unit)}</td>
-              <td className={FIGURE}>{formatSignedAssetAmount(position.funding, unit)}</td>
+              <td className={FIGURE}>
+                <Amount value={position.realized} symbol={unit} signed />
+              </td>
+              <td className={FIGURE}>
+                <Amount value={position.fees} symbol={unit} />
+              </td>
+              <td className={FIGURE}>
+                <Amount value={position.funding} symbol={unit} signed />
+              </td>
               <td className={`${FIGURE} ${TONE[toneOf(position.net)].text}`}>
-                {formatSignedAssetAmount(position.net, unit)}
+                <Amount value={position.net} symbol={unit} signed />
               </td>
               {closed && (
                 <td className={FIGURE}>
@@ -353,13 +359,19 @@ function Events({ position }: { position: FuturesPosition }) {
                   <tr key={fill.id}>
                     <td className={time}>{formatTimestamp(Date.parse(fill.occurred_at))}</td>
                     <td className={`${cell} font-sans`}>{fill.side}</td>
-                    <td className={cell}>{formatQuantity(fill.price)}</td>
-                    <td className={cell}>{formatQuantity(fill.size)}</td>
-                    <td className={cell}>{formatAssetAmount(fill.fee, unit)}</td>
+                    <td className={cell}>{price(fill.price)}</td>
                     <td className={cell}>
-                      {fill.realized === null
-                        ? UNSTATED
-                        : formatSignedAssetAmount(fill.realized, unit)}
+                      <Amount value={fill.size} />
+                    </td>
+                    <td className={cell}>
+                      <Amount value={fill.fee} symbol={unit} />
+                    </td>
+                    <td className={cell}>
+                      {fill.realized === null ? (
+                        UNSTATED
+                      ) : (
+                        <Amount value={fill.realized} symbol={unit} signed />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -381,7 +393,7 @@ function Events({ position }: { position: FuturesPosition }) {
         ) : (
           <>
             <p className="mt-1 font-mono text-xs tabular-nums">
-              {formatSignedAssetAmount(position.funding, unit)}
+              <Amount value={position.funding} symbol={unit} signed />
               <span className="ml-2 font-sans text-muted-foreground">in total</span>
             </p>
             <div
@@ -395,7 +407,9 @@ function Events({ position }: { position: FuturesPosition }) {
                   {data.funding.map((payment) => (
                     <tr key={payment.id}>
                       <td className={time}>{formatTimestamp(Date.parse(payment.occurred_at))}</td>
-                      <td className={cell}>{formatSignedAssetAmount(payment.amount, unit)}</td>
+                      <td className={cell}>
+                        <Amount value={payment.amount} symbol={unit} signed />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

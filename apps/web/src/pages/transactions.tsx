@@ -23,6 +23,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount } from "@/components/patterns/figure";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDate, formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
@@ -743,8 +744,12 @@ function LedgerRow({
                   }`}
                 >
                   {signOf(leg.role)}
-                  {formatQuantity(leg.quantity)}{" "}
-                  {instrumentById.get(leg.instrument_id)?.symbol ?? `#${leg.instrument_id}`}
+                  <Amount
+                    value={leg.quantity}
+                    symbol={
+                      instrumentById.get(leg.instrument_id)?.symbol ?? `#${leg.instrument_id}`
+                    }
+                  />
                 </span>
                 {leg.role === "fee" && (
                   <span

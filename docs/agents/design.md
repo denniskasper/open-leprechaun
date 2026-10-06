@@ -111,6 +111,24 @@ venue did not say. A share is `formatPercent`, or `formatPercentExact` and
 size is `formatBytes`. Timestamps use `formatTimestamp` and date-only values
 `formatDate`; all format per locale.
 
+The formatters above state digits verbatim. A list or a table rounds what it
+shows instead, with the digits as stated one hover away: use the components in
+`components/patterns/figure.tsx` — `Amount`, `Money`, `Price` — which pair the
+rounded figure with the verbatim one as its `title`; in a sentence or an
+`aria-label`, the `formatRounded*` functions, `formatMoneyRounded` and
+`formatPrice`. Money and stablecoins read to the cent — whole amounts without
+a fraction, a currency-styled value always padded — a coin to eight places, a
+price to two decimals at one or above and four significant digits below.
+Rounding is half away from zero, on the digits, and an amount that is not zero
+never reads as zero: it widens to its first significant digit instead. Which
+symbols read as money is a short list in `format.ts`; where a screen knows the
+Instrument is a security, it passes no symbol.
+
+These state the digits verbatim and are never rounded: a form's fields and an
+import's preview, where the input itself is being checked; a Reconciliation's
+figures and differences, and any sentence whose point is a difference; EUR tax
+figures; and a rate or ratio — an exchange rate, a leverage, a split.
+
 ## Charts
 
 Charts are inline SVG drawn with the tokens — no chart library and no second
@@ -143,6 +161,8 @@ The same directory holds the rest of what screens share:
   breathes only while something is live; a settled state stays still.
 - **PasswordField** (`password-field.tsx`) — a labelled password input with a
   hint or, in its place, an error. Every form that takes a password uses it.
+- **Amount**, **Money** and **Price** (`figure.tsx`) — a figure rounded for
+  reading, its digits as stated on hover. See Numbers above.
 - **CodeField** and **QrCode** — see Settings panels above.
 
 ## Motion

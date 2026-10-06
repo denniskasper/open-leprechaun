@@ -134,8 +134,8 @@ test("the leg editor expresses more than two legs, with a fee charged against on
   await form.getByRole("button", { name: "Record", exact: true }).click();
 
   const row = page.getByRole("row").filter({ hasText: note });
-  await expect(row.getByText("−100.00 EUR")).toBeVisible();
-  await expect(row.getByText("+100.00 EUR")).toBeVisible();
+  await expect(row.getByText("−100 EUR")).toBeVisible();
+  await expect(row.getByText("+100 EUR")).toBeVisible();
   await expect(row.getByText("−0.40 EUR")).toBeVisible();
   // Exact and lowercase: the microlabel's capitals are CSS text-transform,
   // and the "Fees" account name would otherwise match too.

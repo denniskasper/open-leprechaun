@@ -75,7 +75,7 @@ test("an open position the ledger has no history for is marked", async ({ page }
               breakeven_price: "1998",
               floating_result: "-500",
               floating_result_ratio: "-0.15",
-              margin: "40.5",
+              margin: "40",
               margin_ratio: "2.5",
               settlement_symbol: "USDT",
               ledger_position_id: null,
@@ -96,7 +96,7 @@ test("an open position the ledger has no history for is marked", async ({ page }
   await expect(row.getByText("250.00%")).toBeVisible();
   // Every amount carries what it is an amount of, the margin its mode.
   const margin = row.getByRole("cell").last();
-  await expect(margin).toContainText("40.5 USDT");
+  await expect(margin).toContainText("40 USDT");
   await expect(margin).toContainText("isolated");
   // The statement says when the venue was asked.
   await expect(page.getByRole("region", { name: "E2E venue account" })).toContainText(
@@ -160,10 +160,10 @@ test("what is unresolved shows even with no position and no venue, and is absent
 
   await page.goto("/futures");
   const unresolved = page.getByRole("region", { name: "Unresolved" });
-  // Two payments on one symbol are one line: how many, and their exact total.
+  // Two payments on one symbol are one line: how many, and their total.
   await expect(unresolved).toContainText("E2E-STRAY-PERP");
   await expect(unresolved).toContainText("2 funding payments");
-  await expect(unresolved).toContainText("−1.0 USDC");
+  await expect(unresolved).toContainText("−1 USDC");
   await expect(page.getByText("No futures yet")).toBeHidden();
 
   funding = [];

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
-import { formatNumber, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatNumber, formatRoundedAssetAmount, formatTimestamp } from "@/lib/format";
 import { identityOf } from "@/pages/instruments";
 
 /**
@@ -21,7 +21,7 @@ export function describeArrivals(item: InboxItem, locale?: string): string {
   const inflows = item.unclassified_inflow_count === 1 ? "inflow" : "inflows";
   return (
     `${formatNumber(item.unclassified_inflow_count, locale)} unclassified ${inflows} · ` +
-    `${formatQuantity(item.unclassified_quantity, locale)} ${item.symbol}`
+    formatRoundedAssetAmount(item.unclassified_quantity, item.symbol, locale)
   );
 }
 

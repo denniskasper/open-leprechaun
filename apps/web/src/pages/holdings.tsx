@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Amount } from "@/components/patterns/figure";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -580,7 +581,11 @@ function PositionRow({
         </span>
       </td>
       <td className="py-3 pr-4 text-right font-mono tabular-nums">
-        {formatQuantity(position.quantity)}
+        <Amount
+          value={position.quantity}
+          symbol={position.family === "security" ? undefined : position.symbol}
+          bare
+        />
       </td>
       <td className="py-3 pr-4 text-right font-mono tabular-nums">
         {position.is_numeraire ? (

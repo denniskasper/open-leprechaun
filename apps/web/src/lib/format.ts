@@ -172,6 +172,131 @@ export function formatSignedAssetAmount(value: string, symbol: string, locale?: 
 }
 
 /**
+ * A fixed-point decimal string rounded to `places` fraction digits, half away
+ * from zero, on the digits themselves — never through a float.
+ */
+function roundDecimal(value: string, places: number): string {
+  const negative = value.startsWith("-");
+  const [integer = "0", fraction = ""] = (negative ? value.slice(1) : value).split(".");
+  let scaled = BigInt((integer || "0") + fraction.slice(0, places).padEnd(places, "0"));
+  if ((fraction[places] ?? "0") >= "5") scaled += 1n;
+  const digits = scaled.toString().padStart(places + 1, "0");
+  const magnitude = places === 0 ? digits : `${digits.slice(0, -places)}.${digits.slice(-places)}`;
+  return negative && scaled !== 0n ? `-${magnitude}` : magnitude;
+}
+
+/**
+ * roundDecimal for reading: a figure below one is given as many places as
+ * its first `significant` digits need, so an amount that is not zero never
+ * reads as zero. The places it was widened by are given back where rounding
+ * carried into them — 0.0096 reads 0.01, not 0.010.
+ */
+function roundForReading(value: string, places: number, significant = 1): string {
+  const [integer = "0", fraction = ""] = value.replace("-", "").split(".");
+  const leadingZeros = fraction.search(/[1-9]/);
+  const widened =
+    /[1-9]/.test(integer) || leadingZeros === -1
+      ? places
+      : Math.max(places, leadingZeros + significant);
+  let rounded = roundDecimal(value, widened);
+  for (let extra = widened - places; extra > 0 && rounded.endsWith("0"); extra -= 1) {
+    rounded = rounded.slice(0, -1);
+  }
+  return rounded.endsWith(".") ? rounded.slice(0, -1) : rounded;
+}
+
+/** A figure without the zeros that end its fraction. */
+function trimFraction(value: string): string {
+  return value.includes(".") ? value.replace(/\.?0+$/, "") : value;
+}
+
+const COIN_PLACES = 8;
+// What reads as money, by symbol, and the fraction digits it is read to. A
+// short list on purpose: a coin's ticker may spell a lesser-known currency
+// code, and a symbol is a label, never an identity. Presentation only — a
+// symbol missing here shows more digits, never a different amount.
+const MONEY_PLACES: ReadonlyMap<string, number> = new Map([
+  ...["EUR", "USD", "GBP", "CHF", "CAD", "AUD", "SEK", "NOK", "DKK", "PLN"].map(
+    (code) => [code, 2] as const,
+  ),
+  ["JPY", 0],
+  ...["USDC", "USDT", "DAI", "USDE", "USDS", "USDP", "TUSD", "FDUSD", "PYUSD", "EURC"].map(
+    (code) => [code, 2] as const,
+  ),
+]);
+
+/** The fraction digits an amount of `symbol` is read to: money to its minor unit, a coin to eight. */
+function placesOf(symbol: string | undefined): number {
+  return MONEY_PLACES.get(symbol?.toUpperCase() ?? "") ?? COIN_PLACES;
+}
+
+function minorUnits(currency: string): number {
+  return (
+    new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2
+  );
+}
+
+/**
+ * An amount of `symbol` rounded for reading. A coin drops its trailing zeros;
+ * money keeps its cents whole — 0.40, never 0.4 — unless it has none to state.
+ */
+function roundAmount(value: string, symbol: string | undefined): string {
+  const places = placesOf(symbol);
+  const rounded = roundForReading(value, places);
+  return places === COIN_PLACES ? trimFraction(rounded) : rounded.replace(/\.0+$/, "");
+}
+
+/**
+ * A quantity rounded for reading — money and stablecoins to the cent, a coin
+ * to eight places. For a list or a table; a form, a reconciliation and a tax
+ * figure state the digits verbatim instead.
+ */
+export function formatRoundedQuantity(value: string, symbol?: string, locale?: string): string {
+  return formatQuantity(roundAmount(value, symbol), locale);
+}
+
+/** formatRoundedQuantity with the direction in the figure, as formatSignedQuantity states it. */
+export function formatRoundedSignedQuantity(
+  value: string,
+  symbol?: string,
+  locale?: string,
+): string {
+  return formatSignedQuantity(roundAmount(value, symbol), locale);
+}
+
+/** formatAssetAmount rounded for reading, as formatRoundedQuantity rounds. */
+export function formatRoundedAssetAmount(value: string, symbol: string, locale?: string): string {
+  return `${formatRoundedQuantity(value, symbol, locale)} ${symbol}`;
+}
+
+/** formatSignedAssetAmount rounded for reading, as formatRoundedQuantity rounds. */
+export function formatRoundedSignedAssetAmount(
+  value: string,
+  symbol: string,
+  locale?: string,
+): string {
+  return `${formatRoundedSignedQuantity(value, symbol, locale)} ${symbol}`;
+}
+
+/**
+ * formatMoneyExact rounded to the currency's minor unit and padded to it, so
+ * a column aligns — a venue's sixteen-digit dollar value read to the cent.
+ */
+export function formatMoneyRounded(value: string, currency: string, locale?: string): string {
+  return formatMoneyExact(roundForReading(value, minorUnits(currency)), currency, locale);
+}
+
+/**
+ * A price rounded for reading: two decimals at one or above, four significant
+ * digits below, where two decimals would make a mark and an entry price look
+ * alike. Bare, as a venue's price stands.
+ */
+export function formatPrice(value: string, locale?: string): string {
+  return formatQuantity(trimFraction(roundForReading(value, 2, 4)), locale);
+}
+
+/**
  * A fixed-point difference with its direction in the figure itself — a plus
  * for a surplus, a true minus for a shortfall, nothing on an exact zero — so
  * the sign is never left to colour alone. The digits stay verbatim, as
