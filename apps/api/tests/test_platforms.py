@@ -236,6 +236,18 @@ def test_the_api_removes_an_empty_platform(client, db):
     assert client.delete(f"/api/platforms/{platform_id}").status_code == 404
 
 
+def test_the_api_renames_a_platform(client, db):
+    """A name is a label, so a typo made at registration does not stay for
+    good: the listing reads the new name under the same identity."""
+    platform_id = a_platform(client, "Krakn")
+
+    renamed = client.put(f"/api/platforms/{platform_id}", json={"name": "Kraken"})
+
+    assert renamed.status_code == 204
+    (platform,) = client.get("/api/platforms").json()
+    assert (platform["id"], platform["name"]) == (platform_id, "Kraken")
+
+
 def a_connection(client, platform_id, label="Main account") -> int:
     return client.post(
         "/api/connections",
@@ -248,6 +260,85 @@ def a_connection(client, platform_id, label="Main account") -> int:
             "passphrase": "correct horse battery staple",
         },
     ).json()["id"]
+
+
+def _platform_names(client) -> dict[int, str]:
+    return {platform["id"]: platform["name"] for platform in client.get("/api/platforms").json()}
+
+
+def test_a_name_taken_within_the_kind_refuses_the_rename_and_changes_nothing(client, db):
+    """Two places of one kind the Admin could not tell apart: refused in the
+    words registration uses, and the Platform keeps the name it had."""
+    kraken = a_platform(client, "Kraken")
+    okx = a_platform(client, "OKX")
+
+    refused = client.put(f"/api/platforms/{okx}", json={"name": "Kraken"})
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "'Kraken' is already registered as this kind."
+    assert _platform_names(client) == {kraken: "Kraken", okx: "OKX"}
+
+
+def test_a_platform_may_take_a_name_another_kind_already_uses(client, db):
+    """One brand can still be two places of different kinds."""
+    bank = a_platform(client, "ING", "bank")
+    broker = a_platform(client, "ING DiBa", "broker")
+
+    assert client.put(f"/api/platforms/{broker}", json={"name": "ING"}).status_code == 204
+    assert _platform_names(client) == {bank: "ING", broker: "ING"}
+
+
+def test_a_change_of_capitalisation_is_an_ordinary_rename(client, db):
+    platform_id = a_platform(client, "kraken")
+
+    assert client.put(f"/api/platforms/{platform_id}", json={"name": "Kraken"}).status_code == 204
+    assert _platform_names(client) == {platform_id: "Kraken"}
+
+
+def test_saving_a_platform_under_its_unchanged_name_succeeds(client, db):
+    """Opening the form and saving it as it stood is never an error."""
+    platform_id = a_platform(client, "Kraken")
+
+    assert client.put(f"/api/platforms/{platform_id}", json={"name": "Kraken"}).status_code == 204
+    assert _platform_names(client) == {platform_id: "Kraken"}
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_platform_is_never_renamed_to_nothing(client, db, blank):
+    platform_id = a_platform(client, "Kraken")
+
+    assert client.put(f"/api/platforms/{platform_id}", json={"name": blank}).status_code == 422
+    assert _platform_names(client) == {platform_id: "Kraken"}
+
+
+def test_a_new_platform_name_is_trimmed_as_at_registration(client, db):
+    platform_id = a_platform(client, "Krakn")
+
+    assert (
+        client.put(f"/api/platforms/{platform_id}", json={"name": "  Kraken "}).status_code == 204
+    )
+    assert _platform_names(client) == {platform_id: "Kraken"}
+
+
+def test_renaming_a_platform_that_is_not_there_answers_not_found(client, db):
+    """A stale id is told apart from a refused name."""
+    assert client.put("/api/platforms/12345", json={"name": "Kraken"}).status_code == 404
+
+
+def test_a_platform_in_use_is_renamed_and_keeps_what_it_holds(client, db):
+    """A rename is never refused because of what the Platform holds, and the
+    Accounts and Connections under it stay under it."""
+    platform_id = a_platform(client, "OKEx")
+    account_id = an_account(client, platform_id, "Trading")
+    connection_id = a_connection(client, platform_id, "Main account")
+
+    assert client.put(f"/api/platforms/{platform_id}", json={"name": "OKX"}).status_code == 204
+
+    (platform,) = client.get("/api/platforms").json()
+    assert platform["name"] == "OKX"
+    assert [account["id"] for account in platform["accounts"]] == [account_id]
+    (connection,) = client.get("/api/connections").json()
+    assert (connection["id"], connection["platform_id"]) == (connection_id, platform_id)
 
 
 def test_the_api_refuses_to_remove_a_platform_holding_accounts_and_names_them(client, db):

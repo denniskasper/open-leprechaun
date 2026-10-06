@@ -76,6 +76,22 @@ def create_platform(engine: Engine, *, name: str, kind: str) -> int | None:
         return None
 
 
+def rename_platform(engine: Engine, platform_id: int, *, name: str) -> Refusal | None:
+    """Overwrite a Platform's name — a label nothing refers to it by, so no
+    row anywhere else moves and nothing it holds stands in the way. None means
+    it was renamed; a name another Platform of its kind already has loses to
+    the same constraint a registration would."""
+    try:
+        with engine.begin() as connection:
+            renamed = connection.execute(
+                text("UPDATE platform SET name = :name WHERE id = :platform_id"),
+                {"name": name, "platform_id": platform_id},
+            )
+    except IntegrityError:
+        return Refusal.name_taken
+    return None if renamed.rowcount == 1 else Refusal.no_such_platform
+
+
 def delete_platform(engine: Engine, platform_id: int) -> PlatformHolders | Refusal | None:
     """Remove a Platform that holds nothing. None means it is gone; otherwise
     nothing was deleted, and the answer is what holds it.

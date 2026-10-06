@@ -207,6 +207,25 @@ def test_each_disposal_line_states_its_working_and_the_lots_consumed(db, client)
     assert taxable["treatment"] == "taxable"
 
 
+def test_a_report_generated_before_a_rename_wears_the_platforms_new_name(db, client):
+    """A report freezes identities and figures; its appendix resolves labels
+    when it is exported (issue 12). So the label follows a rename while every
+    figure stands exactly as it was generated."""
+    _ledger(db)
+    report_id = _report_id(client)
+    before = client.get(f"/api/reports/{report_id}/appendix.csv").text
+    (platform,) = client.get("/api/platforms").json()
+
+    renamed = client.put(f"/api/platforms/{platform['id']}", json={"name": "Payward"})
+    assert renamed.status_code == 204
+
+    after = client.get(f"/api/reports/{report_id}/appendix.csv").text
+    assert "Kraken / Main" in before
+    assert "Payward / Main" in after
+    assert "Kraken" not in after
+    assert after == before.replace("Kraken / Main", "Payward / Main")
+
+
 def test_estimated_bases_are_marked_and_their_exposure_totalled(db, client):
     """The line resting on the Opening Balance estimate wears the mark, the
     documented purchase does not, and the summary states how much of the

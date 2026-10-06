@@ -5,6 +5,7 @@ import {
   registerPlatform,
   removeAccount,
   removePlatform,
+  renamePlatform,
   setWithholding,
   setWithholdingOverride,
 } from "./platforms";
@@ -249,6 +250,28 @@ describe("setWithholdingOverride", () => {
 
     await expect(setWithholdingOverride(1, "none")).rejects.toThrow(
       "Only an Account under a broker carries an override.",
+    );
+  });
+});
+
+describe("renamePlatform", () => {
+  it("puts the new name on the platform", async () => {
+    respondWith(204, null);
+
+    await renamePlatform(7, "Kraken");
+
+    expect(fetch).toHaveBeenCalledWith("/api/platforms/7", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Kraken" }),
+    });
+  });
+
+  it("surfaces the API's own reason for a refusal", async () => {
+    respondWith(409, { detail: "'Kraken' is already registered as this kind." });
+
+    await expect(renamePlatform(7, "Kraken")).rejects.toThrow(
+      "'Kraken' is already registered as this kind.",
     );
   });
 });

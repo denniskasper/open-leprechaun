@@ -28,6 +28,10 @@ one brand operates through several entities with different tax status.
 A Platform may be removed only while it holds no **Account** and no **Connection**. One that has
 either stays: removing a Platform never takes anything else with it.
 
+A Platform's name is what the Admin reads it by, never what anything refers to it by, so it may be
+changed at any time. Whatever shows the Platform afterwards shows the name it has now — a report
+generated before the change included, whose figures stand and whose labels follow.
+
 _Avoid_: "Exchange" used generically. It means only `kind = exchange`; used as the name for
 anything that holds value it asserts "trading venue" for things that are not one.
 
@@ -48,6 +52,10 @@ record extra software required to reach it.
 An Account may be removed only while nothing was ever recorded in it and no **Connection** is
 paired with it. What the Admin declared about it — a **Stance**, a withholding override — goes
 with it; history never does, so an Account that has any stays for good.
+
+An Account's name, like its **Platform**'s, is a label the Admin may change at any time, and so
+are the reference and access software recorded beside it. Its chain is not: that is part of what
+the Account is, not of what it is called.
 
 _Avoid_: "Wallet" for a brokerage account.
 _Avoid_: "account" for the credentialed link to a venue — that is a **Connection**.

@@ -141,10 +141,36 @@ def register_platform(
 ) -> RegisteredResponse:
     platform_id = platforms.create_platform(engine, name=request.name, kind=request.kind)
     if platform_id is None:
-        raise HTTPException(
-            status_code=409, detail=f"{request.name!r} is already registered as this kind."
-        )
+        raise HTTPException(status_code=409, detail=_platform_name_taken(request.name))
     return RegisteredResponse(id=platform_id)
+
+
+def _platform_name_taken(name: str) -> str:
+    """One wording for a taken name, whether it was asked for at registration
+    or by a rename."""
+    return f"{name!r} is already registered as this kind."
+
+
+class RenamePlatformRequest(BaseModel):
+    name: Name
+
+
+@router.put(
+    "/platforms/{platform_id}",
+    summary="Rename a Platform",
+    status_code=204,
+)
+def rename_platform(
+    platform_id: int, request: RenamePlatformRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """The name is the whole editable set of a Platform (issue 12): a label,
+    overwritten whatever the Platform holds. Its kind is not, because the kind
+    decides withholding and the scope the name is unique in."""
+    refused = platforms.rename_platform(engine, platform_id, name=request.name)
+    if refused is Refusal.no_such_platform:
+        raise HTTPException(status_code=404, detail="No such Platform.")
+    if refused is Refusal.name_taken:
+        raise HTTPException(status_code=409, detail=_platform_name_taken(request.name))
 
 
 @router.delete(

@@ -110,6 +110,14 @@ export async function setWithholdingOverride(
   }
 }
 
+/** A plain overwrite, refused only where another Platform of the kind has the name. */
+export async function renamePlatform(platformId: number, name: string): Promise<void> {
+  const response = await putJson(`${PLATFORMS_URL}/${platformId}`, { name });
+  if (!response.ok) {
+    throw await refusal(response, "The Platform could not be renamed.");
+  }
+}
+
 /** Refused by the API, in its own words, while anything still holds the Platform. */
 export async function removePlatform(platformId: number): Promise<void> {
   const response = await request(`${PLATFORMS_URL}/${platformId}`, { method: "DELETE" });

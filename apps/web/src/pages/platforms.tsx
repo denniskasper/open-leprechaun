@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Landmark,
   type LucideIcon,
+  Pencil,
   Plus,
   Briefcase,
   Trash2,
@@ -16,6 +17,7 @@ import {
   registerPlatform,
   removeAccount,
   removePlatform,
+  renamePlatform,
   setWithholding,
   setWithholdingOverride,
   type Account,
@@ -378,6 +380,7 @@ function RemoveButtons({
 
 function PlatformRow({ platform }: { platform: Platform }) {
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
   const noun = KIND_VOCABULARY[platform.kind].account;
   const removal = useRemoval(() => removePlatform(platform.id));
 
@@ -388,24 +391,44 @@ function PlatformRow({ platform }: { platform: Platform }) {
 
   return (
     <article className="py-4" aria-label={platform.name}>
-      <div className="flex items-center gap-3">
-        <h3 className="text-base font-medium">{platform.name}</h3>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {accountCount(platform.kind, platform.accounts.length)}
-        </span>
-        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={() => setAdding((open) => !open)}
-          >
-            <Plus aria-hidden />
-            Add {noun}
-          </Button>
-          <RemoveButtons removal={removal} name={platform.name} />
-        </span>
-      </div>
+      {editing ? (
+        <RenamePlatformForm platform={platform} onDone={() => setEditing(false)} />
+      ) : (
+        <div className="flex items-center gap-3">
+          <h3 className="text-base font-medium">{platform.name}</h3>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {accountCount(platform.kind, platform.accounts.length)}
+          </span>
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setAdding((open) => !open)}
+            >
+              <Plus aria-hidden />
+              Add {noun}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              aria-label={`Edit ${platform.name}`}
+              onClick={() => {
+                // The row shows one thing at a time: a removal half asked for,
+                // or refused, does not stand beside the edit.
+                removal.keep();
+                forget();
+                setEditing(true);
+              }}
+            >
+              <Pencil aria-hidden />
+              Edit
+            </Button>
+            <RemoveButtons removal={removal} name={platform.name} />
+          </span>
+        </div>
+      )}
       {removal.refusal && (
         <p role="alert" className="mt-1.5 text-sm text-alarm">
           {removal.refusal}
@@ -430,6 +453,77 @@ function PlatformRow({ platform }: { platform: Platform }) {
 
       {adding && <AddAccountForm platform={platform} onDone={() => setAdding(false)} />}
     </article>
+  );
+}
+
+/**
+ * The row-level edit: the heading line itself becomes the form, filled with
+ * what stands, so the name is changed where it is read. Like a removal, a
+ * save is never held back by a guess — the server alone says whether the name
+ * is free, and its reason is shown here at the row.
+ */
+function RenamePlatformForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+  const [name, setName] = useState(platform.name);
+  const nameId = useId();
+  const queryClient = useQueryClient();
+
+  const rename = useMutation({
+    mutationFn: () => renamePlatform(platform.id, name.trim()),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["platforms"] });
+      onDone();
+    },
+  });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    rename.mutate();
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !rename.isPending) onDone();
+      }}
+      aria-label={`Edit ${platform.name}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={nameId} className="sr-only">
+          Name
+        </label>
+        <Input
+          id={nameId}
+          required
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          className="h-8 min-w-48 max-w-sm flex-1 text-base font-medium"
+          aria-invalid={rename.isError || undefined}
+          aria-describedby={rename.isError ? `${nameId}-refusal` : undefined}
+          autoFocus
+        />
+        <span className="ml-auto flex items-center gap-1">
+          <Button type="submit" size="sm" disabled={rename.isPending || !name.trim()}>
+            {rename.isPending ? "Saving…" : "Save"}
+          </Button>
+          {/* Not while a save is on its way: it would land after being cancelled. */}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={rename.isPending}
+            onClick={onDone}
+          >
+            Cancel
+          </Button>
+        </span>
+      </div>
+      {rename.isError && (
+        <p id={`${nameId}-refusal`} role="alert" className="mt-1.5 text-sm text-alarm">
+          {rename.error.message}
+        </p>
+      )}
+    </form>
   );
 }
 
