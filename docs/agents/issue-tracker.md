@@ -33,6 +33,15 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+## Specs and their tickets
+
+A spec and its tickets both carry `ready-for-agent`, so two things tell them apart in the list:
+
+- **A spec carries the `spec` label as well** — in addition to its state label, never instead of it: `gh issue create --label ready-for-agent --label spec`.
+- **A ticket is a sub-issue of its spec**, besides naming it under `## Parent`: `gh api --method POST repos/<owner>/<repo>/issues/<spec>/sub_issues -F sub_issue_id=<ticket-db-id>`, with the ticket's numeric **database id** as under Blocking below. Blocking edges between tickets are native issue dependencies, added the same way as there.
+
+A spec is closed by hand once its last ticket is closed.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
