@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Shapes } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router";
 import { fetchInstruments, type Instrument, type Listing } from "@/api/instruments";
 import {
   fetchCryptoPrices,
@@ -31,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatMoneyExact, formatTimestamp } from "@/lib/format";
+import { AddInstrumentPanel } from "./add-instrument";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
 export interface InstrumentIdentity {
@@ -241,7 +243,19 @@ export function InstrumentsPage() {
     ...(prices.data?.conditions ?? []),
     ...(securityPrices.data?.conditions ?? []),
   ]);
-  const [adding, setAdding] = useState(false);
+  // A refused sync sends the Admin here with the symbol it could not resolve
+  // (`?add=USDC`), so the form opens already knowing what is being added.
+  const [search, setSearch] = useSearchParams();
+  const requested = search.get("add");
+  const [adding, setAdding] = useState<"security" | "coin" | null>(
+    requested === null ? null : "coin",
+  );
+  const toggle = (panel: "security" | "coin") =>
+    setAdding((open) => (open === panel ? null : panel));
+  const closeCoin = () => {
+    setAdding(null);
+    if (requested !== null) setSearch({}, { replace: true });
+  };
 
   return (
     <div className="space-y-10">
@@ -250,14 +264,27 @@ export function InstrumentsPage() {
         title="Instruments"
         description="Everything tradable, one concept: crypto keyed on chain and contract, securities on ISIN, cash by currency. A symbol is only a label."
         actions={
-          <Button onClick={() => setAdding((open) => !open)}>
-            <Plus aria-hidden />
-            Add security
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => toggle("coin")}>
+              <Plus aria-hidden />
+              Add coin or currency
+            </Button>
+            <Button onClick={() => toggle("security")}>
+              <Plus aria-hidden />
+              Add security
+            </Button>
+          </>
         }
       />
 
-      {adding && <AddSecurityPanel onDone={() => setAdding(false)} />}
+      {adding === "security" && <AddSecurityPanel onDone={() => setAdding(null)} />}
+      {adding === "coin" && (
+        <AddInstrumentPanel
+          instruments={data ?? []}
+          symbol={requested ?? ""}
+          onDone={closeCoin}
+        />
+      )}
 
       {error ? (
         <ErrorState
@@ -265,13 +292,13 @@ export function InstrumentsPage() {
           detail="The API did not answer with the instrument list."
           onRetry={() => void refetch()}
         />
-      ) : data && data.length === 0 && !adding ? (
+      ) : data && data.length === 0 && adding === null ? (
         <EmptyState
           icon={Shapes}
           title="No Instruments yet"
-          description="Add a share or fund by searching its ISIN, WKN, ticker or name — or let imports mint Instruments as they arrive."
+          description="Add a share or fund by searching its ISIN, WKN, ticker or name, add a coin or currency by hand — or let imports mint Instruments as they arrive."
           action={
-            <Button variant="outline" onClick={() => setAdding(true)}>
+            <Button variant="outline" onClick={() => setAdding("security")}>
               <Plus aria-hidden />
               Add the first security
             </Button>

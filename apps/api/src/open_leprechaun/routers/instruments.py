@@ -1,14 +1,27 @@
+import re
 from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import AwareDatetime, BaseModel, PlainSerializer
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    Field,
+    PlainSerializer,
+    StringConstraints,
+)
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.repositories import stances
 from open_leprechaun.repositories.stances import Refusal
-from open_leprechaun.services.instruments import InstrumentOverview, overview
+from open_leprechaun.services.instruments import (
+    AlreadyExists,
+    InstrumentOverview,
+    add_by_hand,
+    overview,
+)
 from open_leprechaun.services.stances import InboxItem, inbox, settled_inflow_type
 
 router = APIRouter(tags=["instruments"])
@@ -144,6 +157,90 @@ class ClassifiedResponse(BaseModel):
 )
 def list_instruments(admin: AdminDep, engine: EngineDep) -> list[InstrumentResponse]:
     return [InstrumentResponse.of(instrument) for instrument in overview(engine)]
+
+
+# Typed by a human: trimmed before a stray space can become part of an
+# identity.
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# A chain is half of a token's identity, so its casing must not mint a second
+# one: stored lowercase, whatever was typed.
+Chain = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, to_lower=True)]
+# An ISO 4217 code, as the reference rates and the schema both spell it.
+CurrencyCode = Annotated[
+    str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")
+]
+
+_HEX_ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
+
+
+def _well_formed_address(address: str) -> str:
+    """Form only — nothing is looked up on a chain. A hex address has one
+    length; any other chain's is taken as written."""
+    if address[:2].lower() == "0x" and not _HEX_ADDRESS.fullmatch(address):
+        raise ValueError("An address starting with 0x is 40 hex characters after it.")
+    return address
+
+
+ContractAddress = Annotated[NonBlank, AfterValidator(_well_formed_address)]
+
+
+class AddTokenRequest(BaseModel):
+    kind: Literal["token"]
+    symbol: NonBlank
+    name: NonBlank
+    chain: Chain
+    contract_address: ContractAddress
+    # A stablecoin's peg, which routes its EUR value to the daily reference
+    # rate; stated by the Admin, never detected.
+    pegged_currency: CurrencyCode | None = None
+
+
+class AddNativeCoinRequest(BaseModel):
+    kind: Literal["native"]
+    symbol: NonBlank
+    name: NonBlank
+    chain: Chain
+
+
+class AddCurrencyRequest(BaseModel):
+    kind: Literal["cash"]
+    symbol: CurrencyCode
+    name: NonBlank
+
+
+AddInstrumentRequest = Annotated[
+    AddTokenRequest | AddNativeCoinRequest | AddCurrencyRequest, Field(discriminator="kind")
+]
+
+
+class AddedResponse(BaseModel):
+    id: int
+
+
+@router.post(
+    "/instruments",
+    status_code=201,
+    summary="Add a coin, token or currency by its identity",
+    response_model=AddedResponse,
+)
+def add_instrument(
+    request: AddInstrumentRequest, admin: AdminDep, engine: EngineDep
+) -> AddedResponse:
+    added = add_by_hand(
+        engine,
+        kind=request.kind,
+        symbol=request.symbol,
+        name=request.name,
+        chain=getattr(request, "chain", None),
+        contract_address=getattr(request, "contract_address", None),
+        pegged_currency=getattr(request, "pegged_currency", None),
+    )
+    if isinstance(added, AlreadyExists):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{added.name} ({added.symbol}) already holds this identity.",
+        )
+    return AddedResponse(id=added)
 
 
 @router.get(

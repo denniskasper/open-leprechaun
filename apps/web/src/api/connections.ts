@@ -81,6 +81,8 @@ export const kindSyncResultSchema = z.object({
     .nullable(),
   /** What the venue stated that is no transaction — passed over by name, for the Admin to record. */
   passed_over: z.array(z.string()),
+  /** The symbols no Instrument answers to — each one to add by hand before syncing again. */
+  missing_symbols: z.array(z.string()),
   futures: z.object({ new_fills: z.number(), new_funding: z.number() }).nullable(),
   imported: z
     .object({

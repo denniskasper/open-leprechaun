@@ -141,6 +141,10 @@ class KindSync:
     # What the venue stated that is no transaction — a split, a return of
     # capital — each a sentence naming what the Admin records by hand.
     passed_over: tuple[str, ...] = ()
+    # The symbols the venue stated that no Instrument answers to — what the
+    # Admin adds by hand before syncing again; the error says the same in a
+    # sentence.
+    missing_symbols: tuple[str, ...] = ()
 
 
 def sync_connection(
@@ -187,6 +191,10 @@ class _UnresolvableError(Exception):
     """A venue symbol the ledger cannot resolve to exactly one Instrument —
     the kind refuses with this sentence instead of guessing or minting."""
 
+    def __init__(self, sentence: str, *, missing: tuple[str, ...]) -> None:
+        super().__init__(sentence)
+        self.missing = missing
+
 
 def _sync_kind(
     engine: Engine,
@@ -214,7 +222,11 @@ def _sync_kind(
         )
     except _UnresolvableError as unresolved:
         return KindSync(
-            adapter_kind=adapter.kind, error=str(unresolved), futures=None, imported=None
+            adapter_kind=adapter.kind,
+            error=str(unresolved),
+            futures=None,
+            imported=None,
+            missing_symbols=unresolved.missing,
         )
     # Broad on purpose: one kind failing, however it failed, must never hide
     # another succeeding (ADR-0004).
@@ -380,7 +392,7 @@ def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], 
                 f"{_listed(several)} names several Instruments — the venue states only a"
                 " symbol, so the ledger cannot choose."
             )
-        raise _UnresolvableError(" ".join(sentences))
+        raise _UnresolvableError(" ".join(sentences), missing=tuple(sorted(set(missing))))
     return resolved, resolved_cash
 
 

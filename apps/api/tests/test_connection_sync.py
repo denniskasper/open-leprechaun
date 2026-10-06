@@ -414,6 +414,8 @@ def test_a_symbol_nothing_answers_to_refuses_the_kind(client, adapters):
 
     assert result["ok"] is False
     assert "USDT" in result["error"]
+    # Stated as data too, so the screen can offer the way to add it.
+    assert result["missing_symbols"] == ["USDT"]
     assert client.get("/api/futures").json()["positions"] == []
 
 
@@ -434,6 +436,8 @@ def test_a_symbol_two_instruments_wear_refuses_the_kind(client, adapters, db):
 
     assert result["ok"] is False
     assert "several" in result["error"] and "USDT" in result["error"]
+    # Nothing is missing here — adding another would only deepen the tie.
+    assert result["missing_symbols"] == []
     assert client.get("/api/futures").json()["positions"] == []
 
 

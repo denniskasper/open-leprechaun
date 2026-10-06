@@ -39,6 +39,7 @@ import { DECIMAL_PATTERN } from "@/api/transactions";
 import { formatNumber, formatQuantity, formatSignedQuantity, formatTimestamp } from "@/lib/format";
 import { awaitingPriceWords, priceConditionWords } from "@/pages/imports";
 import { openingBalanceSearch } from "@/pages/transactions";
+import { addInstrumentHref } from "@/pages/add-instrument";
 
 /**
  * The standing rule, stated wherever a credential is entered: every scope in
@@ -327,6 +328,8 @@ interface KindOutcome {
   ok: boolean;
   text: string;
   passedOver: string[];
+  /** The symbols a refused sync named that no Instrument answers to. */
+  missingSymbols: string[];
 }
 
 function ConnectionRow({
@@ -351,13 +354,19 @@ function ConnectionRow({
   function recordOutcomes<Result extends { adapter_kind: string; ok: boolean }>(
     describe: (result: Result) => string,
     passedOverOf: (result: Result) => string[] = () => [],
+    missingSymbolsOf: (result: Result) => string[] = () => [],
   ) {
     return (results: Result[]) => {
       setOutcomes(
         Object.fromEntries(
           results.map((result) => [
             result.adapter_kind,
-            { ok: result.ok, text: describe(result), passedOver: passedOverOf(result) },
+            {
+              ok: result.ok,
+              text: describe(result),
+              passedOver: passedOverOf(result),
+              missingSymbols: missingSymbolsOf(result),
+            },
           ]),
         ),
       );
@@ -375,6 +384,7 @@ function ConnectionRow({
     onSuccess: recordOutcomes(
       (result: KindSyncResult) => describeSyncResult(result),
       (result) => result.passed_over,
+      (result) => result.missing_symbols,
     ),
   });
 
@@ -600,6 +610,20 @@ function KindLine({
           )
         )
       ) : null}
+      {outcome && outcome.missingSymbols.length > 0 && (
+        <p className="basis-full pl-4 text-muted-foreground">
+          Add{" "}
+          {outcome.missingSymbols.map((symbol, index) => (
+            <span key={symbol}>
+              {index > 0 && ", "}
+              <Link to={addInstrumentHref(symbol)} className="underline underline-offset-2">
+                {symbol}
+              </Link>
+            </span>
+          ))}{" "}
+          on the Instruments page, then sync again.
+        </p>
+      )}
       {outcome && outcome.passedOver.length > 0 && (
         <ul className="basis-full space-y-0.5 pl-4 text-caution" aria-label="Passed over">
           {outcome.passedOver.map((sentence, index) => (

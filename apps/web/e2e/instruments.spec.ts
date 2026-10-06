@@ -27,3 +27,31 @@ test("an unclassified fund is classified inline, its source shown", async ({ pag
   // The source of the value is shown — this one the Admin stated.
   await expect(row.getByText("admin")).toBeVisible();
 });
+
+// A token added by hand, arriving the way a refused sync sends the Admin: the
+// symbol is already filled in, and the identity typed in any casing lands
+// lowercased. A unique contract per run keeps the row unambiguous.
+test("a token a sync could not resolve is added by hand", async ({ page }) => {
+  const tail = String(Date.now()).slice(-10);
+  const contract = `0xE2E${"0".repeat(27)}${tail}`;
+  const symbol = `E2T${tail.slice(-5)}`;
+
+  await page.goto(`/instruments?add=${symbol}`);
+  const form = page.getByRole("region", { name: "Add coin or currency" });
+  await expect(form.getByLabel("Symbol", { exact: true })).toHaveValue(symbol);
+
+  await form.getByLabel("Name", { exact: true }).fill(`E2E Token ${tail}`);
+  await form.getByLabel("Chain", { exact: true }).fill("Ethereum");
+  // Too short for a hex address: named in place, and nothing can be sent.
+  await form.getByLabel("Contract address", { exact: true }).fill("0xE2E");
+  await expect(form.getByText(/40 hex characters/)).toBeVisible();
+  await expect(form.getByRole("button", { name: "Add token" })).toBeDisabled();
+
+  await form.getByLabel("Contract address", { exact: true }).fill(contract);
+  await form.getByRole("button", { name: "Add token" }).click();
+
+  await expect(form).toBeHidden();
+  const row = page.getByRole("row", { name: new RegExp(symbol) });
+  await expect(row.getByText(new RegExp(contract.toLowerCase().slice(-10)))).toBeVisible();
+  await expect(row.getByText(/ethereum/)).toBeVisible();
+});

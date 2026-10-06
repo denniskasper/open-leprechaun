@@ -3,11 +3,11 @@ that lets a reader tell two same-symbol rows apart, and the numéraire rule the
 tax tickets read — whether moving an Instrument is itself a disposal."""
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy import Engine
 
-from open_leprechaun.repositories import instruments, stances
+from open_leprechaun.repositories import imports, instruments, stances
 
 
 class CarriesNumeraireFlag(Protocol):
@@ -114,3 +114,54 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
         )
         for row in instruments.list_instruments(engine)
     ]
+
+
+@dataclass(frozen=True)
+class AlreadyExists:
+    """The identity the Admin stated is one the ledger already holds — named,
+    so the refusal says which Instrument answers to it."""
+
+    symbol: str
+    name: str
+
+
+def add_by_hand(
+    engine: Engine,
+    *,
+    kind: Literal["token", "native", "cash"],
+    symbol: str,
+    name: str,
+    chain: str | None = None,
+    contract_address: str | None = None,
+    pegged_currency: str | None = None,
+) -> int | AlreadyExists:
+    """A coin, token or currency the Admin states by its identity (ADR-0010)
+    — what a venue's sync, stating a symbol alone, can resolve but never
+    create. The unique indexes are the arbiter: where the identity exists,
+    the Instrument holding it is answered instead of a second one."""
+    if kind == "token":
+        assert chain is not None and contract_address is not None
+        created = instruments.create_crypto_token(
+            engine,
+            symbol=symbol,
+            name=name,
+            chain=chain,
+            contract_address=contract_address,
+            pegged_currency=pegged_currency,
+        )
+    elif kind == "native":
+        assert chain is not None
+        created = instruments.create_native_coin(engine, symbol=symbol, name=name, chain=chain)
+    else:
+        created = instruments.create_cash(engine, symbol=symbol, name=name)
+    if created is not None:
+        return created
+    existing_id = imports.find_instrument(
+        engine, kind=kind, symbol=symbol, chain=chain, contract_address=contract_address
+    )
+    existing = None if existing_id is None else instruments.get(engine, existing_id)
+    if existing is None:
+        raise RuntimeError(
+            f"The {kind} {symbol!r} was refused, yet no Instrument holds its identity."
+        )
+    return AlreadyExists(symbol=existing.symbol, name=existing.name)

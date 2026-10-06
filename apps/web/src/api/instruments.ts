@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { request } from "@/api/http";
+import { postJson, refusal, request } from "@/api/http";
 import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } from "./securities";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
@@ -50,4 +50,29 @@ export async function fetchInstruments(): Promise<Instrument[]> {
     throw new Error(`The API answered ${response.status} instead of listing instruments.`);
   }
   return z.array(instrumentSchema).parse(await response.json());
+}
+
+/**
+ * A coin, token or currency stated by the identity the ledger keys it on
+ * (ADR-0010) — what a venue's sync can resolve by symbol but never create.
+ */
+export type NewInstrument =
+  | {
+      kind: "token";
+      symbol: string;
+      name: string;
+      chain: string;
+      contract_address: string;
+      /** A stablecoin's peg, which routes its EUR value to the reference rate. */
+      pegged_currency: string | null;
+    }
+  | { kind: "native"; symbol: string; name: string; chain: string }
+  | { kind: "cash"; symbol: string; name: string };
+
+export async function addInstrument(instrument: NewInstrument): Promise<number> {
+  const response = await postJson(INSTRUMENTS_URL, instrument);
+  if (!response.ok) {
+    throw await refusal(response, "The Instrument could not be added.");
+  }
+  return z.object({ id: z.number() }).parse(await response.json()).id;
 }

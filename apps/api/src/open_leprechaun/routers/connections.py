@@ -309,6 +309,9 @@ class KindSyncResponse(BaseModel):
     # What the venue stated that is no transaction — passed over by name,
     # for the Admin to record.
     passed_over: list[str]
+    # The symbols no Instrument answers to — each one to add by hand before
+    # syncing again.
+    missing_symbols: list[str]
 
     @classmethod
     def of(cls, result: connection_sync.KindSync) -> KindSyncResponse:
@@ -323,6 +326,7 @@ class KindSyncResponse(BaseModel):
                 start=result.covered_period.start, end=result.covered_period.end
             ),
             passed_over=list(result.passed_over),
+            missing_symbols=list(result.missing_symbols),
             futures=None
             if result.futures is None
             else FuturesOutcomeResponse(

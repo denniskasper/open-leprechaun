@@ -80,6 +80,7 @@ function syncResult(overrides: Partial<KindSyncResult>): KindSyncResult {
     covered_days: null,
     covered_period: null,
     passed_over: [],
+    missing_symbols: [],
     ...overrides,
   };
 }
