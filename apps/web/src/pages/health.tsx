@@ -222,7 +222,7 @@ function Report({ report }: { report: HealthReport | undefined }) {
           </h2>
         </div>
         <p
-          className="rise mt-5 max-w-xl text-pretty text-muted-foreground"
+          className="rise mt-5 measure-prose text-pretty text-muted-foreground"
           style={{ animationDelay: "120ms" }}
         >
           {verdict.detail}
@@ -239,7 +239,7 @@ function Report({ report }: { report: HealthReport | undefined }) {
         {problems && problems.length > 0 && (
           <ul
             aria-label="Problems"
-            className="rise mt-8 divide-y divide-border border-y border-border"
+            className="rise mt-8 measure-list divide-y divide-border border-y border-border"
             style={{ animationDelay: "200ms" }}
           >
             {problems.map((problem) => (
@@ -350,7 +350,7 @@ function ProblemRow({ problem }: { problem: Problem }) {
           <Lamp tone={problem.tone} size="sm" pulsing={false} />
           <h3 className={`font-medium ${TONE[problem.tone].text}`}>{problem.title}</h3>
         </div>
-        <p className="mt-1.5 max-w-xl pl-5.5 text-sm text-pretty text-muted-foreground">
+        <p className="mt-1.5 measure-prose pl-5.5 text-sm text-pretty text-muted-foreground">
           {problem.detail}
         </p>
         {problem.instruments.length > 0 && (
@@ -484,7 +484,7 @@ function Section({
   return (
     <section
       aria-labelledby={headingId}
-      className="rise grid gap-x-10 gap-y-5 py-8 md:grid-cols-[15rem_minmax(0,1fr)]"
+      className="rise grid measure-list gap-x-10 gap-y-5 py-8 md:grid-cols-[15rem_minmax(0,1fr)]"
       style={{ animationDelay: `${260 + index * 60}ms` }}
     >
       <div>
@@ -554,9 +554,9 @@ function Figure({ label, value }: { label: string; value: string }) {
 
 /** What a provider, venue or run said went wrong, in its own words. */
 function Sentence({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <p className={`mt-3 max-w-xl text-sm text-pretty ${TONE[tone].text}`}>{children}</p>;
+  return <p className={`mt-3 measure-prose text-sm text-pretty ${TONE[tone].text}`}>{children}</p>;
 }
 
 function Quiet({ children }: { children: ReactNode }) {
-  return <p className="max-w-xl text-sm text-pretty text-muted-foreground">{children}</p>;
+  return <p className="measure-prose text-sm text-pretty text-muted-foreground">{children}</p>;
 }

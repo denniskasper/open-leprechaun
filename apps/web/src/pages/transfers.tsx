@@ -169,8 +169,8 @@ function Section({
   return (
     <section aria-label={title}>
       <h2 className="microlabel text-muted-foreground">{title}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{lede}</p>
-      <div className="mt-4">{children}</div>
+      <p className="mt-1 measure-prose text-sm text-muted-foreground">{lede}</p>
+      <div className="mt-4 measure-list">{children}</div>
     </section>
   );
 }

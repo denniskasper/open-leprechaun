@@ -49,7 +49,7 @@ export function InboxPage() {
           description="Every Instrument that has arrived carries a stance. New arrivals of anything unacknowledged will wait here."
         />
       ) : data ? (
-        <ul className="space-y-4">
+        <ul className="measure-list space-y-4">
           {data.map((item, index) => (
             <ArrivalCard key={`${item.instrument_id}:${item.account_id}`} item={item} index={index} />
           ))}

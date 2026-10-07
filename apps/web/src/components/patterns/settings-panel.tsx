@@ -58,7 +58,7 @@ export function SettingsGroup({
         </h2>
         <p className="mt-1.5 text-sm text-pretty text-muted-foreground">{description}</p>
       </div>
-      <div className="min-w-0 max-w-md space-y-5">{children}</div>
+      <div className="min-w-0 measure-form space-y-5">{children}</div>
     </section>
   );
 }

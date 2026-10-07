@@ -323,7 +323,7 @@ export function InstrumentsPage() {
             />
           )}
           {conditions && (
-            <p className="microlabel text-caution">
+            <p className="microlabel measure-list text-caution">
               price providers: {conditions} — stale prices below are last known, with their age
             </p>
           )}
@@ -354,7 +354,10 @@ function AddSecurityPanel({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <section className="rise rounded-xl border border-border p-5" aria-label="Add security">
+    <section
+      className="rise measure-form rounded-xl border border-border p-5"
+      aria-label="Add security"
+    >
       <div className="flex items-baseline justify-between gap-4">
         <p className="microlabel text-muted-foreground">New security</p>
         <Button variant="ghost" size="sm" onClick={() => setManual((byHand) => !byHand)}>

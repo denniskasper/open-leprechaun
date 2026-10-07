@@ -101,7 +101,7 @@ export function LedgerExportPage() {
 function Manifest({ data }: { data: LedgerExport }) {
   const tool = TOOL[data.format];
   return (
-    <section aria-label="The export file" className="rise space-y-6">
+    <section aria-label="The export file" className="rise measure-list space-y-6">
       <dl className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
         <div>
           <dt className="microlabel text-muted-foreground">Rows in the file</dt>
@@ -136,13 +136,13 @@ function Manifest({ data }: { data: LedgerExport }) {
         </p>
       </div>
 
-      <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+      <p className="measure-prose text-sm text-pretty text-muted-foreground">
         The same ledger always produces the same file. It carries amounts, symbols, the Account
         each movement happened at and its instant — no notes, no addresses or references, no prices
         of this ledger's own. A fee is part of the amount sold, or already off the amount bought,
         and stated beside it.
       </p>
-      <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+      <p className="measure-prose text-sm text-pretty text-muted-foreground">
         The file holds Transactions only: futures fills and funding, corporate actions and tax
         withheld at source are not in it, and income is stated as the net that arrived.
       </p>
@@ -154,7 +154,7 @@ function Settings({ tool }: { tool: string }) {
   return (
     <section
       aria-labelledby="export-settings"
-      className="rise space-y-3"
+      className="rise measure-list space-y-3"
       style={{ animationDelay: "60ms" }}
     >
       <h2 id="export-settings" className="microlabel text-muted-foreground">
@@ -185,7 +185,7 @@ function LeftOutSection({ tool, groups }: { tool: string; groups: LeftOutGroup[]
   return (
     <section
       aria-labelledby="export-left-out"
-      className="rise space-y-3"
+      className="rise measure-list space-y-3"
       style={{ animationDelay: "120ms" }}
     >
       <h2 id="export-left-out" className="microlabel text-muted-foreground">
@@ -197,7 +197,7 @@ function LeftOutSection({ tool, groups }: { tool: string; groups: LeftOutGroup[]
         </p>
       ) : (
         <>
-          <p className="max-w-xl text-sm text-pretty text-muted-foreground">
+          <p className="measure-prose text-sm text-pretty text-muted-foreground">
             {tool} will compute its year without these. A difference between its figures and this
             ledger's starts here.
           </p>

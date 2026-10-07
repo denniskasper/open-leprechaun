@@ -198,7 +198,7 @@ export function CorporateActionsPage() {
       ) : actions.data && instruments.data && platforms.data ? (
         <>
           {holdable.length === 0 && (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="measure-prose text-sm text-muted-foreground">
               No Instrument is in the ledger yet, so there is nothing for an event to act on —{" "}
               <Link to="/instruments" className="underline underline-offset-2">
                 add the share or fund on Instruments
@@ -210,10 +210,10 @@ export function CorporateActionsPage() {
 
           <section aria-label="Recorded events">
             <h2 className="microlabel text-muted-foreground">Recorded events</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 measure-prose text-sm text-muted-foreground">
               Newest effect first, each with the lots it touched as they stood on its day.
             </p>
-            <div className="mt-4">
+            <div className="mt-4 measure-list">
               {actions.data.length === 0 ? (
                 <EmptyState
                   icon={Split}
@@ -315,9 +315,9 @@ function RecordForm({
   return (
     <section aria-label="Record an event" className="rise" style={{ animationDelay: "80ms" }}>
       <h2 className="microlabel text-muted-foreground">Record an event</h2>
-      <p className="mt-1 max-w-xl text-sm text-muted-foreground">{KIND_WORDS[draft.kind].effect}</p>
+      <p className="mt-1 measure-prose text-sm text-muted-foreground">{KIND_WORDS[draft.kind].effect}</p>
 
-      <form onSubmit={submit} className="mt-4 rounded-xl border border-border p-5">
+      <form onSubmit={submit} className="mt-4 measure-form rounded-xl border border-border p-5">
         <div className="flex flex-wrap items-end gap-4">
           <Field id={`${id}-kind`} label="Kind">
             <NativeSelect

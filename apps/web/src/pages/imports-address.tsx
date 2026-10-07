@@ -95,7 +95,7 @@ export function AddressPanel({
       className="rise space-y-5 border-y border-border py-6"
       style={{ animationDelay: "80ms" }}
     >
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid measure-form gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor={`${fieldId}-chain`} className="microlabel text-muted-foreground">
             Chain
@@ -164,7 +164,7 @@ export function AddressPanel({
         </div>
       </div>
 
-      {chosen && <p className="text-sm text-muted-foreground">{indexerWords(chosen)}</p>}
+      {chosen && <p className="measure-prose text-sm text-muted-foreground">{indexerWords(chosen)}</p>}
 
       <div className="flex flex-wrap items-center gap-2.5">
         <Button
@@ -190,7 +190,7 @@ export function AddressPanel({
           {commit.isSuccess ? "Done" : "Cancel"}
         </Button>
         {preview.isPending && (
-          <p className="text-xs text-muted-foreground">
+          <p className="measure-prose text-xs text-muted-foreground">
             A long history takes minutes — the chain is read one transaction at a time.
           </p>
         )}

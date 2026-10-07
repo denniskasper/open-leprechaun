@@ -4,6 +4,7 @@ import type { Measurement, Realised } from "@/api/portfolio";
 import {
   allocate,
   changeOver,
+  chartHeight,
   coverageLine,
   inRange,
   realisedLine,
@@ -298,5 +299,22 @@ describe("realisedLine", () => {
 
   it("says how many events the figure covers when some await a valuation", () => {
     expect(realisedLine(realised({ stated: 1 }))).toBe("over 1 of 2 sales and closes");
+  });
+});
+
+describe("chartHeight", () => {
+  it("keeps today's height on a narrow column, so a phone's chart is not squashed", () => {
+    expect(chartHeight(358)).toBe(280);
+    expect(chartHeight(0)).toBe(280);
+  });
+
+  it("grows with the width, a third of it", () => {
+    expect(chartHeight(1020)).toBe(340);
+    expect(chartHeight(1000)).toBe(333);
+  });
+
+  it("stops at its cap however wide the column gets", () => {
+    expect(chartHeight(1260)).toBe(420);
+    expect(chartHeight(4000)).toBe(420);
   });
 });

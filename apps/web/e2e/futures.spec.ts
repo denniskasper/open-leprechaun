@@ -86,9 +86,17 @@ test("an open position the ledger has no history for is marked", async ({ page }
     }),
   );
 
+  // The promise of the frame: from 1440px up a table shows every column.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/futures");
   const row = page.getByRole("row", { name: /E2E-LIVE-PERP/ });
   await expect(row.getByText(/Not in the ledger/)).toBeVisible();
+  const table = page.getByRole("table").filter({ has: row });
+  await expect(table.getByRole("columnheader")).toHaveCount(9);
+  const hidden = await table
+    .locator("xpath=..")
+    .evaluate((frame) => frame.scrollWidth - frame.clientWidth);
+  expect(hidden).toBe(0);
   // The direction is in the figure itself, never left to colour.
   await expect(row.getByText("−500 USDT")).toBeVisible();
   await expect(row.getByText("−15.00%")).toBeVisible();

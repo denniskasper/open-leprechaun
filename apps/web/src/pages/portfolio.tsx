@@ -534,7 +534,7 @@ function DevelopmentSection({
           <h2 id="development-heading" className="text-lg font-semibold tracking-tight">
             Development
           </h2>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          <p className="mt-1 measure-prose text-sm text-muted-foreground">
             One stored snapshot a day, ending in the portfolio as it stands now.
           </p>
         </div>
@@ -590,7 +590,7 @@ function DevelopmentSection({
                 </dd>
               </div>
               {change.partial && (
-                <p className="microlabel text-caution sm:col-span-3">
+                <p className="microlabel measure-list text-caution sm:col-span-3">
                   a point at either end leaves out a position or an unvalued contribution — part
                   of this result may be money moved or a price gone missing, not a gain or loss
                 </p>
@@ -611,7 +611,16 @@ function DevelopmentSection({
   );
 }
 
-const CHART_HEIGHT = 280;
+const CHART_HEIGHT = { floor: 280, cap: 420 };
+
+/**
+ * How tall the chart stands for its width: a third of it, so a wide column
+ * gets a chart and not a ribbon — never shorter than a phone's, and capped so
+ * the figures under it stay on the first screen.
+ */
+export function chartHeight(width: number): number {
+  return Math.min(Math.max(Math.round(width / 3), CHART_HEIGHT.floor), CHART_HEIGHT.cap);
+}
 const PAD = { top: 16, right: 12, bottom: 28, left: 12 };
 
 function dayOf(isoDate: string): number {
@@ -663,7 +672,8 @@ function ValueChart({ points, display }: { points: Measurement[]; display: Displ
   const top = high + margin;
 
   const plotWidth = Math.max(width - PAD.left - PAD.right, 1);
-  const plotHeight = CHART_HEIGHT - PAD.top - PAD.bottom;
+  const height = chartHeight(width);
+  const plotHeight = height - PAD.top - PAD.bottom;
   const x = (point: Measurement) =>
     PAD.left + ((dayOf(point.snapshot_date) - first) / (last - first || 1)) * plotWidth;
   const y = (amount: number) => PAD.top + (1 - (amount - bottom) / (top - bottom)) * plotHeight;
@@ -778,7 +788,7 @@ function ValueChart({ points, display }: { points: Measurement[]; display: Displ
         {width > 0 && (
           <svg
             width={width}
-            height={CHART_HEIGHT}
+            height={height}
             role="img"
             aria-label={`Portfolio value against net contributions from ${formatDate(
               points[0]?.snapshot_date ?? "",
@@ -814,20 +824,20 @@ function ValueChart({ points, display }: { points: Measurement[]; display: Displ
             <line
               x1={PAD.left}
               x2={width - PAD.right}
-              y1={CHART_HEIGHT - PAD.bottom}
-              y2={CHART_HEIGHT - PAD.bottom}
+              y1={height - PAD.bottom}
+              y2={height - PAD.bottom}
               className="stroke-input"
             />
             <text
               x={PAD.left}
-              y={CHART_HEIGHT - 8}
+              y={height - 8}
               className="fill-muted-foreground font-mono text-2xs"
             >
               {formatDate(points[0]?.snapshot_date ?? "")}
             </text>
             <text
               x={width - PAD.right}
-              y={CHART_HEIGHT - 8}
+              y={height - 8}
               textAnchor="end"
               className="fill-muted-foreground font-mono text-2xs"
             >
@@ -869,7 +879,7 @@ function ValueChart({ points, display }: { points: Measurement[]; display: Displ
                 x1={x(shown)}
                 x2={x(shown)}
                 y1={PAD.top}
-                y2={CHART_HEIGHT - PAD.bottom}
+                y2={height - PAD.bottom}
                 className="stroke-input"
               />
               <rect
@@ -975,7 +985,7 @@ function AllocationSection({ positions, display }: { positions: Position[]; disp
         <h2 id="allocation-heading" className="text-lg font-semibold tracking-tight">
           Allocation
         </h2>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+        <p className="mt-1 measure-prose text-sm text-muted-foreground">
           How the value divides. Only a position that counts and is worth something holds a share
           — each chart says how many that is.
         </p>
@@ -1032,7 +1042,7 @@ function AllocationChart({
         {coverageLine(allocation.charted, allocation.held)}
       </p>
       {allocation.slices.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="mt-4 measure-prose text-sm text-muted-foreground">
           No held position states a value, so there is nothing to divide.{" "}
           <Link to="/holdings" className="underline underline-offset-2">
             Holdings

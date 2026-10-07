@@ -19,12 +19,12 @@ export function ErrorState({
   children?: ReactNode;
 }) {
   return (
-    <div role="alert" className="rounded-xl border border-alarm/40 bg-alarm/5 px-6 py-5">
+    <div role="alert" className="measure-list rounded-xl border border-alarm/40 bg-alarm/5 px-6 py-5">
       <div className="flex items-center gap-2.5 text-alarm">
         <TriangleAlert aria-hidden className="size-4 shrink-0" />
         <p className="font-medium">{title}</p>
       </div>
-      <p className="mt-1.5 text-sm text-pretty text-muted-foreground">{detail}</p>
+      <p className="mt-1.5 measure-prose text-sm text-pretty text-muted-foreground">{detail}</p>
       {children}
       {onRetry && (
         <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>

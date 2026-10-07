@@ -228,7 +228,7 @@ function Unresolved({ futures, accountName }: { futures: Futures; accountName: A
   return (
     <section
       aria-label="Unresolved"
-      className="rounded-xl border border-caution/40 bg-caution/5 px-5 py-4"
+      className="measure-list rounded-xl border border-caution/40 bg-caution/5 px-5 py-4"
     >
       <p className="text-sm font-medium">Not settled by the ledger</p>
       <ul className="mt-2 space-y-1.5 text-sm">
@@ -261,7 +261,7 @@ function Unresolved({ futures, accountName }: { futures: Futures; accountName: A
         ))}
       </ul>
       {funding.length > 0 && (
-        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+        <p className="mt-2 measure-prose text-sm text-muted-foreground">
           No single position could claim these — none was open for the symbol when they were
           paid, or more than one was — so they count in no result.
         </p>
@@ -292,7 +292,7 @@ function OpenPositions({
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <p className="max-w-xl text-sm text-muted-foreground">
+        <p className="measure-prose text-sm text-muted-foreground">
           {statements === undefined && asking
             ? "Asking each venue for its open positions…"
             : "Each venue is asked when this screen opens and on Refresh. Shown, never stored — the tax figures rest on fills alone."}
@@ -338,7 +338,7 @@ function OpenPositions({
               onRetry={onRefresh}
             />
           ) : !statement.supported ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="measure-prose text-sm text-muted-foreground">
               This venue does not state its open positions. What the ledger derived from its
               fills is below and under Position history.
             </p>
@@ -357,7 +357,7 @@ function OpenPositions({
         <section aria-label="Open in the ledger only" className="space-y-3">
           <div>
             <h2 className="text-base font-medium">Open in the ledger only</h2>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            <p className="mt-1 measure-prose text-sm text-muted-foreground">
               The ledger holds these open, and no venue statement above covers them — the venue
               did not answer, states none, or the position was entered by hand.
             </p>
@@ -387,7 +387,7 @@ function History({
   }
   return (
     <div className="space-y-3">
-      <p className="max-w-xl text-sm text-muted-foreground">
+      <p className="measure-prose text-sm text-muted-foreground">
         Closed positions as the ledger derived them from fills. The net is the result less fees
         plus funding, and is what a close puts into the Termingeschäfte figure of its year.
       </p>

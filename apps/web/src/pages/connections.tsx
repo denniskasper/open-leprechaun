@@ -238,7 +238,7 @@ export function ConnectionsPage() {
             onDone={() => setAdding(false)}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="measure-prose text-sm text-muted-foreground">
             No Platform is registered yet, and a Connection links to one —{" "}
             <Link to="/settings/platforms" className="underline underline-offset-2">
               register the venue as a Platform
@@ -270,7 +270,7 @@ export function ConnectionsPage() {
           }
         />
       ) : connections.data && platforms.data && venues.data ? (
-        <div className="space-y-12">
+        <div className="measure-list space-y-12">
           {groupByPlatform(connections.data, platforms.data).map((group, index) => (
             <PlatformSection
               key={group.platform.id}
@@ -664,7 +664,7 @@ function ReconciliationPanel({
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div>
           <p className="microlabel text-muted-foreground">Reconciliation</p>
-          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+          <p className="mt-1 measure-prose text-xs text-muted-foreground">
             What the venue says is held against what the transactions account for. A gap is
             reported, never filled in — close it by importing the history that explains it, or
             by recording an Opening Balance that says it is an estimate.
@@ -796,7 +796,7 @@ function ReconciliationRow({
         <span className="font-mono text-xs">{line.symbol}</span>
         {line.name && <span className="ml-2 text-xs text-muted-foreground">{line.name}</span>}
         {line.status !== "matched" && (
-          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+          <p className="mt-1 measure-prose text-xs text-muted-foreground">
             {line.status === "unresolved" ? (
               <>
                 {line.detail}{" "}
@@ -881,7 +881,7 @@ function AddConnectionForm({
   return (
     <form
       onSubmit={submit}
-      className="rise rounded-xl border border-border p-5"
+      className="rise measure-form rounded-xl border border-border p-5"
       aria-label="Add a Connection"
     >
       <p className="microlabel mb-4 text-muted-foreground">New Connection</p>
@@ -937,7 +937,7 @@ function AddConnectionForm({
           <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-signal" />
           <div className="space-y-1">
             <p>{venue.required_scope}</p>
-            <p className="text-xs text-muted-foreground">{READ_ONLY_RULE}</p>
+            <p className="measure-prose text-xs text-muted-foreground">{READ_ONLY_RULE}</p>
           </div>
         </aside>
       )}
@@ -1003,7 +1003,7 @@ function AddConnectionForm({
         )}
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-3 measure-prose text-xs text-muted-foreground">
         Stored encrypted, never displayed again — a mistyped credential shows up when the
         Connection is tested, not by reading it back.
       </p>

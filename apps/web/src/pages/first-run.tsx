@@ -78,7 +78,7 @@ export function FirstRunPage() {
       ) : (
         <>
           <Readout items={data.items} complete={data.complete} />
-          <ol aria-label="Steps" className="divide-y divide-border border-y border-border">
+          <ol aria-label="Steps" className="measure-list divide-y divide-border border-y border-border">
             {data.items.map((item, index) => (
               <Step
                 key={item.key}
@@ -98,7 +98,7 @@ export function FirstRunPage() {
 function Readout({ items, complete }: { items: ChecklistItem[]; complete: boolean }) {
   const { done, required } = progress(items);
   return (
-    <section aria-label="Progress" className="rise space-y-3" style={{ animationDelay: "80ms" }}>
+    <section aria-label="Progress" className="rise measure-list space-y-3" style={{ animationDelay: "80ms" }}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <p role="status" className="flex items-baseline gap-2.5">
           <span className="font-mono text-2xl tabular-nums">
@@ -158,7 +158,7 @@ function Step({ item, position, next }: { item: ChecklistItem; position: number;
             {item.optional && !item.done && <span>· optional</span>}
           </p>
         </div>
-        <p className="mt-1 max-w-xl text-sm text-pretty text-muted-foreground">{item.detail}</p>
+        <p className="mt-1 measure-prose text-sm text-pretty text-muted-foreground">{item.detail}</p>
       </div>
       {!item.done && (
         <div className="col-start-2 flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-start-3 sm:justify-end">

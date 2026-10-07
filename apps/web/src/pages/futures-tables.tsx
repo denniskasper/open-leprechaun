@@ -23,10 +23,12 @@ export function toneOf(value: string | null): Tone {
   return value.startsWith("-") ? "alarm" : "signal";
 }
 
-const HEAD = "microlabel py-2 pl-4 text-right font-normal text-muted-foreground whitespace-nowrap";
+// A heading may break onto a second line, so a column is as wide as its
+// figures need and not as its caption happens to be.
+const HEAD = "microlabel py-2 pl-4 text-right align-bottom font-normal text-muted-foreground";
 // The symbol stays in view while the figures scroll sideways under it.
 const HEAD_FIRST =
-  "microlabel sticky left-0 bg-background py-2 pr-4 text-left font-normal text-muted-foreground";
+  "microlabel sticky left-0 bg-background py-2 pr-4 text-left align-bottom font-normal text-muted-foreground";
 const FIGURE = "py-3 pl-4 text-right font-mono text-xs tabular-nums whitespace-nowrap";
 const UNSTATED = <span className="text-muted-foreground">—</span>;
 
@@ -324,7 +326,7 @@ function Events({ position }: { position: FuturesPosition }) {
   const head = "microlabel py-1.5 pl-4 text-right font-normal text-muted-foreground";
   return (
     // Pinned, so it stays in view while the table scrolls sideways under it.
-    <div className="sticky left-0 max-w-2xl space-y-5 pt-1">
+    <div className="sticky left-0 measure-form space-y-5 pt-1">
       <div>
         <p className="text-sm font-medium">
           Fills{" "}

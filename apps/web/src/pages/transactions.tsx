@@ -407,7 +407,7 @@ export function TransactionsPage() {
       />
 
       {recording && loaded && !platforms.data.some((platform) => platform.accounts.length > 0) && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="measure-prose text-sm text-muted-foreground">
           No Account exists yet, and every leg of a Transaction sits in one —{" "}
           <Link to="/settings/platforms" className="underline underline-offset-2">
             add a Platform and an Account
@@ -568,7 +568,7 @@ function BulkToolbar({
 
   return (
     <div
-      className="rise rounded-xl border border-border p-4"
+      className="rise measure-list rounded-xl border border-border p-4"
       role="group"
       aria-label="Bulk repair"
     >
@@ -974,7 +974,7 @@ function TransactionForm({
   return (
     <form
       onSubmit={submit}
-      className="rise rounded-xl border border-border p-5"
+      className="rise measure-list rounded-xl border border-border p-5"
       aria-label={revising ? "Revise the Transaction" : "Record a Transaction"}
     >
       <p className="microlabel mb-4 text-muted-foreground">
@@ -1020,12 +1020,12 @@ function TransactionForm({
           aria-label="What is reconstructed"
         >
           <legend className="microlabel px-1 text-caution">Reconstructed, not observed</legend>
-          <p className="max-w-prose text-xs text-muted-foreground">
+          <p className="measure-prose text-xs text-muted-foreground">
             A position that already existed when the available history begins. {ESTIMATED_LOT_TITLE}
           </p>
           <div className="space-y-3">
             {(Object.keys(RECONSTRUCTED_WORDS) as Reconstructed[]).map((variant) => (
-              <label key={variant} className="flex max-w-prose cursor-pointer items-start gap-3">
+              <label key={variant} className="flex measure-prose cursor-pointer items-start gap-3">
                 <input
                   type="radio"
                   name={`${id}-reconstructed`}
@@ -1070,7 +1070,7 @@ function TransactionForm({
           aria-label="Withheld at source"
         >
           <legend className="microlabel px-1 text-muted-foreground">Withheld at source</legend>
-          <p className="max-w-prose text-xs text-muted-foreground">
+          <p className="measure-prose text-xs text-muted-foreground">
             The leg below is the net that arrived. Enter what was taken out before it did, in the
             same currency — the gross is their sum. Leave blank what was not withheld.
           </p>

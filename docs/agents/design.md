@@ -52,14 +52,68 @@ convention of an accent-highlight instead — a component may keep
 ## Shell and navigation
 
 The shell paints the page in `bg-canvas` — a shade darker than the surface,
-seen only in the margins — and centres the content sheet on it: `bg-background`
-edged by hairline `border-x`. The background is deliberately clean; no screen
-adds a texture, gradient or pattern to it.
+seen only in the margins — and centres the content sheet on it:
+`bg-background`, edged by hairlines once the window is wider than the sheet.
+The background is deliberately clean; no screen adds a texture, gradient or
+pattern to it.
+
+On a desktop there is no top bar. The sidebar carries everything the shell
+has to say: the wordmark with the environment badge beside it, the
+navigation, and a footer holding the version line with the theme toggle and
+sign-out beside it. The navigation scrolls on its own, behind a
+`scrollbar-thin` hairline, only when the window is too short for it; at
+1440×900 every entry shows. The two-factor reminder is a strip above the
+content. A phone puts the sidebar away, so it keeps a top bar — menu button,
+wordmark, badge, theme toggle, sign-out — and opens the navigation as a
+sheet.
 
 Pages render into the shell's content region and open with `PageHeader`
 (`apps/web/src/components/page-header.tsx`). A new screen registers its route
 in `apps/web/src/main.tsx` and its nav entry in `apps/web/src/navigation.ts`;
 sidebar, mobile sheet and active states follow from that one entry.
+
+## Layout and width
+
+One frame for every route, so nothing moves during navigation. The shell
+answers to the viewport, in four tiers:
+
+| Tier         | Viewport        | Behaviour                                       |
+| ------------ | --------------- | ----------------------------------------------- |
+| Phone        | under 768px     | Top bar; navigation in a sheet; tables may scroll |
+| Small laptop | 768–1279px      | Sidebar; wide tables may scroll                 |
+| Desktop      | 1280–1535px     | Sidebar; the sheet fills the window             |
+| Large        | 1536px and up   | The sheet is capped; canvas shows on both sides |
+
+The sheet's cap is `max-w-sheet` (96rem) and the sidebar is 240px at every
+tier. The content gutters are 32px, 48px from 1280px up (16px on a phone).
+
+**The promise:** from a 1440px viewport up, no table scrolls sideways; and
+the page itself never scrolls sideways at any width.
+`apps/web/e2e/shell.spec.ts` and `apps/web/e2e/futures.spec.ts` hold the
+frame to this.
+
+A wide frame must not stretch what reads best narrow, so every block of
+content takes a **measure** — a named maximum width, left-aligned in the
+column. The measures are tokens in `index.css`, used as utilities:
+
+| Utility         | Width      | For                                                      |
+| --------------- | ---------- | -------------------------------------------------------- |
+| `measure-prose` | 36rem      | Descriptions and explanatory text                        |
+| `measure-form`  | 45rem      | Forms and the body of a settings group                   |
+| `measure-list`  | 60rem      | Row lists: a label with a trailing action or value       |
+| `measure-full`  | the column | Tables, charts and dashboards — also the default, unsaid |
+
+The measure is chosen per block, not per page: a screen may set a form at
+`measure-form` above a table at the full column. A sentence inside a wider
+block still takes `measure-prose`. Hairline rules that divide a page — under
+the header, between the groups of a panel — run the full column; a list's own
+rules end with the list. `PageHeader`, `SettingsGroup` and `ErrorState`
+already carry theirs. A new screen picks one of the four and does not invent a
+fifth: no `max-w-*` on page content. `apps/web/e2e/measures.spec.ts` checks
+every screen at 1920px — add a new route to its list.
+
+A chart's height follows its width up to a cap (`chartHeight` in
+`pages/portfolio.tsx`), so a wide column draws a chart and not a ribbon.
 
 ## Settings panels
 

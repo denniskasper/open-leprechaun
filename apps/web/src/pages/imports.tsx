@@ -102,7 +102,7 @@ export function UnpricedReport({ committed }: { committed: CommittedImport }) {
         )}
       </ul>
       {committed.price_conditions.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="measure-prose text-xs text-muted-foreground">
           {committed.price_conditions.map(priceConditionWords).join(" · ")}
         </p>
       )}
@@ -151,7 +151,7 @@ export function ImportsPage() {
       />
 
       {importing && loaded && !platforms.data.some((platform) => platform.accounts.length > 0) && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="measure-prose text-sm text-muted-foreground">
           No Account exists yet, and an import lands in one —{" "}
           <Link to="/settings/platforms" className="underline underline-offset-2">
             add a Platform and an Account
@@ -273,7 +273,7 @@ function FileImportPanel({
       className="rise space-y-5 border-y border-border py-6"
       style={{ animationDelay: "80ms" }}
     >
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid measure-form gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor={`${fieldId}-connector`} className="microlabel text-muted-foreground">
             Connector
@@ -335,7 +335,7 @@ function FileImportPanel({
       </div>
 
       {chosen && (
-        <p className="text-sm text-muted-foreground">
+        <p className="measure-prose text-sm text-muted-foreground">
           {chosen.expects} <span className="text-foreground">{timezoneWords(chosen)}</span>
         </p>
       )}

@@ -303,9 +303,12 @@ function ElectionPanel({ election }: { election: Election }) {
   }
 
   return (
-    <section className="rise rounded-xl border border-border p-5" aria-label="Elections">
+    <section
+      className="rise measure-list rounded-xl border border-border p-5"
+      aria-label="Elections"
+    >
       <p className="microlabel text-muted-foreground">Elections</p>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className="mt-1 measure-prose text-sm text-muted-foreground">
         These choices select which of the per-year values apply — the saver-allowance variant and
         the church-tax rate. No engine doubles an amount or picks a rate in logic.
       </p>
@@ -378,9 +381,12 @@ function TreatyLimitsPanel() {
   const failure = enter.error ?? remove.error;
 
   return (
-    <section className="rise rounded-xl border border-border p-5" aria-label="Treaty limits">
+    <section
+      className="rise measure-list rounded-xl border border-border p-5"
+      aria-label="Treaty limits"
+    >
       <p className="microlabel text-muted-foreground">Treaty limits</p>
-      <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+      <p className="mt-1 measure-prose text-sm text-muted-foreground">
         The share of a gross dividend each double-taxation treaty lets the source country keep.
         Foreign withholding tax is creditable up to it; anything above is reported as reclaimable
         from that country. A country that withheld with no limit entered refuses to compute.
@@ -423,7 +429,7 @@ function TreatyLimitsPanel() {
       ) : null}
       <form
         onSubmit={submit}
-        className="mt-4 flex flex-wrap items-end gap-3"
+        className="mt-4 flex measure-form flex-wrap items-end gap-3"
         aria-label="Enter a treaty limit"
       >
         <div className="space-y-2">
@@ -536,11 +542,11 @@ function FundRedemptionValuesPanel() {
 
   return (
     <section
-      className="rise rounded-xl border border-border p-5"
+      className="rise measure-list rounded-xl border border-border p-5"
       aria-label="Fund redemption values"
     >
       <p className="microlabel text-muted-foreground">Fund redemption values</p>
-      <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+      <p className="mt-1 measure-prose text-sm text-muted-foreground">
         What each fund published for one unit in a calendar year: its first and last redemption
         price and its distributions. With that year’s Basiszins they give the Vorabpauschale,
         declared the year after. A fund held across a year with no values entered refuses to
@@ -603,7 +609,7 @@ function FundRedemptionValuesPanel() {
       {funds.length > 0 && (
         <form
           onSubmit={submit}
-          className="mt-4 flex flex-wrap items-end gap-3"
+          className="mt-4 flex measure-form flex-wrap items-end gap-3"
           aria-label="Enter fund redemption values"
         >
           <div className="space-y-2">
@@ -831,7 +837,7 @@ function EditValueForm({ year, row, onDone }: { year: number; row: KeyRow; onDon
   return (
     <form
       onSubmit={submit}
-      className="mt-3 rounded-md border border-border p-4"
+      className="mt-3 measure-form rounded-md border border-border p-4"
       aria-label={`${row.state === "set" ? "Correct" : "Set"} ${words.label} for ${year}`}
     >
       <div className="flex flex-wrap items-end gap-3">

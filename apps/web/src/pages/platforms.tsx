@@ -182,7 +182,7 @@ export function PlatformsPage() {
           }
         />
       ) : data ? (
-        <div className="space-y-12">
+        <div className="measure-list space-y-12">
           {groupByKind(data).map((group, index) => (
             <KindSection key={group.kind} group={group} index={index} />
           ))}
@@ -215,7 +215,7 @@ function RegisterPlatformForm({ onDone }: { onDone: () => void }) {
   return (
     <form
       onSubmit={submit}
-      className="rise rounded-xl border border-border p-5"
+      className="rise measure-form rounded-xl border border-border p-5"
       aria-label="Register a Platform"
     >
       <p className="microlabel mb-4 text-muted-foreground">New Platform</p>
@@ -646,7 +646,7 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
   return (
     <form
       onSubmit={submit}
-      className="mt-3 rounded-xl border border-border p-4"
+      className="mt-3 measure-form rounded-xl border border-border p-4"
       aria-label={`Set withholding for ${platform.name}`}
     >
       <div className="flex flex-wrap items-end gap-3">
@@ -971,7 +971,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
   return (
     <form
       onSubmit={submit}
-      className="mt-3 ml-4 rounded-xl border border-border p-4"
+      className="mt-3 ml-4 measure-form rounded-xl border border-border p-4"
       aria-label={`Add ${noun === "Account" ? "an" : "a"} ${noun} under ${platform.name}`}
     >
       <div className="grid gap-3 sm:grid-cols-2">

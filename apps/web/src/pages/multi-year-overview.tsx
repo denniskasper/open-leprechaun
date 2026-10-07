@@ -194,7 +194,7 @@ function BlockedYears({ years }: { years: OverviewYear[] }) {
     return null;
   }
   return (
-    <section aria-label="Blocked years" className="rise space-y-2.5">
+    <section aria-label="Blocked years" className="rise measure-list space-y-2.5">
       {years.map((year) => (
         <aside
           key={year.year}
@@ -287,7 +287,7 @@ function Reports({ years }: { years: OverviewYear[] }) {
         <h2 id="reports" className="mt-1 text-lg font-medium">
           Reports
         </h2>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+        <p className="mt-1 measure-prose text-sm text-muted-foreground">
           The tables above move with the ledger. Generating a report freezes a Tax Year&apos;s
           figures as a draft, with every figure&apos;s working in its appendix; generating again
           adds a new report and leaves the earlier one as it was.
@@ -310,7 +310,7 @@ function Reports({ years }: { years: OverviewYear[] }) {
           The {generate.variables} report was generated as a draft.
         </p>
       )}
-      <ul className="divide-y divide-border border-y border-border">
+      <ul className="measure-list divide-y divide-border border-y border-border">
         {years.map((year) => {
           const report = latest.get(year.year);
           return (
@@ -398,7 +398,7 @@ function RegimeSection({
         <h2 id={headingId} className="mt-1 text-lg font-medium">
           {regime.title}
         </h2>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">{regime.about}</p>
+        <p className="mt-1 measure-prose text-sm text-muted-foreground">{regime.about}</p>
       </div>
       <div className="overflow-x-auto pr-0.5">
         <table className="w-full border-collapse whitespace-nowrap text-sm">

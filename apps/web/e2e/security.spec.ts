@@ -121,7 +121,7 @@ test("a development instance says there is nothing to secure and offers no way o
   await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
 });
 
-test("the header signs out of this session from any page", async ({ page }) => {
+test("the sidebar signs out of this session from any page", async ({ page }) => {
   await standInForProduction(page);
   await page.goto("/holdings");
 
@@ -134,12 +134,12 @@ test("the header signs out of this session from any page", async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("the header's sign out is within reach on a phone", async ({ page }) => {
+test("the top bar's sign out is within reach on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await standInForProduction(page);
   await page.goto("/transactions");
 
-  await page.getByRole("complementary").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
 });

@@ -118,7 +118,7 @@ export function ScheduledTasksPage() {
                 detail={`${failing.map((task) => task.name).join(", ")}. What failed is stated beside each task below; run it again once the cause is fixed.`}
               />
             )}
-            <div className="divide-y divide-border border-y border-border">
+            <div className="measure-list divide-y divide-border border-y border-border">
               {data.map((task, index) => (
                 <TaskRow key={task.key} task={task} now={dataUpdatedAt} index={index} />
               ))}
@@ -164,11 +164,11 @@ function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index
           </span>
           {!task.enabled && <span className="microlabel text-muted-foreground">· Disabled</span>}
         </div>
-        <p className="mt-1.5 max-w-xl text-sm text-pretty text-muted-foreground">
+        <p className="mt-1.5 measure-prose text-sm text-pretty text-muted-foreground">
           {task.description}
         </p>
 
-        <dl className="mt-5 grid max-w-xl grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+        <dl className="mt-5 grid measure-prose grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
           <Reading
             label="Last run"
             value={
@@ -182,13 +182,13 @@ function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index
         {!inFlight && task.error && (
           <p
             role="alert"
-            className="mt-4 max-w-xl rounded-md border border-alarm/40 bg-alarm/5 px-3 py-2 text-sm text-pretty text-alarm"
+            className="mt-4 measure-prose rounded-md border border-alarm/40 bg-alarm/5 px-3 py-2 text-sm text-pretty text-alarm"
           >
             {task.error}
           </p>
         )}
         {!inFlight && !task.error && task.detail && (
-          <p className="mt-4 max-w-xl font-mono text-xs tabular-nums text-muted-foreground">
+          <p className="mt-4 measure-prose font-mono text-xs tabular-nums text-muted-foreground">
             {task.detail}
           </p>
         )}

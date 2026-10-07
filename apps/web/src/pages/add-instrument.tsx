@@ -242,7 +242,7 @@ export function AddInstrumentPanel({
 
   return (
     <section
-      className="rise rounded-xl border border-border p-5"
+      className="rise measure-form rounded-xl border border-border p-5"
       aria-label="Add coin or currency"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -262,7 +262,7 @@ export function AddInstrumentPanel({
           ))}
         </div>
       </div>
-      <p className="mt-2 max-w-xl text-sm text-muted-foreground">{chosen?.says}</p>
+      <p className="mt-2 measure-prose text-sm text-muted-foreground">{chosen?.says}</p>
 
       <form onSubmit={submit} className="mt-4 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -367,20 +367,20 @@ export function AddInstrumentPanel({
         </div>
 
         {kind === "token" && (
-          <p id={`${id}-peg-hint`} className="max-w-xl text-sm text-muted-foreground">
+          <p id={`${id}-peg-hint`} className="measure-prose text-sm text-muted-foreground">
             For a stablecoin, name the currency it follows. Its EUR value then comes from that
             currency's daily reference rate; without one it is priced like any other coin. The
             address is checked for its form only — nothing is looked up on the chain.
           </p>
         )}
         {held && (
-          <p className="max-w-xl text-sm text-caution">
+          <p className="measure-prose text-sm text-caution">
             {held.name} ({held.symbol}) already holds this identity. {chosen?.keyedOn}, so there is
             no second one to add.
           </p>
         )}
         {worn.length > 0 && (
-          <p className="max-w-xl text-sm text-caution">
+          <p className="measure-prose text-sm text-caution">
             {worn.map((entry) => entry.name).join(", ")} already{" "}
             {worn.length === 1 ? "wears" : "wear"} the symbol {worn[0]?.symbol}. A second one is
             allowed, but a sync that states only the symbol can then no longer choose and will
