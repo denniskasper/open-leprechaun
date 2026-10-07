@@ -125,7 +125,7 @@ test("the header signs out of this session from any page", async ({ page }) => {
   await standInForProduction(page);
   await page.goto("/holdings");
 
-  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("complementary").getByRole("button", { name: "Sign out" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "Log in" })).toBeVisible();
@@ -139,7 +139,7 @@ test("the header's sign out is within reach on a phone", async ({ page }) => {
   await standInForProduction(page);
   await page.goto("/transactions");
 
-  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("complementary").getByRole("button", { name: "Sign out" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
 });
@@ -166,7 +166,7 @@ test("nothing read under the old session is shown under the next one", async ({ 
   const count = page.getByTestId("session-count");
   await expect(count).toHaveText("3");
 
-  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("complementary").getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
 
   // Hold the next session's answer back: a cache that survived the sign-out

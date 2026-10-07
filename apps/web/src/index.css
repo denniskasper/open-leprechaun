@@ -160,6 +160,17 @@
   /* Spacing derives from this one base; there is no second rhythm. */
   --spacing: 0.25rem;
 
+  /* The frame: the one cap on the content sheet, the same on every route. */
+  --container-sheet: 96rem;
+
+  /* The measures: how wide a block of content may grow inside the frame.
+     A block picks one of these (`measure-prose`, `measure-form`,
+     `measure-list`, or `measure-full` for the whole column) and never
+     invents another. */
+  --measure-prose: 36rem;
+  --measure-form: 45rem;
+  --measure-list: 60rem;
+
   --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -195,6 +206,31 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
   }
+}
+
+/* A measure caps a block and leaves it left-aligned in the column. */
+@utility measure-prose {
+  max-width: var(--measure-prose);
+}
+
+@utility measure-form {
+  max-width: var(--measure-form);
+}
+
+@utility measure-list {
+  max-width: var(--measure-list);
+}
+
+/* Tables, charts and dashboards: the column is the measure. */
+@utility measure-full {
+  max-width: none;
+}
+
+/* A hairline scrollbar in the theme's own rule colour, for a region that
+   scrolls only when the window is short. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-input) transparent;
 }
 
 @layer utilities {

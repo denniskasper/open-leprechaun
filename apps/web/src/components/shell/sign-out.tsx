@@ -23,11 +23,11 @@ export function useSignOut(revoke: () => Promise<void>) {
 }
 
 /**
- * The header's way out, on every page and at every width. It appears only
+ * The shell's way out, on every page and at every width. It appears only
  * where there is a Session to end — development authenticates nobody, so
  * there it offers nothing.
  */
-export function SignOutButton() {
+export function SignOutButton({ className }: { className?: string }) {
   // Reads what the auth gate already asked; never asks on its own account.
   const { data: session } = useQuery({
     queryKey: ["auth", "session"],
@@ -51,6 +51,7 @@ export function SignOutButton() {
         size="icon"
         aria-label="Sign out"
         title="Sign out"
+        className={className}
         disabled={signOut.isPending}
         onClick={() => signOut.mutate()}
       >

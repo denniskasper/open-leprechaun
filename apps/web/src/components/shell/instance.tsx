@@ -65,16 +65,13 @@ export function VersionLine({ className }: { className?: string }) {
   return (
     // One mono row: which build this is, and who it came from. The version
     // needs no caption — a hash or a v-number says what it is on sight.
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 font-mono text-2xs text-muted-foreground",
-        className,
-      )}
-    >
-      <span className="tabular-nums">{version}</span>
-      <span className="flex items-center gap-1.5">
-        made with
-        <Heart aria-hidden className="size-3 fill-alarm text-alarm" />
+    <div className={cn("flex items-center gap-3 font-mono text-2xs text-muted-foreground", className)}>
+      <span className="shrink-0 tabular-nums">{version}</span>
+      {/* One line high and clipped, filled from the right: where the row is
+          too narrow for the words, they wrap out of sight and the heart stays. */}
+      <span className="flex h-4 min-w-0 flex-1 flex-row-reverse flex-wrap content-start items-center gap-x-1.5 overflow-hidden">
+        <span className="order-2 whitespace-nowrap">made with</span>
+        <Heart aria-hidden className="order-1 size-3 shrink-0 fill-alarm text-alarm" />
         <span className="sr-only">love</span>
       </span>
     </div>

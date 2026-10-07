@@ -33,7 +33,7 @@ export function TwoFactorReminder() {
   return (
     <aside
       aria-label="Two-factor reminder"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-caution/40 bg-caution/5 px-4 py-2.5 text-sm sm:px-8"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-caution/40 bg-caution/5 px-4 py-2.5 text-sm sm:px-8 xl:px-12"
     >
       <Lamp tone="caution" size="sm" />
       <p className="text-pretty">

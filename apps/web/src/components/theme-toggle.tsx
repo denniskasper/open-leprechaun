@@ -16,7 +16,7 @@ const OPTIONS = [
   { value: "system", label: "System", icon: Monitor },
 ] as const satisfies readonly { value: ThemePreference; label: string; icon: unknown }[];
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const [preference, setPreference] = useState<ThemePreference>(getThemePreference);
 
   const choose = (value: ThemePreference) => {
@@ -29,7 +29,7 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Theme">
+        <Button variant="ghost" size="icon" aria-label="Theme" className={className}>
           <Icon aria-hidden />
         </Button>
       </DropdownMenuTrigger>
