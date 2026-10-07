@@ -590,7 +590,7 @@ function DevelopmentSection({
                 </dd>
               </div>
               {change.partial && (
-                <p className="microlabel measure-list text-caution sm:col-span-3">
+                <p className="microlabel measure-prose text-caution sm:col-span-3">
                   a point at either end leaves out a position or an unvalued contribution — part
                   of this result may be money moved or a price gone missing, not a gain or loss
                 </p>

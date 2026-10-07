@@ -212,7 +212,7 @@ export function StatutoryPage() {
           onRetry={() => void refetch()}
         />
       ) : data ? (
-        <div className="space-y-12">
+        <div className="measure-list space-y-12">
           <ElectionPanel election={data} />
           <TreatyLimitsPanel />
           <FundRedemptionValuesPanel />
@@ -303,10 +303,7 @@ function ElectionPanel({ election }: { election: Election }) {
   }
 
   return (
-    <section
-      className="rise measure-list rounded-xl border border-border p-5"
-      aria-label="Elections"
-    >
+    <section className="rise rounded-xl border border-border p-5" aria-label="Elections">
       <p className="microlabel text-muted-foreground">Elections</p>
       <p className="mt-1 measure-prose text-sm text-muted-foreground">
         These choices select which of the per-year values apply — the saver-allowance variant and
@@ -381,10 +378,7 @@ function TreatyLimitsPanel() {
   const failure = enter.error ?? remove.error;
 
   return (
-    <section
-      className="rise measure-list rounded-xl border border-border p-5"
-      aria-label="Treaty limits"
-    >
+    <section className="rise rounded-xl border border-border p-5" aria-label="Treaty limits">
       <p className="microlabel text-muted-foreground">Treaty limits</p>
       <p className="mt-1 measure-prose text-sm text-muted-foreground">
         The share of a gross dividend each double-taxation treaty lets the source country keep.
@@ -542,7 +536,7 @@ function FundRedemptionValuesPanel() {
 
   return (
     <section
-      className="rise measure-list rounded-xl border border-border p-5"
+      className="rise rounded-xl border border-border p-5"
       aria-label="Fund redemption values"
     >
       <p className="microlabel text-muted-foreground">Fund redemption values</p>

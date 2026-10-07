@@ -49,7 +49,7 @@ export function AppShell() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur-sm sm:px-8 md:hidden">
+          <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur-sm sm:px-8 md:hidden">
             <MobileNav />
             <Wordmark />
             <EnvironmentBadge />
@@ -139,7 +139,7 @@ function MobileNav() {
       <SheetContent side="left">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <SheetDescription className="sr-only">Pages of this application</SheetDescription>
-        <Wordmark className="flex h-14 shrink-0 items-center px-6" />
+        <Wordmark className="flex h-16 shrink-0 items-center px-6" />
         <NavSections className="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-3 py-4" />
         <VersionLine className="border-t border-border px-6 py-4" />
       </SheetContent>

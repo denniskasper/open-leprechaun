@@ -323,7 +323,7 @@ export function InstrumentsPage() {
             />
           )}
           {conditions && (
-            <p className="microlabel measure-list text-caution">
+            <p className="microlabel measure-prose text-caution">
               price providers: {conditions} — stale prices below are last known, with their age
             </p>
           )}

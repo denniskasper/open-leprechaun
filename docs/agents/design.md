@@ -85,7 +85,7 @@ answers to the viewport, in four tiers:
 | Large        | 1536px and up   | The sheet is capped; canvas shows on both sides |
 
 The sheet's cap is `max-w-sheet` (96rem) and the sidebar is 240px at every
-tier. The content gutters are 32px, 48px from 1280px up (16px on a phone).
+tier. The content gutters are 32px, 48px from 1280px up (16px below 640px).
 
 **The promise:** from a 1440px viewport up, no table scrolls sideways; and
 the page itself never scrolls sideways at any width.
@@ -109,8 +109,10 @@ block still takes `measure-prose`. Hairline rules that divide a page — under
 the header, between the groups of a panel — run the full column; a list's own
 rules end with the list. `PageHeader`, `SettingsGroup` and `ErrorState`
 already carry theirs. A new screen picks one of the four and does not invent a
-fifth: no `max-w-*` on page content. `apps/web/e2e/measures.spec.ts` checks
-every screen at 1920px — add a new route to its list.
+fifth: no `max-w-*` sizes a block of page content — a single field, a table
+cell or a centred empty state may still cap itself.
+`apps/web/e2e/measures.spec.ts` checks every screen at 1920px — add a new
+route to its list.
 
 A chart's height follows its width up to a cap (`chartHeight` in
 `pages/portfolio.tsx`), so a wide column draws a chart and not a ribbon.
