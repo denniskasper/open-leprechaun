@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Lamp } from "@/components/patterns/lamp";
+import { Cell, Heading, RowHeading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { formatEur, formatTimestamp } from "@/lib/format";
 import { NAV_SECTIONS } from "@/navigation";
@@ -400,36 +401,28 @@ function RegimeSection({
         </h2>
         <p className="mt-1 measure-prose text-sm text-muted-foreground">{regime.about}</p>
       </div>
-      <div className="overflow-x-auto pr-0.5">
-        <table className="w-full border-collapse whitespace-nowrap text-sm">
-          <thead>
-            <tr className="border-b border-border text-left">
-              <th scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
-                Year
-              </th>
-              {["Gross", "Offsets", regime.allowance, "Taxable", "Tax"].map((column) => (
-                <th
-                  key={column}
-                  scope="col"
-                  className="microlabel py-2.5 pl-4 text-right text-muted-foreground"
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {years.map((year, row) => (
-              <RegimeRow
-                key={year.year}
-                year={year}
-                figures={year[regime.key]}
-                share={shares[row] ?? null}
-              />
+      <Table>
+        <thead>
+          <tr>
+            <Heading>Year</Heading>
+            {["Gross", "Offsets", regime.allowance, "Taxable", "Tax"].map((column) => (
+              <Heading key={column} figure>
+                {column}
+              </Heading>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </tr>
+        </thead>
+        <tbody>
+          {years.map((year, row) => (
+            <RegimeRow
+              key={year.year}
+              year={year}
+              figures={year[regime.key]}
+              share={shares[row] ?? null}
+            />
+          ))}
+        </tbody>
+      </Table>
       {regime.key === "capital_income" && <Carryforwards years={years} />}
     </section>
   );
@@ -446,8 +439,8 @@ function RegimeRow({
 }) {
   const blocked = year.blockers.length > 0;
   return (
-    <tr className="border-b border-border align-top">
-      <th scope="row" className="py-3 pr-4 text-left font-normal">
+    <tr>
+      <RowHeading>
         <span className="font-mono tabular-nums">{year.year}</span>
         {blocked && (
           <a
@@ -458,29 +451,29 @@ function RegimeRow({
             blocked
           </a>
         )}
-      </th>
+      </RowHeading>
       {figures === null ? (
-        <td colSpan={5} className="microlabel py-3 pl-4 text-right text-caution">
+        <Cell colSpan={5} className="microlabel text-right text-caution">
           not stated — see what blocks {year.year}
-        </td>
+        </Cell>
       ) : (
         <>
           <Figure value={figures.gross_eur} />
           <Figure value={figures.offsets_eur} />
-          <td className="py-3 pl-4 text-right font-mono tabular-nums">
+          <Cell figure>
             {formatEur(figures.allowance_eur)}
             <span className="microlabel block text-muted-foreground">
               of {formatEur(figures.allowance_limit_eur)}
             </span>
-          </td>
-          <td className="py-3 pl-4 text-right font-mono tabular-nums">
+          </Cell>
+          <Cell figure>
             {formatEur(figures.taxable_eur)}
             {/* The trend at a glance: this year's taxable amount against the largest. */}
             <span aria-hidden className="mt-1.5 flex h-px justify-end bg-border">
               <span className="h-px bg-foreground" style={{ width: `${share ?? 0}%` }} />
             </span>
-          </td>
-          <td className="py-3 pl-4 text-right font-mono tabular-nums">
+          </Cell>
+          <Cell figure>
             {figures.tax_eur !== null ? (
               formatEur(figures.tax_eur)
             ) : (
@@ -488,7 +481,7 @@ function RegimeRow({
                 personal rate
               </span>
             )}
-          </td>
+          </Cell>
         </>
       )}
     </tr>
@@ -497,13 +490,9 @@ function RegimeRow({
 
 function Figure({ value }: { value: string }) {
   return (
-    <td
-      className={`py-3 pl-4 text-right font-mono tabular-nums ${
-        isZero(value) ? "text-muted-foreground" : ""
-      }`}
-    >
+    <Cell figure className={isZero(value) ? "text-muted-foreground" : undefined}>
       {formatEur(value)}
-    </td>
+    </Cell>
   );
 }
 
@@ -522,43 +511,31 @@ function Carryforwards({ years }: { years: OverviewYear[] }) {
           No pot carries a loss into or out of any year shown.
         </p>
       ) : (
-        <div className="overflow-x-auto pr-0.5">
-          <table className="w-full border-collapse whitespace-nowrap text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
-                  Year
-                </th>
-                <th scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
-                  Pot
-                </th>
-                {["In", "Consumed", "Produced", "Out"].map((column) => (
-                  <th
-                    key={column}
-                    scope="col"
-                    className="microlabel py-2.5 pl-4 text-right text-muted-foreground"
-                  >
-                    {column}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ year, pot }) => (
-                <tr key={`${year}:${pot.category}`} className="border-b border-border align-top">
-                  <th scope="row" className="py-3 pr-4 text-left font-mono font-normal tabular-nums">
-                    {year}
-                  </th>
-                  <td className="py-3 pr-4">{POT_LABEL[pot.category]}</td>
-                  <Layered total={pot.carryforward_in_eur} layers={pot.carryforward_in} />
-                  <Layered total={pot.consumed_eur} layers={pot.consumed} />
-                  <Figure value={pot.produced_eur} />
-                  <Layered total={pot.carryforward_out_eur} layers={pot.carryforward_out} />
-                </tr>
+        <Table>
+          <thead>
+            <tr>
+              <Heading>Year</Heading>
+              <Heading>Pot</Heading>
+              {["In", "Consumed", "Produced", "Out"].map((column) => (
+                <Heading key={column} figure>
+                  {column}
+                </Heading>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ year, pot }) => (
+              <tr key={`${year}:${pot.category}`}>
+                <RowHeading className="font-mono tabular-nums">{year}</RowHeading>
+                <Cell>{POT_LABEL[pot.category]}</Cell>
+                <Layered total={pot.carryforward_in_eur} layers={pot.carryforward_in} />
+                <Layered total={pot.consumed_eur} layers={pot.consumed} />
+                <Figure value={pot.produced_eur} />
+                <Layered total={pot.carryforward_out_eur} layers={pot.carryforward_out} />
+              </tr>
+            ))}
+          </tbody>
+        </Table>
       )}
     </div>
   );
@@ -567,11 +544,7 @@ function Carryforwards({ years }: { years: OverviewYear[] }) {
 /** A carryforward total with the slices it is made of, each naming its origin. */
 function Layered({ total, layers }: { total: string; layers: CarryforwardLayer[] }) {
   return (
-    <td
-      className={`py-3 pl-4 text-right font-mono tabular-nums ${
-        isZero(total) ? "text-muted-foreground" : ""
-      }`}
-    >
+    <Cell figure className={isZero(total) ? "text-muted-foreground" : undefined}>
       {formatEur(total)}
       {layers.map((layer) => (
         <span
@@ -587,6 +560,6 @@ function Layered({ total, layers }: { total: string; layers: CarryforwardLayer[]
           {describeOrigin(layer)}
         </span>
       ))}
-    </td>
+    </Cell>
   );
 }

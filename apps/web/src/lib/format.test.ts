@@ -19,6 +19,7 @@ import {
   formatSignedPercentExact,
   formatSignedQuantity,
   formatTimestamp,
+  formatTimestampInColumn,
 } from "./format";
 
 // The ticket's rule: numbers are formatted per locale and money always carries
@@ -208,6 +209,23 @@ describe("formatTimestamp", () => {
   it("renders a wall-clock time for the given locale", () => {
     const noon = Date.UTC(2026, 0, 5, 12, 34, 56);
     expect(formatTimestamp(noon, "de-DE", "UTC")).toBe("05.01.2026, 12:34:56");
+  });
+});
+
+// A table column may give a timestamp two lines, but only between its date
+// and its time: the one breakable space is the one after the date.
+describe("formatTimestampInColumn", () => {
+  const noon = Date.UTC(2026, 0, 5, 12, 34, 56);
+
+  it("reads as the timestamp does, breakable only after the date", () => {
+    expect(formatTimestampInColumn(noon, "de-DE", "UTC")).toBe("05.01.2026, 12:34:56");
+    expect(formatTimestampInColumn(noon, "en-US", "UTC")).toBe(
+      "Jan\u00a05,\u00a02026, 12:34:56\u202fPM",
+    );
+  });
+
+  it("holds a date spelled in words together", () => {
+    expect(formatTimestampInColumn(noon, "en-GB", "UTC")).toBe("5\u00a0Jan\u00a02026, 12:34:56");
   });
 });
 

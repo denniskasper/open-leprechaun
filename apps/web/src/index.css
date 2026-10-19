@@ -206,6 +206,42 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
   }
+
+  /* The table frame (components/patterns/table.tsx): the column's width, its
+     table as wide as the content needs and scrolling sideways only past the
+     column. A size container, so a row's detail keeps to what is in view. */
+  .table-frame {
+    container-type: inline-size;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-input) transparent;
+  }
+
+  /* A table inside a row's detail widens that row as it needs to, so from
+     a wide window up it shows every column too. */
+  .table-frame .table-frame {
+    container-type: normal;
+  }
+
+  .table-frame tr {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  /* The first column stays in view while the rest scrolls under it. A
+     component rule, so a row that tints its cells still wins. */
+  .table-frame tr > :first-child:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--color-background);
+  }
+
+  /* What a row opens beneath itself, held to the frame's width in view. */
+  .table-detail {
+    position: sticky;
+    left: 0;
+    max-width: 100cqw;
+  }
 }
 
 /* A measure caps a block and leaves it left-aligned in the column. */

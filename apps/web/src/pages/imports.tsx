@@ -23,6 +23,7 @@ import { AddressPanel } from "@/pages/imports-address";
 import { MappingPanel } from "@/pages/imports-mapping";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Cell, Heading, Table, Timestamp } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatNumber, formatTimestamp } from "@/lib/format";
@@ -482,17 +483,11 @@ function BatchTable({ batches, platforms }: { batches: ImportBatch[]; platforms:
   );
 
   return (
-    <table className="w-full border-collapse text-sm">
+    <Table>
       <thead>
-        <tr className="border-b border-border text-left">
-          {["When", "Import", "Account", "Rows", ""].map((column, index) => (
-            <th
-              key={column || "actions"}
-              scope="col"
-              className={`microlabel py-2.5 text-muted-foreground ${index === 4 ? "" : "pr-4"}`}
-            >
-              {column}
-            </th>
+        <tr>
+          {["When", "Import", "Account", "Rows", ""].map((column) => (
+            <Heading key={column || "actions"}>{column}</Heading>
           ))}
         </tr>
       </thead>
@@ -500,28 +495,28 @@ function BatchTable({ batches, platforms }: { batches: ImportBatch[]; platforms:
         {batches.map((batch, index) => (
           <tr
             key={batch.id}
-            className="rise border-b border-border align-top"
+            className="rise"
             style={{ animationDelay: `${120 + index * 40}ms` }}
             aria-label={`Import ${batch.label} from ${batch.source}`}
           >
-            <td className="py-3 pr-4 font-mono text-xs tabular-nums text-muted-foreground">
-              {formatTimestamp(Date.parse(batch.created_at))}
-            </td>
-            <td className="py-3 pr-4">
+            <Cell data className="text-muted-foreground">
+              <Timestamp value={batch.created_at} />
+            </Cell>
+            <Cell>
               <span className="font-medium">{batch.label}</span>
               <p className="mt-0.5 font-mono text-xs text-muted-foreground">{batch.source}</p>
-            </td>
-            <td className="py-3 pr-4 text-xs text-muted-foreground">
+            </Cell>
+            <Cell className="text-xs text-muted-foreground">
               {accountName.get(batch.account_id) ?? `Account #${batch.account_id}`}
-            </td>
-            <td className="py-3 pr-4 font-mono text-xs tabular-nums">{rowsWords(batch)}</td>
-            <td className="py-3 text-right">
+            </Cell>
+            <Cell data>{rowsWords(batch)}</Cell>
+            <Cell className="text-right">
               <ReverseButton batch={batch} />
-            </td>
+            </Cell>
           </tr>
         ))}
       </tbody>
-    </table>
+    </Table>
   );
 }
 

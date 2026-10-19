@@ -12,10 +12,11 @@ import {
   type MappingDraft,
 } from "@/api/mappings";
 import type { Platform } from "@/api/platforms";
+import { Cell, Heading, Table, Timestamp } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatNumber, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatNumber, formatQuantity } from "@/lib/format";
 import { committedWords, UnpricedReport, FileInput, PreviewReport } from "@/pages/imports";
 import { TYPE_VOCABULARY } from "@/pages/transactions";
 
@@ -649,13 +650,16 @@ function InterpretedPreview({ interpretation }: { interpretation: Interpretation
     <div className="space-y-2" aria-label="Interpreted rows">
       <p className="microlabel text-muted-foreground">{rowCountWords(interpretation.row_count)}</p>
       {interpretation.rows.length > 0 && (
-        <table className="w-full border-collapse text-xs">
+        <Table>
           <thead>
-            <tr className="border-b border-border text-left">
-              {["#", "When", "Type", "Symbol", "Quantity", "Fee"].map((column) => (
-                <th key={column} scope="col" className="microlabel py-2 pr-4 text-muted-foreground">
+            <tr>
+              {["#", "When", "Type", "Symbol"].map((column) => (
+                <Heading key={column}>{column}</Heading>
+              ))}
+              {["Quantity", "Fee"].map((column) => (
+                <Heading key={column} figure>
                   {column}
-                </th>
+                </Heading>
               ))}
             </tr>
           </thead>
@@ -664,7 +668,7 @@ function InterpretedPreview({ interpretation }: { interpretation: Interpretation
               <InterpretedRowLine key={row.number} row={row} />
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
       {interpretation.row_count > interpretation.rows.length && (
         <p className="font-mono text-xs text-muted-foreground">
@@ -680,28 +684,26 @@ function InterpretedRowLine({ row }: { row: InterpretedRow }) {
   const dimmed = row.left_out !== null ? "opacity-60" : "";
   return (
     <>
-      <tr className={`border-b border-border align-top ${dimmed}`}>
-        <td className="py-2 pr-4 font-mono tabular-nums text-muted-foreground">{row.number}</td>
-        <td className="py-2 pr-4 font-mono tabular-nums">
-          {row.occurred_at !== null ? formatTimestamp(Date.parse(row.occurred_at)) : "—"}
-        </td>
-        <td className="py-2 pr-4">
+      <tr className={dimmed}>
+        <Cell data className="text-muted-foreground">
+          {row.number}
+        </Cell>
+        <Cell data>
+          {row.occurred_at !== null ? <Timestamp value={row.occurred_at} /> : "—"}
+        </Cell>
+        <Cell>
           {row.type !== null
             ? (TYPE_VOCABULARY[row.type as keyof typeof TYPE_VOCABULARY]?.label ?? row.type)
             : "—"}
-        </td>
-        <td className="py-2 pr-4 font-mono">{row.symbol ?? "—"}</td>
-        <td className="py-2 pr-4 font-mono tabular-nums">
-          {row.quantity !== null ? formatQuantity(row.quantity) : "—"}
-        </td>
-        <td className="py-2 font-mono tabular-nums">
-          {row.fee_quantity !== null ? formatQuantity(row.fee_quantity) : ""}
-        </td>
+        </Cell>
+        <Cell data>{row.symbol ?? "—"}</Cell>
+        <Cell figure>{row.quantity !== null ? formatQuantity(row.quantity) : "—"}</Cell>
+        <Cell figure>{row.fee_quantity !== null ? formatQuantity(row.fee_quantity) : ""}</Cell>
       </tr>
       {(row.problems.length > 0 || row.left_out !== null) && (
-        <tr className="border-b border-border">
-          <td />
-          <td colSpan={5} className="pb-2 text-xs">
+        <tr>
+          <Cell />
+          <Cell colSpan={5} className="pt-0 text-xs">
             {row.left_out !== null && (
               <span className="text-muted-foreground">Left out — {row.left_out}.</span>
             )}
@@ -710,7 +712,7 @@ function InterpretedRowLine({ row }: { row: InterpretedRow }) {
                 {problem}
               </span>
             ))}
-          </td>
+          </Cell>
         </tr>
       )}
     </>

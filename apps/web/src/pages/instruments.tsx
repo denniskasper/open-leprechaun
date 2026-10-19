@@ -28,6 +28,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Cell, DetailRow, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -619,6 +620,16 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+const INSTRUMENT_COLUMNS = [
+  "Symbol",
+  "Name",
+  "Family",
+  "Identity",
+  "Teilfreistellung",
+  "Price",
+  "Listings",
+];
+
 function InstrumentTable({
   instruments,
   prices,
@@ -632,20 +643,14 @@ function InstrumentTable({
   const [managing, setManaging] = useState<number | null>(null);
 
   return (
-    <table className="w-full border-collapse text-sm">
+    <Table>
       <thead>
-        <tr className="border-b border-border text-left">
-          {["Symbol", "Name", "Family", "Identity", "Teilfreistellung", "Price", "Listings"].map(
-            (column) => (
-              <th
-                key={column}
-                scope="col"
-                className="microlabel py-2.5 pr-4 text-muted-foreground"
-              >
-                {column}
-              </th>
-            ),
-          )}
+        <tr>
+          {INSTRUMENT_COLUMNS.map((column) => (
+            <Heading key={column} figure={column === "Price"}>
+              {column}
+            </Heading>
+          ))}
         </tr>
       </thead>
       <tbody>
@@ -667,7 +672,7 @@ function InstrumentTable({
           );
         })}
       </tbody>
-    </table>
+    </Table>
   );
 }
 
@@ -695,11 +700,8 @@ function InstrumentRow({
   const cell = classificationCell(instrument);
   return (
     <>
-      <tr
-        className="rise border-b border-border"
-        style={{ animationDelay: `${120 + index * 40}ms` }}
-      >
-        <td className="py-3 pr-4 font-mono tabular-nums">
+      <tr className="rise" style={{ animationDelay: `${120 + index * 40}ms` }}>
+        <Cell data>
           {instrument.symbol}
           {instrument.is_numeraire && (
             <span
@@ -732,44 +734,37 @@ function InstrumentRow({
               {warning}
             </span>
           )}
-        </td>
-        <td className="py-3 pr-4">{instrument.name}</td>
-        <td className="py-3 pr-4 text-muted-foreground">
+        </Cell>
+        <Cell>{instrument.name}</Cell>
+        <Cell className="text-muted-foreground">
           {FAMILY_LABEL[instrument.family]} · {instrument.type}
-        </td>
-        <td
-          className="py-3 pr-4 font-mono tabular-nums"
-          title={instrument.contract_address ?? undefined}
-        >
+        </Cell>
+        <Cell data title={instrument.contract_address ?? undefined}>
           {identityOf(instrument)}
-        </td>
-        <td className="py-3 pr-4">
+        </Cell>
+        <Cell>
           <ClassificationSummary cell={cell} editing={editing} onEdit={onEdit} />
-        </td>
-        <td className="py-3 pr-4 font-mono tabular-nums">
+        </Cell>
+        <Cell figure>
           <PriceCell entry={entry} />
-        </td>
-        <td className="py-3 font-mono tabular-nums text-muted-foreground">
+        </Cell>
+        <Cell data className="text-muted-foreground">
           <ListingsSummary instrument={instrument} managing={managing} onManage={onManage} />
-        </td>
+        </Cell>
       </tr>
       {editing && cell.kind !== "not_applicable" && (
-        <tr className="border-b border-border">
-          <td colSpan={7} className="py-4">
-            <SettleForm
-              instrument={instrument}
-              review={cell.kind === "review"}
-              onDone={() => onEdit(false)}
-            />
-          </td>
-        </tr>
+        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
+          <SettleForm
+            instrument={instrument}
+            review={cell.kind === "review"}
+            onDone={() => onEdit(false)}
+          />
+        </DetailRow>
       )}
       {managing && instrument.family === "security" && (
-        <tr className="border-b border-border">
-          <td colSpan={7} className="py-4">
-            <ListingsEditor instrument={instrument} />
-          </td>
-        </tr>
+        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
+          <ListingsEditor instrument={instrument} />
+        </DetailRow>
       )}
     </>
   );

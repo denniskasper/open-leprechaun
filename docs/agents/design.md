@@ -89,7 +89,7 @@ tier. The content gutters are 32px, 48px from 1280px up (16px below 640px).
 
 **The promise:** from a 1440px viewport up, no table scrolls sideways; and
 the page itself never scrolls sideways at any width.
-`apps/web/e2e/shell.spec.ts` and `apps/web/e2e/futures.spec.ts` hold the
+`apps/web/e2e/shell.spec.ts` and `apps/web/e2e/tables.spec.ts` hold the
 frame to this.
 
 A wide frame must not stretch what reads best narrow, so every block of
@@ -116,6 +116,43 @@ route to its list.
 
 A chart's height follows its width up to a cap (`chartHeight` in
 `pages/portfolio.tsx`), so a wide column draws a chart and not a ribbon.
+
+## Tables
+
+Every table is drawn with `Table` from
+`apps/web/src/components/patterns/table.tsx` — the only way to build one; no
+page renders a bare `<table>`. The frame spans the column and the table in it
+is only as wide as its content needs: a table of a few columns stays compact
+on the left, its rules ending with it. It scrolls sideways only when the
+content really does not fit, under a pinned first column. No guessed minimum
+width (`min-w-*`), no column hidden by window size, no rows restacked as
+cards.
+
+The cells come from the same file, so every table reads alike:
+
+- **`Heading`** — a `.microlabel` column heading; `figure` right-aligns it
+  over figures. It may break onto two lines, so a column is as wide as its
+  values and not its caption.
+- **`RowHeading`** — the cell that names its row, `scope="row"`.
+- **`Cell`** — `figure` sets a value right-aligned in the fixed-pitch face, on
+  one line; `data` keeps the face for a code, a date or a count in words, read
+  from the left.
+- **`Timestamp`** — a timestamp in a cell; a narrow column breaks it between
+  its date and its time, nowhere else.
+- **`DetailRow`** — what a row opens beneath itself (a form, the fills behind
+  a position), kept to the width in view while the table scrolls under it.
+
+The frame (`.table-frame` in `index.css`, with `.table-detail` for what a
+row opens) draws the rule under every row and the pinned column's
+background; a row that tints itself puts the tint on its cells. The frame
+is a size container and takes the width of the block it sits in — inside a
+box that sizes to its content (`w-fit`, an inline flex row) it collapses, so
+never put it in one.
+
+`apps/web/e2e/tables.spec.ts` loads every table screen at 1440px and at
+390px: the page never scrolls sideways, at 1440px no table does and a table
+of few columns stays narrower than the column, and where a table scrolls its
+first column stays put. A new table screen joins its list.
 
 ## Settings panels
 
@@ -164,8 +201,9 @@ that may stand bare, and only where its source names no currency for it: a
 venue's mark or fill price is repeated as stated, never given a currency the
 venue did not say. A share is `formatPercent`, or `formatPercentExact` and
 `formatSignedPercentExact` where it arrives as a fixed-point string; a file
-size is `formatBytes`. Timestamps use `formatTimestamp` and date-only values
-`formatDate`; all format per locale.
+size is `formatBytes`. Timestamps use `formatTimestamp` (in a table cell,
+`Timestamp` — see Tables) and date-only values `formatDate`; all format per
+locale.
 
 The formatters above state digits verbatim. A list or a table rounds what it
 shows instead, with the digits as stated one hover away: use the components in
@@ -219,6 +257,7 @@ The same directory holds the rest of what screens share:
   hint or, in its place, an error. Every form that takes a password uses it.
 - **Amount**, **Money** and **Price** (`figure.tsx`) — a figure rounded for
   reading, its digits as stated on hover. See Numbers above.
+- **Table** and its cells (`table.tsx`) — see Tables above.
 - **CodeField** and **QrCode** — see Settings panels above.
 
 ## Motion
