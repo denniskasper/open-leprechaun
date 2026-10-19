@@ -104,10 +104,10 @@ below `@md` (28rem), wider than the column of any phone held upright. Inside
 a table an `@`-variant answers to the table frame instead, which is the
 width in view. `apps/web/design/breakpoints.test.ts` keeps viewport
 breakpoints out of `pages/` and `components/patterns/`;
-`apps/web/e2e/columns.spec.ts` loads the screens with multi-column grids at
-768px, where the column is narrowest beside the sidebar, and checks that no
-cell overlaps another or spills out of its own — a new screen with a grid
-joins its list.
+`apps/web/e2e/columns.spec.ts` loads Portfolio, Health, the Imports forms
+and the Settings panels at 768px, where the column is narrowest beside the
+sidebar, and checks that no grid cell overlaps another or spills out of its
+own.
 
 **The promise:** from a 1440px viewport up, no table scrolls sideways; and
 the page itself never scrolls sideways at any width.
