@@ -325,3 +325,25 @@ export function formatTimestamp(epochMs: number, locale?: string, timeZone?: str
     timeZone,
   }).format(epochMs);
 }
+
+const TIME_PARTS = new Set<Intl.DateTimeFormatPartTypes>(["hour", "minute", "second", "dayPeriod"]);
+
+/**
+ * A timestamp for a table column: as `formatTimestamp`, but a narrow column
+ * may break it onto a second line only between its date and its time.
+ */
+export function formatTimestampInColumn(
+  epochMs: number,
+  locale?: string,
+  timeZone?: string,
+): string {
+  const parts = new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    timeZone,
+  }).formatToParts(epochMs);
+  const join = parts.findIndex((part) => TIME_PARTS.has(part.type)) - 1;
+  return parts
+    .map((part, index) => (index === join ? part.value : part.value.replaceAll(" ", "\u00a0")))
+    .join("");
+}

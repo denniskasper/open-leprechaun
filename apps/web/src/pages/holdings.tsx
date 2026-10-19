@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Amount } from "@/components/patterns/figure";
+import { Cell, Heading, RowHeading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -500,36 +501,29 @@ function HoldingsTable({
   const groups = groupHoldings(positions, groupMode);
   let row = 0;
   return (
-    <table className="w-full border-collapse text-sm">
+    <Table>
       <thead>
-        <tr className="border-b border-border text-left">
-          <th scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
-            Position
-          </th>
+        <tr>
+          <Heading>Position</Heading>
           {["Quantity", "Avg cost", "Value", "Unrealised"].map((column) => (
-            <th
-              key={column}
-              scope="col"
-              className="microlabel py-2.5 pr-4 text-right text-muted-foreground"
-            >
+            <Heading key={column} figure>
               {column}
-            </th>
+            </Heading>
           ))}
-          <th scope="col" className="microlabel py-2.5 text-muted-foreground">
-            Location
-          </th>
+          <Heading>Location</Heading>
         </tr>
       </thead>
       {groups.map((group) => (
         <tbody key={group.label}>
-          <tr className="border-b border-border bg-canvas/50">
-            <th scope="rowgroup" colSpan={2} className="microlabel py-2 pr-4 text-left">
+          <tr className="microlabel">
+            <RowHeading scope="rowgroup" className="bg-canvas py-2">
               {group.label}
-            </th>
-            <td colSpan={2} className="microlabel py-2 pr-4 text-right text-muted-foreground">
+            </RowHeading>
+            <Cell className="bg-canvas py-2" />
+            <Cell colSpan={2} className="bg-canvas py-2 text-right text-muted-foreground">
               {displayMoney(totalsOf(group.positions).value, currency, rate)}
-            </td>
-            <td />
+            </Cell>
+            <Cell colSpan={2} className="bg-canvas py-2" />
           </tr>
           {group.positions.map((position) => (
             <PositionRow
@@ -542,7 +536,7 @@ function HoldingsTable({
           ))}
         </tbody>
       ))}
-    </table>
+    </Table>
   );
 }
 
@@ -558,8 +552,8 @@ function PositionRow({
   index: number;
 }) {
   return (
-    <tr className="rise border-b border-border" style={{ animationDelay: `${120 + index * 30}ms` }}>
-      <td className="py-3 pr-4">
+    <tr className="rise" style={{ animationDelay: `${120 + index * 30}ms` }}>
+      <Cell>
         <span className="font-mono tabular-nums">{position.symbol}</span>
         {position.is_numeraire && (
           <span className="microlabel ml-2 text-signal" title={NUMERAIRE_TITLE}>
@@ -579,15 +573,15 @@ function PositionRow({
         <span className="block text-muted-foreground">
           {position.name} · {FAMILY_LABEL[position.family]} {position.type}
         </span>
-      </td>
-      <td className="py-3 pr-4 text-right font-mono tabular-nums">
+      </Cell>
+      <Cell figure>
         <Amount
           value={position.quantity}
           symbol={position.family === "security" ? undefined : position.symbol}
           bare
         />
-      </td>
-      <td className="py-3 pr-4 text-right font-mono tabular-nums">
+      </Cell>
+      <Cell figure>
         {position.is_numeraire ? (
           <span className="text-muted-foreground" title={NUMERAIRE_TITLE}>
             —
@@ -601,8 +595,8 @@ function PositionRow({
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="py-3 pr-4 text-right font-mono tabular-nums" title={valuationTitle(position)}>
+      </Cell>
+      <Cell figure title={valuationTitle(position)}>
         {position.value_eur !== null ? (
           displayMoney(position.value_eur, currency, rate)
         ) : (
@@ -613,8 +607,8 @@ function PositionRow({
             unpriced
           </span>
         )}
-      </td>
-      <td className="py-3 pr-4 text-right font-mono tabular-nums">
+      </Cell>
+      <Cell figure>
         {position.unrealised_eur !== null ? (
           <span className={position.unrealised_eur.startsWith("-") ? "text-alarm" : "text-signal"}>
             {displayMoney(position.unrealised_eur, currency, rate)}
@@ -622,8 +616,8 @@ function PositionRow({
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="py-3">
+      </Cell>
+      <Cell>
         {position.platform_name} · {position.account_name}
         {position.access_software && (
           <span
@@ -633,7 +627,7 @@ function PositionRow({
             via {position.access_software}
           </span>
         )}
-      </td>
+      </Cell>
     </tr>
   );
 }
