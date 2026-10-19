@@ -14,6 +14,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Cell, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import type { DisplayCurrency } from "@/lib/display-currency";
 import { formatDate, formatMoney, formatPercent } from "@/lib/format";
@@ -919,28 +920,24 @@ function PointsTable({
       <summary className="microlabel cursor-pointer text-muted-foreground">
         the {points.length} points as a table
       </summary>
-      <table className="mt-3 w-full border-collapse text-sm">
+      <Table className="mt-3">
         <thead>
-          <tr className="border-b border-border text-left">
-            <th scope="col" className="microlabel py-2.5 pr-4 text-muted-foreground">
-              Date
-            </th>
+          <tr>
+            <Heading>Date</Heading>
             {["Value", "Net contributions", "Result", "Positions counted"].map((column) => (
-              <th
-                key={column}
-                scope="col"
-                className="microlabel py-2.5 pr-4 text-right text-muted-foreground"
-              >
+              <Heading key={column} figure>
                 {column}
-              </th>
+              </Heading>
             ))}
           </tr>
         </thead>
         <tbody>
           {[...points].reverse().map((point) => (
-            <tr key={point.snapshot_date} className="border-b border-border">
-              <td className="py-2 pr-4 font-mono tabular-nums">{formatDate(point.snapshot_date)}</td>
-              <td className="py-2 pr-4 text-right font-mono tabular-nums">
+            <tr key={point.snapshot_date}>
+              <Cell figure className="text-left">
+                {formatDate(point.snapshot_date)}
+              </Cell>
+              <Cell figure>
                 {point.value_eur !== null ? (
                   money(point.value_eur)
                 ) : (
@@ -948,8 +945,8 @@ function PointsTable({
                     cannot be stated
                   </span>
                 )}
-              </td>
-              <td className="py-2 pr-4 text-right font-mono tabular-nums">
+              </Cell>
+              <Cell figure>
                 {money(point.net_contributions_eur)}
                 {point.unvalued_flows > 0 && (
                   <span
@@ -959,21 +956,21 @@ function PointsTable({
                     {point.unvalued_flows} unvalued
                   </span>
                 )}
-              </td>
-              <td className="py-2 pr-4 text-right font-mono tabular-nums">
+              </Cell>
+              <Cell figure>
                 {point.result_eur !== null ? (
                   <span className={tone(point.result_eur)}>{money(point.result_eur)}</span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
-              </td>
-              <td className="py-2 pr-4 text-right font-mono tabular-nums">
+              </Cell>
+              <Cell figure>
                 {point.positions_counted} of {point.positions_held}
-              </td>
+              </Cell>
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </details>
   );
 }

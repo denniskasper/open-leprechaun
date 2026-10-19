@@ -32,6 +32,7 @@ import { fetchPlatforms, type Account, type Platform } from "@/api/platforms";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Cell, Heading, RowHeading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -747,35 +748,27 @@ function KindReconciliationTable({
         )}
       </p>
       {result.lines.length > 0 && (
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-xl text-sm">
-            <thead>
-              <tr className="border-y border-border text-left">
-                <th scope="col" className="microlabel py-2 pr-4 font-normal text-muted-foreground">
-                  Instrument
-                </th>
-                {["Live", "Tracked", "Difference"].map((heading) => (
-                  <th
-                    key={heading}
-                    scope="col"
-                    className="microlabel py-2 pl-4 text-right font-normal text-muted-foreground"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {result.lines.map((line) => (
-                <ReconciliationRow
-                  key={line.instrument_id ?? `unresolved-${line.symbol}`}
-                  line={line}
-                  accountId={result.account_id}
-                />
+        <Table className="mt-2">
+          <thead>
+            <tr>
+              <Heading>Instrument</Heading>
+              {["Live", "Tracked", "Difference"].map((heading) => (
+                <Heading key={heading} figure>
+                  {heading}
+                </Heading>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {result.lines.map((line) => (
+              <ReconciliationRow
+                key={line.instrument_id ?? `unresolved-${line.symbol}`}
+                line={line}
+                accountId={result.account_id}
+              />
+            ))}
+          </tbody>
+        </Table>
       )}
     </div>
   );
@@ -789,10 +782,9 @@ function ReconciliationRow({
   accountId: number | null;
 }) {
   const openingBalance = accountId === null ? null : openingBalanceHref(line, accountId);
-  const figure = "py-2 pl-4 text-right font-mono text-xs tabular-nums";
   return (
-    <tr className="align-top">
-      <th scope="row" className="py-2 pr-4 text-left font-normal">
+    <tr>
+      <RowHeading>
         <span className="font-mono text-xs">{line.symbol}</span>
         {line.name && <span className="ml-2 text-xs text-muted-foreground">{line.name}</span>}
         {line.status !== "matched" && (
@@ -826,14 +818,14 @@ function ReconciliationRow({
             )}
           </p>
         )}
-      </th>
-      <td className={figure}>{formatQuantity(line.live)}</td>
-      <td className={`${figure} ${line.tracked === null ? "text-muted-foreground" : ""}`}>
+      </RowHeading>
+      <Cell figure>{formatQuantity(line.live)}</Cell>
+      <Cell figure className={line.tracked === null ? "text-muted-foreground" : undefined}>
         {line.tracked === null ? "—" : formatQuantity(line.tracked)}
-      </td>
-      <td className={`${figure} ${DIFFERENCE_TONE[line.status]}`}>
+      </Cell>
+      <Cell figure className={DIFFERENCE_TONE[line.status]}>
         {line.difference === null ? "unresolved" : formatSignedQuantity(line.difference)}
-      </td>
+      </Cell>
     </tr>
   );
 }

@@ -5,13 +5,13 @@ import { fetchPositionEvents, type FuturesPosition, type LivePosition } from "@/
 import { ErrorState } from "@/components/patterns/error-state";
 import { Amount, Money, Price } from "@/components/patterns/figure";
 import { TONE, type Tone } from "@/components/patterns/lamp";
+import { Cell, DetailRow, Heading, RowHeading, Table, Timestamp } from "@/components/patterns/table";
 import {
   formatEur,
   formatNumber,
   formatPercentExact,
   formatQuantity,
   formatSignedPercentExact,
-  formatTimestamp,
 } from "@/lib/format";
 
 /** An Account by the name the Admin knows it under — null while unknown. */
@@ -23,13 +23,6 @@ export function toneOf(value: string | null): Tone {
   return value.startsWith("-") ? "alarm" : "signal";
 }
 
-// A heading may break onto a second line, so a column is as wide as its
-// figures need and not as its caption happens to be.
-const HEAD = "microlabel py-2 pl-4 text-right align-bottom font-normal text-muted-foreground";
-// The symbol stays in view while the figures scroll sideways under it.
-const HEAD_FIRST =
-  "microlabel sticky left-0 bg-background py-2 pr-4 text-left align-bottom font-normal text-muted-foreground";
-const FIGURE = "py-3 pl-4 text-right font-mono text-xs tabular-nums whitespace-nowrap";
 const UNSTATED = <span className="text-muted-foreground">—</span>;
 
 /** A price as the venue states it: a plain figure, because the venue names no currency for it. */
@@ -37,33 +30,21 @@ function price(value: string | null): ReactNode {
   return value === null ? UNSTATED : <Price value={value} />;
 }
 
-function TableFrame({
-  minWidth,
-  headings,
-  children,
-}: {
-  minWidth: string;
-  headings: string[];
-  children: ReactNode;
-}) {
+function PositionTable({ headings, children }: { headings: string[]; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
-      <table className={`w-full text-sm ${minWidth}`}>
-        <thead>
-          <tr className="border-y border-border">
-            <th scope="col" className={HEAD_FIRST}>
-              Symbol
-            </th>
-            {headings.map((heading) => (
-              <th key={heading} scope="col" className={HEAD}>
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">{children}</tbody>
-      </table>
-    </div>
+    <Table>
+      <thead>
+        <tr>
+          <Heading>Symbol</Heading>
+          {headings.map((heading) => (
+            <Heading key={heading} figure>
+              {heading}
+            </Heading>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </Table>
   );
 }
 
@@ -88,7 +69,7 @@ function SymbolCell({
 }) {
   const Icon = open ? ChevronDown : ChevronRight;
   return (
-    <th scope="row" className="sticky left-0 bg-background py-3 pr-4 text-left font-normal">
+    <RowHeading>
       <div className="flex items-start gap-1.5">
         {onToggle ? (
           <button
@@ -103,23 +84,13 @@ function SymbolCell({
         ) : (
           <span className="size-6 shrink-0" />
         )}
-        <div className="min-w-48">
+        <div>
           <p className="font-mono text-xs whitespace-nowrap">{symbol}</p>
           <p className="mt-1 max-w-64 text-xs text-pretty text-muted-foreground">{detail}</p>
           {caution && <p className="mt-1 max-w-64 text-xs text-pretty text-caution">{caution}</p>}
         </div>
       </div>
-    </th>
-  );
-}
-
-function EventsRow({ columns, position }: { columns: number; position: FuturesPosition }) {
-  return (
-    <tr>
-      <td colSpan={columns} className="pb-5">
-        <Events position={position} />
-      </td>
-    </tr>
+    </RowHeading>
   );
 }
 
@@ -144,14 +115,14 @@ export function LiveTable({
     "Margin",
   ];
   return (
-    <TableFrame minWidth="min-w-5xl" headings={headings}>
+    <PositionTable headings={headings}>
       {positions.map((position) => {
         const key = `${position.symbol}-${position.side}`;
         const matched = ledger.find((entry) => entry.id === position.ledger_position_id);
         const unit = position.settlement_symbol;
         return (
           <Fragment key={key}>
-            <tr className="align-top">
+            <tr>
               <SymbolCell
                 symbol={position.symbol}
                 detail={
@@ -165,19 +136,19 @@ export function LiveTable({
                 open={open === key}
                 onToggle={matched ? () => setOpen(open === key ? null : key) : undefined}
               />
-              <td className={FIGURE}>
+              <Cell figure>
                 <Amount value={position.quantity} symbol={position.quantity_unit ?? undefined} />
                 {position.notional_usd && (
                   <p className="mt-1 text-muted-foreground">
                     <Money value={position.notional_usd} currency="USD" />
                   </p>
                 )}
-              </td>
-              <td className={FIGURE}>{price(position.mark_price)}</td>
-              <td className={FIGURE}>{price(position.entry_price)}</td>
-              <td className={FIGURE}>{price(position.liquidation_price)}</td>
-              <td className={FIGURE}>{price(position.breakeven_price)}</td>
-              <td className={`${FIGURE} ${TONE[toneOf(position.floating_result)].text}`}>
+              </Cell>
+              <Cell figure>{price(position.mark_price)}</Cell>
+              <Cell figure>{price(position.entry_price)}</Cell>
+              <Cell figure>{price(position.liquidation_price)}</Cell>
+              <Cell figure>{price(position.breakeven_price)}</Cell>
+              <Cell figure className={TONE[toneOf(position.floating_result)].text}>
                 {position.floating_result === null ? (
                   UNSTATED
                 ) : (
@@ -190,11 +161,11 @@ export function LiveTable({
                     )}
                   </>
                 )}
-              </td>
-              <td className={FIGURE}>
+              </Cell>
+              <Cell figure>
                 {position.margin_ratio ? formatPercentExact(position.margin_ratio) : UNSTATED}
-              </td>
-              <td className={FIGURE}>
+              </Cell>
+              <Cell figure>
                 {position.margin === null ? (
                   UNSTATED
                 ) : (
@@ -203,15 +174,17 @@ export function LiveTable({
                 {position.margin_mode && (
                   <p className="mt-1 font-sans text-muted-foreground">{position.margin_mode}</p>
                 )}
-              </td>
+              </Cell>
             </tr>
             {matched && open === key && (
-              <EventsRow columns={headings.length + 1} position={matched} />
+              <DetailRow columns={headings.length + 1}>
+                <Events position={matched} />
+              </DetailRow>
             )}
           </Fragment>
         );
       })}
-    </TableFrame>
+    </PositionTable>
   );
 }
 
@@ -236,13 +209,13 @@ export function LedgerTable({
     ...(closed ? ["Net in EUR"] : []),
   ];
   return (
-    <TableFrame minWidth="min-w-5xl" headings={headings}>
+    <PositionTable headings={headings}>
       {positions.map((position) => {
         const unit = position.settlement_symbol;
         const account = accountName(position.account_id);
         return (
           <Fragment key={position.id}>
-            <tr className="align-top">
+            <tr>
               <SymbolCell
                 symbol={position.symbol}
                 detail={[
@@ -253,41 +226,45 @@ export function LedgerTable({
                 open={open === position.id}
                 onToggle={() => setOpen(open === position.id ? null : position.id)}
               />
-              <td className={FIGURE}>{formatTimestamp(Date.parse(position.opened_at))}</td>
+              <Cell figure>
+                <Timestamp value={position.opened_at} />
+              </Cell>
               {closed && (
-                <td className={FIGURE}>
-                  {position.closed_at && formatTimestamp(Date.parse(position.closed_at))}
-                </td>
+                <Cell figure>
+                  {position.closed_at && <Timestamp value={position.closed_at} />}
+                </Cell>
               )}
-              <td className={FIGURE}>
+              <Cell figure>
                 <Amount value={position.realized} symbol={unit} signed />
-              </td>
-              <td className={FIGURE}>
+              </Cell>
+              <Cell figure>
                 <Amount value={position.fees} symbol={unit} />
-              </td>
-              <td className={FIGURE}>
+              </Cell>
+              <Cell figure>
                 <Amount value={position.funding} symbol={unit} signed />
-              </td>
-              <td className={`${FIGURE} ${TONE[toneOf(position.net)].text}`}>
+              </Cell>
+              <Cell figure className={TONE[toneOf(position.net)].text}>
                 <Amount value={position.net} symbol={unit} signed />
-              </td>
+              </Cell>
               {closed && (
-                <td className={FIGURE}>
+                <Cell figure>
                   {position.net_eur === null ? (
                     <span className="font-sans text-caution">awaiting a rate</span>
                   ) : (
                     formatEur(position.net_eur)
                   )}
-                </td>
+                </Cell>
               )}
             </tr>
             {open === position.id && (
-              <EventsRow columns={headings.length + 1} position={position} />
+              <DetailRow columns={headings.length + 1}>
+                <Events position={position} />
+              </DetailRow>
             )}
           </Fragment>
         );
       })}
-    </TableFrame>
+    </PositionTable>
   );
 }
 
@@ -320,13 +297,8 @@ function Events({ position }: { position: FuturesPosition }) {
   }
 
   const unit = position.settlement_symbol;
-  const figure = "py-1.5 font-mono text-xs tabular-nums whitespace-nowrap";
-  const cell = `${figure} pl-4 text-right`;
-  const time = `${figure} text-left`;
-  const head = "microlabel py-1.5 pl-4 text-right font-normal text-muted-foreground";
   return (
-    // Pinned, so it stays in view while the table scrolls sideways under it.
-    <div className="sticky left-0 measure-form space-y-5 pt-1">
+    <div className="space-y-5">
       <div>
         <p className="text-sm font-medium">
           Fills{" "}
@@ -339,47 +311,43 @@ function Events({ position }: { position: FuturesPosition }) {
             None stored — a position entered by hand rests on no fills.
           </p>
         ) : (
-          <div className="mt-1 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th
-                    scope="col"
-                    className="microlabel py-1.5 text-left font-normal text-muted-foreground"
-                  >
-                    Time
-                  </th>
-                  {["Side", "Price", "Size", "Fee", "Result"].map((heading) => (
-                    <th key={heading} scope="col" className={head}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.fills.map((fill) => (
-                  <tr key={fill.id}>
-                    <td className={time}>{formatTimestamp(Date.parse(fill.occurred_at))}</td>
-                    <td className={`${cell} font-sans`}>{fill.side}</td>
-                    <td className={cell}>{price(fill.price)}</td>
-                    <td className={cell}>
-                      <Amount value={fill.size} />
-                    </td>
-                    <td className={cell}>
-                      <Amount value={fill.fee} symbol={unit} />
-                    </td>
-                    <td className={cell}>
-                      {fill.realized === null ? (
-                        UNSTATED
-                      ) : (
-                        <Amount value={fill.realized} symbol={unit} signed />
-                      )}
-                    </td>
-                  </tr>
+          <Table className="mt-1">
+            <thead>
+              <tr>
+                <Heading>Time</Heading>
+                <Heading>Side</Heading>
+                {["Price", "Size", "Fee", "Result"].map((heading) => (
+                  <Heading key={heading} figure>
+                    {heading}
+                  </Heading>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {data.fills.map((fill) => (
+                <tr key={fill.id}>
+                  <Cell figure className="text-left">
+                    <Timestamp value={fill.occurred_at} />
+                  </Cell>
+                  <Cell>{fill.side}</Cell>
+                  <Cell figure>{price(fill.price)}</Cell>
+                  <Cell figure>
+                    <Amount value={fill.size} />
+                  </Cell>
+                  <Cell figure>
+                    <Amount value={fill.fee} symbol={unit} />
+                  </Cell>
+                  <Cell figure>
+                    {fill.realized === null ? (
+                      UNSTATED
+                    ) : (
+                      <Amount value={fill.realized} symbol={unit} signed />
+                    )}
+                  </Cell>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
         )}
       </div>
 
@@ -399,23 +367,25 @@ function Events({ position }: { position: FuturesPosition }) {
               <span className="ml-2 font-sans text-muted-foreground">in total</span>
             </p>
             <div
-              className="mt-2 max-h-56 overflow-y-auto border-y border-border"
+              className="mt-2 max-h-56 overflow-y-auto border-y border-border [&_tr:last-child]:border-b-0"
               tabIndex={0}
               role="group"
               aria-label="Funding payments"
             >
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-border">
+              <Table>
+                <tbody>
                   {data.funding.map((payment) => (
                     <tr key={payment.id}>
-                      <td className={time}>{formatTimestamp(Date.parse(payment.occurred_at))}</td>
-                      <td className={cell}>
+                      <Cell figure className="text-left">
+                        <Timestamp value={payment.occurred_at} />
+                      </Cell>
+                      <Cell figure>
                         <Amount value={payment.amount} symbol={unit} signed />
-                      </td>
+                      </Cell>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
             </div>
           </>
         )}

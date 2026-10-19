@@ -24,9 +24,10 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Amount } from "@/components/patterns/figure";
+import { Cell, DetailRow, Heading, Table, Timestamp } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatDate, formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatDate, formatMoneyExact, formatQuantity } from "@/lib/format";
 
 interface TypeWords {
   /** The event as the ledger and the form both speak it. */
@@ -488,10 +489,10 @@ function LedgerTable({
           onDone={() => setSelected(new Set())}
         />
       )}
-      <table className="w-full border-collapse text-sm">
+      <Table>
         <thead>
-          <tr className="border-b border-border text-left">
-            <th scope="col" className="w-8 py-2.5 pr-2">
+          <tr>
+            <Heading className="w-8 pr-2">
               <input
                 type="checkbox"
                 aria-label="Select every Transaction"
@@ -504,15 +505,9 @@ function LedgerTable({
                   )
                 }
               />
-            </th>
-            {["When", "Event", "Legs", ""].map((column, index) => (
-              <th
-                key={column || "actions"}
-                scope="col"
-                className={`microlabel py-2.5 text-muted-foreground ${index === 3 ? "" : "pr-4"}`}
-              >
-                {column}
-              </th>
+            </Heading>
+            {["When", "Event", "Legs", ""].map((column) => (
+              <Heading key={column || "actions"}>{column}</Heading>
             ))}
           </tr>
         </thead>
@@ -531,7 +526,7 @@ function LedgerTable({
             />
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }
@@ -663,22 +658,22 @@ function LedgerRow({
   return (
     <>
       <tr
-        className="rise border-b border-border align-top"
+        className="rise"
         style={{ animationDelay: `${120 + index * 40}ms` }}
         aria-label={`${TYPE_VOCABULARY[transaction.type].label} on ${transaction.occurred_at}`}
       >
-        <td className="py-3 pr-2">
+        <Cell className="pr-2">
           <input
             type="checkbox"
             aria-label={`Select the ${TYPE_VOCABULARY[transaction.type].label} on ${transaction.occurred_at}`}
             checked={selected}
             onChange={onToggle}
           />
-        </td>
-        <td className="py-3 pr-4 font-mono text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(Date.parse(transaction.occurred_at))}
-        </td>
-        <td className="py-3 pr-4">
+        </Cell>
+        <Cell figure className="text-left text-muted-foreground">
+          <Timestamp value={transaction.occurred_at} />
+        </Cell>
+        <Cell>
           <span className="font-medium">{TYPE_VOCABULARY[transaction.type].label}</span>
           {(transaction.import_source || transaction.manually_overridden) && (
             <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
@@ -733,8 +728,8 @@ function LedgerRow({
               {transaction.note}
             </p>
           )}
-        </td>
-        <td className="py-3 pr-4">
+        </Cell>
+        <Cell>
           <ul className="space-y-1">
             {transaction.legs.map((leg) => (
               <li key={leg.id} className="flex flex-wrap items-baseline gap-x-2">
@@ -765,8 +760,8 @@ function LedgerRow({
               </li>
             ))}
           </ul>
-        </td>
-        <td className="py-3 text-right">
+        </Cell>
+        <Cell className="text-right">
           <div className="flex justify-end gap-1">
             <Button
               variant="ghost"
@@ -779,19 +774,17 @@ function LedgerRow({
             </Button>
             <RemoveButton transaction={transaction} />
           </div>
-        </td>
+        </Cell>
       </tr>
       {editing && (
-        <tr className="border-b border-border">
-          <td colSpan={5} className="py-4">
-            <TransactionForm
-              instruments={instruments}
-              platforms={platforms}
-              revising={transaction}
-              onDone={() => setEditing(false)}
-            />
-          </td>
-        </tr>
+        <DetailRow columns={5}>
+          <TransactionForm
+            instruments={instruments}
+            platforms={platforms}
+            revising={transaction}
+            onDone={() => setEditing(false)}
+          />
+        </DetailRow>
       )}
     </>
   );
