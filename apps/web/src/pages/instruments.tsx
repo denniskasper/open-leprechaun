@@ -750,13 +750,22 @@ function InstrumentRow({
   const removal = useRemoval(() => removeInstrument(instrument.id), ["instruments"]);
   const goes = useWhatGoesWith(instrument, removal.confirming);
   // The row shows one thing at a time: a removal half asked for, or refused,
-  // does not stand beside an editor opened after it.
+  // does not stand beside an editor opened after it — nor an open editor
+  // beside a removal asked for after it.
   const opening = (open: (opened: boolean) => void) => (opened: boolean) => {
     if (opened) {
       removal.keep();
       removal.forget();
     }
     open(opened);
+  };
+  const asking = {
+    ...removal,
+    ask: () => {
+      if (editing) onEdit(false);
+      if (managing) onManage(false);
+      removal.ask();
+    },
   };
   return (
     <>
@@ -817,7 +826,7 @@ function InstrumentRow({
         </Cell>
         <Cell className="text-right whitespace-nowrap">
           <RemoveButtons
-            removal={removal}
+            removal={asking}
             name={`${instrument.symbol} ${identityOf(instrument)}`}
             className="h-7 px-2"
           />
