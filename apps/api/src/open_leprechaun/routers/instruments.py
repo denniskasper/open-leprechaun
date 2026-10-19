@@ -14,13 +14,15 @@ from pydantic import (
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
-from open_leprechaun.repositories import stances
+from open_leprechaun.repositories import instruments, stances
 from open_leprechaun.repositories.stances import Refusal
 from open_leprechaun.services.instruments import (
     AlreadyExists,
     InstrumentOverview,
+    Refused,
     add_by_hand,
     overview,
+    remove_instrument,
 )
 from open_leprechaun.services.stances import InboxItem, inbox, settled_inflow_type
 
@@ -273,6 +275,22 @@ def add_instrument(
     return AddedResponse(id=added)
 
 
+@router.delete(
+    "/instruments/{instrument_id}",
+    summary="Remove an Instrument nothing in the ledger refers to",
+    status_code=204,
+)
+def delete_instrument(instrument_id: int, admin: AdminDep, engine: EngineDep) -> None:
+    """The repair for a mistyped identity (issue 9): remove the wrong
+    Instrument and add the right one. What the Admin declared about it and
+    its stored prices go with it; history never does."""
+    removal = remove_instrument(engine, instrument_id)
+    if removal is instruments.Refusal.no_such_instrument:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_INSTRUMENT)
+    if isinstance(removal, Refused):
+        raise HTTPException(status_code=409, detail=removal.reason)
+
+
 @router.get(
     "/inbox",
     summary="Unacknowledged arrivals awaiting a Stance, newest first",
@@ -325,8 +343,11 @@ def unclassify_instrument(
         raise HTTPException(status_code=404, detail="No such Stance decision.")
 
 
+# A stale id, told apart from a refusal — in one wording wherever it is answered.
+_NO_SUCH_INSTRUMENT = "No such Instrument."
+
 _MISSING = {
-    Refusal.no_such_instrument: "No such Instrument.",
+    Refusal.no_such_instrument: _NO_SUCH_INSTRUMENT,
     Refusal.no_such_account: "No such Account.",
 }
 

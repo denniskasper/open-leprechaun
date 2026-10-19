@@ -2,8 +2,14 @@
 
 Each creator returns the new row's id, or None when that identity already
 exists — the unique indexes are the arbiter, so a racing duplicate loses
-cleanly. Decisions live in the service.
+cleanly. Decisions live in the service — except that a removal reads what
+refers to the row under the same lock it deletes under, so nothing can come
+to refer to it between the two; how a refusal is worded is still the
+service's.
 """
+
+from dataclasses import dataclass
+from enum import Enum
 
 from sqlalchemy import Connection, Engine, Row, text
 from sqlalchemy.exc import IntegrityError
@@ -334,6 +340,82 @@ def answering_to_ticker(engine: Engine, ticker: str) -> list[Row]:
                 {"ticker": ticker},
             ).all()
         )
+
+
+class Refusal(Enum):
+    """Why a write did not happen, in the caller's terms rather than SQL's."""
+
+    no_such_instrument = "no_such_instrument"
+
+
+@dataclass(frozen=True)
+class InstrumentHolders:
+    """What keeps an Instrument from being removed: being the numéraire, which
+    is judged before anything else, or the kinds of ledger fact that refer to
+    it — named, never counted."""
+
+    symbol: str
+    numeraire: bool
+    uses: tuple[str, ...] = ()
+
+
+# Every fact in the ledger that refers to an Instrument, each as the condition
+# it does so under. Each holds the Instrument by RESTRICT; Tax Lots are absent
+# because they are a materialisation of these (ADR-0014), and go with it.
+_REFERRED_TO_BY = {
+    "transaction_leg": "SELECT 1 FROM transaction_leg WHERE instrument_id = :instrument_id",
+    "futures_fill": "SELECT 1 FROM futures_fill WHERE settlement_instrument_id = :instrument_id",
+    "funding_payment": (
+        "SELECT 1 FROM funding_payment WHERE settlement_instrument_id = :instrument_id"
+    ),
+    "futures_position": (
+        "SELECT 1 FROM futures_position WHERE settlement_instrument_id = :instrument_id"
+    ),
+    "capital_income": "SELECT 1 FROM capital_income WHERE paying_instrument_id = :instrument_id",
+    "corporate_action": (
+        "SELECT 1 FROM corporate_action"
+        " WHERE :instrument_id IN (instrument_id, target_instrument_id)"
+    ),
+}
+
+
+def delete_instrument(engine: Engine, instrument_id: int) -> InstrumentHolders | Refusal | None:
+    """Remove an Instrument nothing in the ledger refers to. None means it is
+    gone — and what the Admin declared about it, and its stored prices, went
+    along by cascade; otherwise nothing was deleted, and the answer is what
+    holds it.
+
+    The row is locked before it is judged: a leg or a futures record arriving
+    meanwhile needs the Instrument's key, so it waits and then finds no
+    Instrument — it can never slip in between the judgement and the delete.
+    The RESTRICT foreign keys stay the backstop.
+    """
+    with engine.begin() as connection:
+        found = connection.execute(
+            text(
+                "SELECT symbol, is_numeraire FROM instrument WHERE id = :instrument_id FOR UPDATE"
+            ),
+            {"instrument_id": instrument_id},
+        ).one_or_none()
+        if found is None:
+            return Refusal.no_such_instrument
+        if found.is_numeraire:
+            return InstrumentHolders(symbol=found.symbol, numeraire=True)
+        referred = connection.execute(
+            text(
+                "SELECT "
+                + ", ".join(f"EXISTS ({query}) AS {use}" for use, query in _REFERRED_TO_BY.items())
+            ),
+            {"instrument_id": instrument_id},
+        ).one()
+        uses = tuple(use for use in _REFERRED_TO_BY if getattr(referred, use))
+        if uses:
+            return InstrumentHolders(symbol=found.symbol, numeraire=False, uses=uses)
+        connection.execute(
+            text("DELETE FROM instrument WHERE id = :instrument_id"),
+            {"instrument_id": instrument_id},
+        )
+    return None
 
 
 def get(engine: Engine, instrument_id: int) -> Row | None:
