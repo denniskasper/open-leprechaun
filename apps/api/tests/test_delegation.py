@@ -151,16 +151,3 @@ def test_the_ledger_has_no_delegation_transaction_type():
     for word in ("delegate", "delegation", "undelegate", "stake", "unstake"):
         assert word not in TRANSACTION_TYPES
         assert word not in TAX_CONSEQUENCES
-
-
-def test_the_import_warning_names_the_event_and_asks_the_admin(db):
-    """Delegation events found during import are surfaced as warnings, never
-    imported as transactions — whether coins moved between the Admin's own
-    Accounts is the Admin's statement to make, as a self-transfer."""
-    warning = delegation.import_warning(event="delegate", symbol="SOL", account_name="Hot wallet")
-
-    assert "delegate" in warning
-    assert "SOL" in warning
-    assert "Hot wallet" in warning
-    assert "did not import" in warning
-    assert "self-transfer" in warning

@@ -16,8 +16,7 @@ as transactions: the transaction vocabulary deliberately has no delegation
 type, so a delegation cannot even be recorded as one. Whether coins moved
 between the Admin's own Accounts is a fact the Admin states — as a
 self-transfer (ticket 16) — never one an import infers from a delegation
-event. The import framework (ticket 31) asks `import_warning` for the
-sentence it surfaces.
+event.
 """
 
 from dataclasses import dataclass
@@ -70,15 +69,3 @@ def overview(engine: Engine) -> list[DelegationMarker]:
         )
         for row in delegations.list_markers(engine)
     ]
-
-
-def import_warning(*, event: str, symbol: str, account_name: str) -> str:
-    """The sentence an import (ticket 31) surfaces for a delegation event it
-    found — the event is never imported as a transaction, because whether
-    coins moved is the Admin's statement to make, never the import's."""
-    return (
-        f"The import found a delegation event ({event}) for {symbol} at {account_name}"
-        " and did not import it: a delegation is not a transaction. If the coins moved"
-        " between your own Accounts, record the movement as a self-transfer; either way"
-        " you can set the delegation marker on the holding."
-    )
