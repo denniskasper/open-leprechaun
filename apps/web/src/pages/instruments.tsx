@@ -517,7 +517,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="mt-4 space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @lg:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor={`${id}-isin`} className="microlabel block text-muted-foreground">
             ISIN

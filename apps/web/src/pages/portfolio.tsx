@@ -383,7 +383,7 @@ function ResultStrip({
         )}
       </Figure>
 
-      <div className="mt-8 grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-x-10 gap-y-6 @lg:grid-cols-2 @5xl:grid-cols-4">
         <Figure
           label="Net contributions"
           title={`${money(current.contributions_eur)} put in, ${money(current.withdrawals_eur)} taken out — transfers in and out that no confirmed self-transfer explains, Opening Balances and spends.`}
@@ -572,7 +572,7 @@ function DevelopmentSection({
           {change ? (
             <dl
               aria-label={`Change from ${formatDate(change.from)} to ${formatDate(change.to)}`}
-              className="grid gap-x-10 gap-y-4 border-y border-border py-4 sm:grid-cols-3"
+              className="grid gap-x-10 gap-y-4 border-y border-border py-4 @2xl:grid-cols-3"
             >
               <div>
                 <dt className="microlabel text-muted-foreground">Change in value</dt>
@@ -591,7 +591,7 @@ function DevelopmentSection({
                 </dd>
               </div>
               {change.partial && (
-                <p className="microlabel measure-prose text-caution sm:col-span-3">
+                <p className="microlabel measure-prose text-caution @2xl:col-span-3">
                   a point at either end leaves out a position or an unvalued contribution — part
                   of this result may be money moved or a price gone missing, not a gain or loss
                 </p>
@@ -1002,7 +1002,7 @@ function AllocationSection({ positions, display }: { positions: Position[]; disp
           }
         />
       ) : (
-        <div className="grid gap-x-12 gap-y-10 lg:grid-cols-3">
+        <div className="grid gap-x-12 gap-y-10 @4xl:grid-cols-3">
           {(["asset_class", "instrument", "platform"] as const).map((dimension) => (
             <AllocationChart
               key={dimension}

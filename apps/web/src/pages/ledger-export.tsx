@@ -102,7 +102,7 @@ function Manifest({ data }: { data: LedgerExport }) {
   const tool = TOOL[data.format];
   return (
     <section aria-label="The export file" className="rise measure-list space-y-6">
-      <dl className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-8 gap-y-6 @xl:grid-cols-3">
         <div>
           <dt className="microlabel text-muted-foreground">Rows in the file</dt>
           <dd className="mt-1.5 font-mono text-2xl tabular-nums">{formatNumber(data.row_count)}</dd>
@@ -131,7 +131,7 @@ function Manifest({ data }: { data: LedgerExport }) {
           </a>
         </Button>
         <p className="font-mono text-xs text-muted-foreground">{data.filename}</p>
-        <p className="text-sm text-muted-foreground sm:ml-auto">
+        <p className="text-sm text-muted-foreground @4xl:ml-auto">
           Outward only — nothing is ever read back from {tool}.
         </p>
       </div>
@@ -164,7 +164,7 @@ function Settings({ tool }: { tool: string }) {
         {SETTINGS.map((setting) => (
           <div
             key={setting.term}
-            className="grid gap-x-6 gap-y-1 border-b border-border py-3 text-sm sm:grid-cols-[11rem_6rem_1fr]"
+            className="grid gap-x-6 gap-y-1 border-b border-border py-3 text-sm @xl:grid-cols-[11rem_6rem_1fr]"
           >
             <dt>{setting.term}</dt>
             <dd className="font-mono tabular-nums">{setting.value}</dd>

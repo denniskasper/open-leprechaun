@@ -32,7 +32,7 @@ export function SettingsPanel({
 
 /**
  * One group of controls inside a panel: what it is and what it does on the
- * left, the controls themselves on the right; stacked on a narrow screen.
+ * left, the controls themselves on the right; stacked in a narrow column.
  * The description is where a consequence is stated before the control that
  * causes it.
  */
@@ -50,7 +50,7 @@ export function SettingsGroup({
   return (
     <section
       aria-labelledby={headingId}
-      className="grid gap-x-10 gap-y-5 py-8 md:grid-cols-[15rem_minmax(0,1fr)]"
+      className="grid gap-x-10 gap-y-5 py-8 @2xl:grid-cols-[15rem_minmax(0,1fr)]"
     >
       <div>
         <h2 id={headingId} className="text-base font-medium">

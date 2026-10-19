@@ -132,12 +132,12 @@ function Step({ item, position, next }: { item: ChecklistItem; position: number;
   const copy = STEPS[item.key];
   return (
     <li
-      className="rise grid grid-cols-[2.25rem_1fr] gap-x-3 gap-y-3 py-5 sm:grid-cols-[2.25rem_1fr_auto] sm:items-center"
+      className="rise grid grid-cols-[2.25rem_1fr] gap-x-3 gap-y-3 py-5 @xl:grid-cols-[2.25rem_1fr_auto] @xl:items-center"
       style={{ animationDelay: `${140 + position * 50}ms` }}
     >
       <span
         aria-hidden
-        className={`pt-0.5 font-mono text-sm tabular-nums sm:self-start ${
+        className={`pt-0.5 font-mono text-sm tabular-nums @xl:self-start ${
           item.done ? "text-muted-foreground" : "text-foreground"
         }`}
       >
@@ -161,7 +161,7 @@ function Step({ item, position, next }: { item: ChecklistItem; position: number;
         <p className="mt-1 measure-prose text-sm text-pretty text-muted-foreground">{item.detail}</p>
       </div>
       {!item.done && (
-        <div className="col-start-2 flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-start-3 sm:justify-end">
+        <div className="col-start-2 flex flex-wrap items-center gap-x-4 gap-y-2 @xl:col-start-3 @xl:justify-end">
           <Button asChild size="sm" variant={next ? "default" : "outline"}>
             <Link to={item.resolve_path}>
               {copy.action}

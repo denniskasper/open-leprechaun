@@ -615,7 +615,7 @@ function LotTable({
       {lots.map((lot) => (
         <li
           key={`${lot.account_id}:${lot.acquired_at}:${lot.before.quantity}:${lot.before.basis_eur}`}
-          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto_minmax(0,1.3fr)] items-center gap-x-4 gap-y-1 border-b border-border py-3 first:border-t max-md:grid-cols-1"
+          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto_minmax(0,1.3fr)] items-center gap-x-4 gap-y-1 border-b border-border py-3 first:border-t @max-3xl:grid-cols-1"
         >
           <div>
             <p className="text-sm">{placeOf(lot.account_id)}</p>
@@ -624,7 +624,7 @@ function LotTable({
             </p>
           </div>
           <StateCell state={lot.before} symbolOf={symbolOf} />
-          <ArrowRight aria-label="becomes" className="size-4 text-muted-foreground max-md:hidden" />
+          <ArrowRight aria-label="becomes" className="size-4 text-muted-foreground @max-3xl:hidden" />
           <div className="space-y-1">
             {lot.after.length === 0 ? (
               <p className="text-sm text-muted-foreground">

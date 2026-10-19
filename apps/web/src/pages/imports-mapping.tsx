@@ -186,7 +186,7 @@ export function MappingPanel({
       className="rise space-y-6 border-y border-border py-6"
       style={{ animationDelay: "80ms" }}
     >
-      <div className="grid measure-form gap-4 sm:grid-cols-3">
+      <div className="grid measure-form gap-4 @xl:grid-cols-3">
         <Field id={`${fieldId}-account`} label="Into Account">
           <NativeSelect
             id={`${fieldId}-account`}
@@ -241,7 +241,7 @@ export function MappingPanel({
 
       {file !== null && interpreted.data && (
         <>
-          <div className="grid measure-form gap-4 sm:grid-cols-3">
+          <div className="grid measure-form gap-4 @xl:grid-cols-3">
             <Field id={`${fieldId}-delimiter`} label="Cells are separated by">
               <NativeSelect
                 id={`${fieldId}-delimiter`}
@@ -271,7 +271,7 @@ export function MappingPanel({
             </Field>
           </div>
 
-          <div className="grid measure-form gap-4 sm:grid-cols-3">
+          <div className="grid measure-form gap-4 @xl:grid-cols-3">
             <ColumnField
               id={`${fieldId}-occurred`}
               label="Timestamp"
@@ -610,7 +610,7 @@ function TranslationTable({
       <p className="microlabel text-muted-foreground">
         The file's type values, each mapped or deliberately left out
       </p>
-      <div className="grid measure-list gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid measure-list gap-2 @xl:grid-cols-2 @4xl:grid-cols-3">
         {rows.map((raw) => {
           const target = raw in draft.type_values ? draft.type_values[raw] : UNMAPPED;
           return (

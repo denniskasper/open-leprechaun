@@ -59,10 +59,12 @@ export function AppShell() {
           </header>
           <TwoFactorReminder />
 
+          {/* The query container for everything a page draws: page content
+              answers to this column with @-variants, never to the window. */}
           <main
             id="content"
             tabIndex={-1}
-            className="flex-1 px-4 py-8 outline-none sm:px-8 sm:py-10 xl:px-12"
+            className="@container flex-1 px-4 py-8 outline-none sm:px-8 sm:py-10 xl:px-12"
           >
             <Outlet />
           </main>

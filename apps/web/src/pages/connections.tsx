@@ -878,13 +878,14 @@ function AddConnectionForm({
     >
       <p className="microlabel mb-4 text-muted-foreground">New Connection</p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @lg:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${id}-platform`} className="microlabel block text-muted-foreground">
             Platform
           </label>
           <NativeSelect
             id={`${id}-platform`}
+            className="w-full"
             value={platformId}
             onChange={(event) => setPlatformId(Number(event.target.value))}
           >
@@ -905,6 +906,7 @@ function AddConnectionForm({
           </label>
           <NativeSelect
             id={`${id}-venue`}
+            className="w-full"
             value={venueKey}
             onChange={(event) => setVenueKey(event.target.value)}
           >
@@ -934,7 +936,7 @@ function AddConnectionForm({
         </aside>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 @lg:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${id}-label`} className="microlabel block text-muted-foreground">
             Label

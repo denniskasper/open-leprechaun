@@ -70,7 +70,9 @@ sheet.
 Pages render into the shell's content region and open with `PageHeader`
 (`apps/web/src/components/page-header.tsx`). A new screen registers its route
 in `apps/web/src/main.tsx` and its nav entry in `apps/web/src/navigation.ts`;
-sidebar, mobile sheet and active states follow from that one entry.
+sidebar, mobile sheet and active states follow from that one entry. Setup
+and login stand outside that shell, in `AuthShell`
+(`apps/web/src/components/shell/auth-shell.tsx`).
 
 ## Layout and width
 
@@ -86,6 +88,26 @@ answers to the viewport, in four tiers:
 
 The sheet's cap is `max-w-sheet` (96rem) and the sidebar is 240px at every
 tier. The content gutters are 32px, 48px from 1280px up (16px below 640px).
+
+**Shell by viewport, page content by container.** The viewport breakpoints
+(`sm:`, `md:`, `lg:`, `xl:`, `2xl:` and their `min-` and `max-` forms) belong
+to the shell alone — sidebar or sheet, gutters, capped sheet. The shell's content
+region is a query container, and everything a page draws answers to that
+column with container variants: `@lg:grid-cols-2`, `@max-xl:grid-cols-1`.
+The sidebar takes 240px of the window, so a viewport breakpoint inside a
+page fires at a column 240px narrower than its name suggests — a grid at
+`md:` splits a 464px column. Choose each threshold for the column width at
+which that layout stops fitting, not by the old viewport name. As a guide:
+two fields side by side from `@lg` (32rem), three from `@xl` (36rem), a
+group's heading beside its controls from `@2xl` (42rem); no threshold sits
+below `@md` (28rem), wider than the column of any phone held upright. Inside
+a table an `@`-variant answers to the table frame instead, which is the
+width in view. `apps/web/design/breakpoints.test.ts` keeps viewport
+breakpoints out of `pages/` and `components/patterns/`;
+`apps/web/e2e/columns.spec.ts` loads Portfolio, Health, the Imports forms
+and the Settings panels at 768px, where the column is narrowest beside the
+sidebar, and checks that no grid cell overlaps another or spills out of its
+own.
 
 **The promise:** from a 1440px viewport up, no table scrolls sideways; and
 the page itself never scrolls sideways at any width.
@@ -165,7 +187,7 @@ open with `PageHeader` directly — bring one onto it when next reworking it.
 - **`SettingsPanel`** — the heading and one line saying what the panel
   governs. It renders the `PageHeader` itself, so a panel does not add its own.
 - **`SettingsGroup`** — one named group of controls: title and description on
-  the left, controls on the right, stacked on a narrow screen. Groups are
+  the left, controls on the right, stacked in a narrow column. Groups are
   ruled apart by hairlines; no cards, no boxes.
 
 The description is where a consequence is stated, before the control that
