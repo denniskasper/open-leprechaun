@@ -143,10 +143,11 @@ The cells come from the same file, so every table reads alike:
   a position), kept to the width in view while the table scrolls under it.
 
 The frame (`.table-frame` in `index.css`, with `.table-detail` for what a
-row opens) draws the rule under every row and the pinned column's background; a row that tints itself puts the tint on its
-cells. The frame is a size container and takes the width of the block it
-sits in — inside a box that sizes to its content (`w-fit`, an inline flex
-row) it collapses, so never put it in one.
+row opens) draws the rule under every row and the pinned column's
+background; a row that tints itself puts the tint on its cells. The frame
+is a size container and takes the width of the block it sits in — inside a
+box that sizes to its content (`w-fit`, an inline flex row) it collapses, so
+never put it in one.
 
 `apps/web/e2e/tables.spec.ts` loads every table screen at 1440px and at
 390px: the page never scrolls sideways, at 1440px no table does and a table
@@ -200,8 +201,9 @@ that may stand bare, and only where its source names no currency for it: a
 venue's mark or fill price is repeated as stated, never given a currency the
 venue did not say. A share is `formatPercent`, or `formatPercentExact` and
 `formatSignedPercentExact` where it arrives as a fixed-point string; a file
-size is `formatBytes`. Timestamps use `formatTimestamp` and date-only values
-`formatDate`; all format per locale.
+size is `formatBytes`. Timestamps use `formatTimestamp` (in a table cell,
+`Timestamp` — see Tables) and date-only values `formatDate`; all format per
+locale.
 
 The formatters above state digits verbatim. A list or a table rounds what it
 shows instead, with the digits as stated one hover away: use the components in
