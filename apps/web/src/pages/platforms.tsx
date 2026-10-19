@@ -152,7 +152,7 @@ export function PlatformsPage() {
     >
       <SettingsGroup
         title="Registered Platforms"
-        description="Grouped by kind, each with the Accounts under it. A Platform is removed only once it holds no Account."
+        description="Grouped by kind, each with the Accounts under it. A Platform is removed only once it holds no Account and no Connection."
         measure="list"
       >
         {error ? (
