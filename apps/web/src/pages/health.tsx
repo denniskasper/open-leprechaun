@@ -323,7 +323,7 @@ function Report({ report }: { report: HealthReport | undefined }) {
             title="Storage"
             description="How large the database is, and how much price history it holds."
           >
-            <dl className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-x-8 gap-y-6 @4xl:grid-cols-4">
               <Figure label="Database" value={formatBytes(report.storage.database_bytes)} />
               <Figure
                 label="Crypto closes"
@@ -344,7 +344,7 @@ function Report({ report }: { report: HealthReport | undefined }) {
 
 function ProblemRow({ problem }: { problem: Problem }) {
   return (
-    <li className="grid gap-x-8 gap-y-3 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+    <li className="grid gap-x-8 gap-y-3 py-5 @lg:grid-cols-[minmax(0,1fr)_auto] @lg:items-start">
       <div className="min-w-0">
         <div className="flex items-center gap-3">
           <Lamp tone={problem.tone} size="sm" pulsing={false} />
@@ -367,7 +367,7 @@ function ProblemRow({ problem }: { problem: Problem }) {
           </ul>
         )}
       </div>
-      <Button asChild variant="outline" size="sm" className="ml-5.5 justify-self-start sm:ml-0">
+      <Button asChild variant="outline" size="sm" className="ml-5.5 justify-self-start @lg:ml-0">
         <Link to={problem.to}>
           {problem.action}
           <ArrowRight aria-hidden />
@@ -484,7 +484,7 @@ function Section({
   return (
     <section
       aria-labelledby={headingId}
-      className="rise grid measure-list gap-x-10 gap-y-5 py-8 md:grid-cols-[15rem_minmax(0,1fr)]"
+      className="rise grid measure-list gap-x-10 gap-y-5 py-8 @2xl:grid-cols-[15rem_minmax(0,1fr)]"
       style={{ animationDelay: `${260 + index * 60}ms` }}
     >
       <div>

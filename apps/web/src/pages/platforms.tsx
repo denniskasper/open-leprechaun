@@ -974,7 +974,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
       className="mt-3 ml-4 measure-form rounded-xl border border-border p-4"
       aria-label={`Add ${noun === "Account" ? "an" : "a"} ${noun} under ${platform.name}`}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @lg:grid-cols-2">
         {fields.map((field) => (
           <div key={field.key} className="space-y-2">
             <label htmlFor={`${id}-${field.key}`} className="microlabel block text-muted-foreground">

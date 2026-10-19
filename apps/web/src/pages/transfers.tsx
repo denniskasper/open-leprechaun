@@ -232,7 +232,7 @@ function CandidateCard({ candidate, index }: { candidate: Candidate; index: numb
       style={{ animationDelay: `${120 + index * 40}ms` }}
       aria-label={`Proposed match: ${formatRoundedAssetAmount(incoming.quantity, incoming.instrument_symbol)} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
     >
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 max-sm:grid-cols-1">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 @max-xl:grid-cols-1">
         <SideBlock leg={outgoing} label="Left" />
         <ParcelStrip incoming={incoming} />
         <SideBlock leg={incoming} label="Arrived" alignRight />
@@ -314,7 +314,7 @@ function DecisionCard({ decision, index }: { decision: Decision; index: number }
       style={{ animationDelay: `${120 + index * 40}ms` }}
       aria-label={`Confirmed self-transfer: ${formatRoundedAssetAmount(incoming.quantity, incoming.instrument_symbol)} from ${placeOf(outgoing)} to ${placeOf(incoming)}`}
     >
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 max-sm:grid-cols-1">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 @max-xl:grid-cols-1">
         <SideBlock leg={outgoing} label="Left" />
         <div className="text-center">
           <ParcelStrip incoming={incoming} />

@@ -878,7 +878,7 @@ function AddConnectionForm({
     >
       <p className="microlabel mb-4 text-muted-foreground">New Connection</p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @lg:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${id}-platform`} className="microlabel block text-muted-foreground">
             Platform
@@ -936,7 +936,7 @@ function AddConnectionForm({
         </aside>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 @lg:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${id}-label`} className="microlabel block text-muted-foreground">
             Label

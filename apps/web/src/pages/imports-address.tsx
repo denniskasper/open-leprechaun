@@ -95,7 +95,7 @@ export function AddressPanel({
       className="rise space-y-5 border-y border-border py-6"
       style={{ animationDelay: "80ms" }}
     >
-      <div className="grid measure-form gap-4 sm:grid-cols-3">
+      <div className="grid measure-form gap-4 @xl:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor={`${fieldId}-chain`} className="microlabel text-muted-foreground">
             Chain

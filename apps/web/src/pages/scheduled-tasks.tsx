@@ -152,7 +152,7 @@ function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index
   return (
     <article
       aria-label={task.name}
-      className="rise grid gap-x-10 gap-y-5 py-6 lg:grid-cols-[minmax(0,1fr)_19rem]"
+      className="rise grid gap-x-10 gap-y-5 py-6 @3xl:grid-cols-[minmax(0,1fr)_19rem]"
       style={{ animationDelay: `${60 + index * 60}ms` }}
     >
       <div className="min-w-0">
@@ -168,7 +168,7 @@ function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index
           {task.description}
         </p>
 
-        <dl className="mt-5 grid measure-prose grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+        <dl className="mt-5 grid measure-prose grid-cols-2 gap-x-6 gap-y-4 @md:grid-cols-3">
           <Reading
             label="Last run"
             value={

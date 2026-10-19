@@ -265,7 +265,7 @@ export function AddInstrumentPanel({
       <p className="mt-2 measure-prose text-sm text-muted-foreground">{chosen?.says}</p>
 
       <form onSubmit={submit} className="mt-4 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @lg:grid-cols-2">
           <div className="space-y-1.5">
             <label htmlFor={`${id}-symbol`} className="microlabel block text-muted-foreground">
               {kind === "cash" ? "Code" : "Symbol"}
@@ -343,7 +343,7 @@ export function AddInstrumentPanel({
                 />
                 {problem("peggedCurrency")}
               </div>
-              <div className="space-y-1.5 sm:col-span-2">
+              <div className="space-y-1.5 @lg:col-span-2">
                 <label
                   htmlFor={`${id}-contract`}
                   className="microlabel block text-muted-foreground"
