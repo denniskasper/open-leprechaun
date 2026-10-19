@@ -76,3 +76,14 @@ export async function addInstrument(instrument: NewInstrument): Promise<number> 
   }
   return z.object({ id: z.number() }).parse(await response.json()).id;
 }
+
+/**
+ * Refused by the API, in its own words, while anything in the ledger refers
+ * to the Instrument — or for good, for the numéraire.
+ */
+export async function removeInstrument(instrumentId: number): Promise<void> {
+  const response = await request(`${INSTRUMENTS_URL}/${instrumentId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw await refusal(response, "The Instrument could not be removed.");
+  }
+}

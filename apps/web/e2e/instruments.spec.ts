@@ -111,3 +111,80 @@ test("a two-letter peg and a blank name are refused in place", async ({ page }) 
   await expect(form.getByText(/three letters/)).toBeHidden();
   await expect(form.getByRole("button", { name: "Add token" })).toBeEnabled();
 });
+
+// Taking back an Instrument added by mistake (issue 9), end to end, in the
+// Platforms vocabulary: a coin a transaction records is refused at its row in
+// the server's words, and an unused fund — which says before confirming that
+// its Listing goes with it — is removed through "Remove for good". Everything
+// is created under identities unique to the run, and removed again.
+test("an Instrument is refused while a transaction records it, then an unused one is removed", async ({
+  page,
+  request,
+}) => {
+  const stamp = String(Date.now()).slice(-9);
+  const symbol = `E2R${stamp.slice(-6)}`;
+  const isin = `ZZ${stamp}1`;
+  const coin = await request.post("/api/instruments", {
+    data: { kind: "native", symbol, name: `E2E Recorded ${symbol}`, chain: "e2e" },
+  });
+  expect(coin.status()).toBe(201);
+  const coinId = (await coin.json()).id;
+  const platform = await request.post("/api/platforms", {
+    data: { name: `E2E Removal ${stamp}`, kind: "software_wallet" },
+  });
+  const platformId = (await platform.json()).id;
+  const account = await request.post(`/api/platforms/${platformId}/accounts`, {
+    data: { name: "Hot" },
+  });
+  const accountId = (await account.json()).id;
+  const recorded = await request.post("/api/transactions", {
+    data: {
+      type: "transfer_in",
+      occurred_at: "2031-03-14T12:00:00Z",
+      note: "e2e removal",
+      legs: [{ account_id: accountId, instrument_id: coinId, role: "in", quantity: "1.5" }],
+    },
+  });
+  expect(recorded.status()).toBe(201);
+  const fund = await request.post("/api/securities", {
+    data: {
+      isin,
+      name: `E2E Mistyped ${isin}`,
+      symbol: `EM${isin.slice(-4)}`,
+      type: "etf",
+      venue: "XETRA",
+      quote_currency: "EUR",
+    },
+  });
+  expect(fund.status()).toBe(201);
+
+  await page.goto("/instruments");
+
+  // Always clickable: the server alone says whether removal is allowed, and
+  // its reason appears beneath the row.
+  const used = page.getByRole("row", { name: new RegExp(symbol) });
+  await used.getByRole("button", { name: new RegExp(`^Remove ${symbol}`) }).click();
+  await used.getByRole("button", { name: /for good$/ }).click();
+  await expect(used.locator("xpath=following-sibling::tr[1]").getByRole("alert")).toHaveText(
+    "This Instrument stays for good: it is recorded in transactions.",
+  );
+  await expect(used).toBeVisible();
+
+  // Before confirming, the row says what goes with the fund; Keep backs out.
+  const unused = page.getByRole("row", { name: new RegExp(isin) });
+  await unused.getByRole("button", { name: new RegExp(`^Remove EM${isin.slice(-4)}`) }).click();
+  const beneath = unused.locator("xpath=following-sibling::tr[1]");
+  await expect(beneath).toHaveText("Removing it also removes its Listing on XETRA (EUR).");
+  await unused.getByRole("button", { name: /^Keep/ }).click();
+  await expect(page.getByText("Removing it also removes")).toHaveCount(0);
+
+  await unused.getByRole("button", { name: new RegExp(`^Remove EM${isin.slice(-4)}`) }).click();
+  await unused.getByRole("button", { name: /for good$/ }).click();
+  await expect(unused).toHaveCount(0);
+
+  const transactionId = (await recorded.json()).id;
+  expect((await request.delete(`/api/transactions/${transactionId}`)).status()).toBe(204);
+  expect((await request.delete(`/api/instruments/${coinId}`)).status()).toBe(204);
+  expect((await request.delete(`/api/accounts/${accountId}`)).status()).toBe(204);
+  expect((await request.delete(`/api/platforms/${platformId}`)).status()).toBe(204);
+});

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchInstruments } from "./instruments";
+import { fetchInstruments, removeInstrument } from "./instruments";
 
 const uniswap = {
   id: 1,
@@ -42,7 +42,8 @@ const fund = {
 function respondWith(status: number, body: unknown): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify(body), { status })),
+    // A 204 carries no body — the Response constructor itself refuses one.
+    vi.fn(async () => new Response(status === 204 ? null : JSON.stringify(body), { status })),
   );
 }
 
@@ -77,5 +78,25 @@ describe("fetchInstruments", () => {
     respondWith(500, { detail: "boom" });
 
     await expect(fetchInstruments()).rejects.toThrow("500");
+  });
+});
+
+describe("removeInstrument", () => {
+  it("deletes by id", async () => {
+    respondWith(204, undefined);
+
+    await removeInstrument(7);
+
+    expect(fetch).toHaveBeenCalledWith("/api/instruments/7", { method: "DELETE" });
+  });
+
+  it("surfaces the API's own reason for a refusal", async () => {
+    respondWith(409, {
+      detail: "This Instrument stays for good: it is recorded in transactions.",
+    });
+
+    await expect(removeInstrument(7)).rejects.toThrow(
+      "This Instrument stays for good: it is recorded in transactions.",
+    );
   });
 });
