@@ -433,3 +433,18 @@ for (const screen of SCREENS) {
     });
   }
 }
+
+// The check above is only worth its pass if it can fail: a table forced past
+// the column at 1440px must register as one that scrolls.
+test("a table forced wider than the column is caught at 1440px", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/multi-year-overview", (route) => route.fulfill({ json: OVERVIEW }));
+  await page.goto("/tax/overview");
+  await expect(page.locator("#content table").first()).toBeVisible();
+  expect(Math.max(...(await tableOverflows(page)))).toBe(0);
+
+  await page.addStyleTag({ content: "#content table { min-width: 200rem; }" });
+
+  expect(Math.min(...(await tableOverflows(page)))).toBeGreaterThan(0);
+  expect(await pageOverflow(page)).toBe(0);
+});
