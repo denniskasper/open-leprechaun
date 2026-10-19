@@ -90,8 +90,8 @@ The sheet's cap is `max-w-sheet` (96rem) and the sidebar is 240px at every
 tier. The content gutters are 32px, 48px from 1280px up (16px below 640px).
 
 **Shell by viewport, page content by container.** The viewport breakpoints
-(`sm:`, `md:`, `lg:`, `xl:`, `2xl:` and their `max-` forms) belong to the
-shell alone — sidebar or sheet, gutters, capped sheet. The shell's content
+(`sm:`, `md:`, `lg:`, `xl:`, `2xl:` and their `min-` and `max-` forms) belong
+to the shell alone — sidebar or sheet, gutters, capped sheet. The shell's content
 region is a query container, and everything a page draws answers to that
 column with container variants: `@lg:grid-cols-2`, `@max-xl:grid-cols-1`.
 The sidebar takes 240px of the window, so a viewport breakpoint inside a

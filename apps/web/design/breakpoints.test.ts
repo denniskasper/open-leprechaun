@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
 
 const ROOTS = ["src/pages", "src/components/patterns"];
 
-/** `sm:`, `max-lg:`, `min-[40rem]:` and kin — but not `@md:` or `@max-lg:`. */
+/** `sm:`, `min-md:`, `max-lg:`, `min-[40rem]:` and kin — but not `@md:` or `@max-lg:`. */
 const VIEWPORT_VARIANT =
-  /(?<![\w@[-])(?:(?:max-)?(?:sm|md|lg|xl|2xl)|(?:min|max)-\[[^\]]+\]):(?=\S)/g;
+  /(?<![\w@[-])(?:(?:(?:min|max)-)?(?:sm|md|lg|xl|2xl)|(?:min|max)-\[[^\]]+\]):(?=\S)/g;
 
 /** Each source under a root, tests aside, as its name there and its path. */
 function sources(root: string): [string, string][] {
@@ -23,19 +23,25 @@ function sources(root: string): [string, string][] {
 }
 
 describe("the viewport-variant pattern", () => {
-  it.each(["sm:grid-cols-2", "max-md:hidden", "lg:grid-cols-3", "min-[40rem]:flex"])(
-    "catches %s",
-    (variant) => {
-      expect(`className="grid ${variant}"`.match(VIEWPORT_VARIANT)).not.toBeNull();
-    },
-  );
+  it.each([
+    "sm:grid-cols-2",
+    "min-md:grid-cols-2",
+    "max-md:hidden",
+    "lg:grid-cols-3",
+    "min-[40rem]:flex",
+  ])("catches %s", (variant) => {
+    expect(`className="grid ${variant}"`.match(VIEWPORT_VARIANT)).not.toBeNull();
+  });
 
-  it.each(["@md:grid-cols-2", "@max-md:hidden", "@[30rem]:flex", '{ sm: "size-2.5" }'])(
-    "lets %s pass",
-    (text) => {
-      expect(text.match(VIEWPORT_VARIANT)).toBeNull();
-    },
-  );
+  it.each([
+    "@md:grid-cols-2",
+    "@min-md:grid-cols-2",
+    "@max-md:hidden",
+    "@[30rem]:flex",
+    '{ sm: "size-2.5" }',
+  ])("lets %s pass", (text) => {
+    expect(text.match(VIEWPORT_VARIANT)).toBeNull();
+  });
 });
 
 describe.each(ROOTS)("%s", (root) => {
