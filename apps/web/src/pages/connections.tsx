@@ -885,6 +885,7 @@ function AddConnectionForm({
           </label>
           <NativeSelect
             id={`${id}-platform`}
+            className="w-full"
             value={platformId}
             onChange={(event) => setPlatformId(Number(event.target.value))}
           >
@@ -905,6 +906,7 @@ function AddConnectionForm({
           </label>
           <NativeSelect
             id={`${id}-venue`}
+            className="w-full"
             value={venueKey}
             onChange={(event) => setVenueKey(event.target.value)}
           >
