@@ -934,9 +934,7 @@ function PointsTable({
         <tbody>
           {[...points].reverse().map((point) => (
             <tr key={point.snapshot_date}>
-              <Cell figure className="text-left">
-                {formatDate(point.snapshot_date)}
-              </Cell>
+              <Cell data>{formatDate(point.snapshot_date)}</Cell>
               <Cell figure>
                 {point.value_eur !== null ? (
                   money(point.value_eur)

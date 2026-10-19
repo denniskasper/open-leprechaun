@@ -620,6 +620,16 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+const INSTRUMENT_COLUMNS = [
+  "Symbol",
+  "Name",
+  "Family",
+  "Identity",
+  "Teilfreistellung",
+  "Price",
+  "Listings",
+];
+
 function InstrumentTable({
   instruments,
   prices,
@@ -636,11 +646,11 @@ function InstrumentTable({
     <Table>
       <thead>
         <tr>
-          {["Symbol", "Name", "Family", "Identity", "Teilfreistellung"].map((column) => (
-            <Heading key={column}>{column}</Heading>
+          {INSTRUMENT_COLUMNS.map((column) => (
+            <Heading key={column} figure={column === "Price"}>
+              {column}
+            </Heading>
           ))}
-          <Heading figure>Price</Heading>
-          <Heading>Listings</Heading>
         </tr>
       </thead>
       <tbody>
@@ -743,7 +753,7 @@ function InstrumentRow({
         </Cell>
       </tr>
       {editing && cell.kind !== "not_applicable" && (
-        <DetailRow columns={7}>
+        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
           <SettleForm
             instrument={instrument}
             review={cell.kind === "review"}
@@ -752,7 +762,7 @@ function InstrumentRow({
         </DetailRow>
       )}
       {managing && instrument.family === "security" && (
-        <DetailRow columns={7}>
+        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
           <ListingsEditor instrument={instrument} />
         </DetailRow>
       )}

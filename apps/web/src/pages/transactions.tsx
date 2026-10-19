@@ -459,6 +459,9 @@ export function TransactionsPage() {
   );
 }
 
+/** The ledger's columns after the selection box; the last holds a row's actions. */
+const LEDGER_COLUMNS = ["When", "Event", "Legs", ""];
+
 function LedgerTable({
   transactions,
   instruments,
@@ -506,7 +509,7 @@ function LedgerTable({
                 }
               />
             </Heading>
-            {["When", "Event", "Legs", ""].map((column) => (
+            {LEDGER_COLUMNS.map((column) => (
               <Heading key={column || "actions"}>{column}</Heading>
             ))}
           </tr>
@@ -670,7 +673,7 @@ function LedgerRow({
             onChange={onToggle}
           />
         </Cell>
-        <Cell figure className="text-left text-muted-foreground">
+        <Cell data className="text-muted-foreground">
           <Timestamp value={transaction.occurred_at} />
         </Cell>
         <Cell>
@@ -777,7 +780,7 @@ function LedgerRow({
         </Cell>
       </tr>
       {editing && (
-        <DetailRow columns={5}>
+        <DetailRow columns={LEDGER_COLUMNS.length + 1}>
           <TransactionForm
             instruments={instruments}
             platforms={platforms}

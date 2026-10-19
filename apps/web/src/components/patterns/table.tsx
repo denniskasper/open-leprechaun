@@ -17,7 +17,8 @@ export function Table({ className, ...props }: ComponentProps<"table">) {
   );
 }
 
-const FIGURE = "text-right font-mono text-xs tabular-nums whitespace-nowrap";
+const DATA = "font-mono text-xs tabular-nums";
+const FIGURE = `${DATA} text-right whitespace-nowrap`;
 
 /**
  * A column heading: a microlabel, right-aligned over figures. It may break
@@ -53,15 +54,24 @@ export function RowHeading({ className, ...props }: ComponentProps<"th">) {
   );
 }
 
-/** A cell; a `figure` stands right-aligned in the fixed-pitch face, on one line. */
+/**
+ * A cell. A `figure` stands right-aligned in the fixed-pitch face, on one
+ * line; `data` — a code, a date, a count in words — keeps the face but reads
+ * from the left.
+ */
 export function Cell({
   figure = false,
+  data = false,
   className,
   ...props
-}: ComponentProps<"td"> & { figure?: boolean }) {
+}: ComponentProps<"td"> & { figure?: boolean; data?: boolean }) {
   return (
     <td
-      className={cn("py-3 pr-4 align-top last:pr-0", figure && FIGURE, className)}
+      className={cn(
+        "py-3 pr-4 align-top last:pr-0",
+        figure ? FIGURE : data && DATA,
+        className,
+      )}
       {...props}
     />
   );
@@ -83,7 +93,7 @@ export function DetailRow({ columns, children }: { columns: number; children: Re
   return (
     <tr>
       <td colSpan={columns} className="pt-1 pb-5">
-        <div className="sticky left-0 max-w-[100cqw]">{children}</div>
+        <div className="table-detail">{children}</div>
       </td>
     </tr>
   );

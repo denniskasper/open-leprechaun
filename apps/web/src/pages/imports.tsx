@@ -499,7 +499,7 @@ function BatchTable({ batches, platforms }: { batches: ImportBatch[]; platforms:
             style={{ animationDelay: `${120 + index * 40}ms` }}
             aria-label={`Import ${batch.label} from ${batch.source}`}
           >
-            <Cell figure className="text-left text-muted-foreground">
+            <Cell data className="text-muted-foreground">
               <Timestamp value={batch.created_at} />
             </Cell>
             <Cell>
@@ -509,9 +509,7 @@ function BatchTable({ batches, platforms }: { batches: ImportBatch[]; platforms:
             <Cell className="text-xs text-muted-foreground">
               {accountName.get(batch.account_id) ?? `Account #${batch.account_id}`}
             </Cell>
-            <Cell figure className="text-left">
-              {rowsWords(batch)}
-            </Cell>
+            <Cell data>{rowsWords(batch)}</Cell>
             <Cell className="text-right">
               <ReverseButton batch={batch} />
             </Cell>

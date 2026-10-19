@@ -326,7 +326,7 @@ function Events({ position }: { position: FuturesPosition }) {
             <tbody>
               {data.fills.map((fill) => (
                 <tr key={fill.id}>
-                  <Cell figure className="text-left">
+                  <Cell data>
                     <Timestamp value={fill.occurred_at} />
                   </Cell>
                   <Cell>{fill.side}</Cell>
@@ -376,7 +376,7 @@ function Events({ position }: { position: FuturesPosition }) {
                 <tbody>
                   {data.funding.map((payment) => (
                     <tr key={payment.id}>
-                      <Cell figure className="text-left">
+                      <Cell data>
                         <Timestamp value={payment.occurred_at} />
                       </Cell>
                       <Cell figure>

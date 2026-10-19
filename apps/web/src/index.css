@@ -229,11 +229,18 @@
 
   /* The first column stays in view while the rest scrolls under it. A
      component rule, so a row that tints its cells still wins. */
-  .table-frame tr > :first-child {
+  .table-frame tr > :first-child:not([colspan]) {
     position: sticky;
     left: 0;
     z-index: 1;
     background-color: var(--color-background);
+  }
+
+  /* What a row opens beneath itself, held to the frame's width in view. */
+  .table-detail {
+    position: sticky;
+    left: 0;
+    max-width: 100cqw;
   }
 }
 

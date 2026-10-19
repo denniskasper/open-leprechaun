@@ -685,10 +685,10 @@ function InterpretedRowLine({ row }: { row: InterpretedRow }) {
   return (
     <>
       <tr className={dimmed}>
-        <Cell figure className="text-left text-muted-foreground">
+        <Cell data className="text-muted-foreground">
           {row.number}
         </Cell>
-        <Cell figure className="text-left">
+        <Cell data>
           {row.occurred_at !== null ? <Timestamp value={row.occurred_at} /> : "—"}
         </Cell>
         <Cell>
@@ -696,9 +696,7 @@ function InterpretedRowLine({ row }: { row: InterpretedRow }) {
             ? (TYPE_VOCABULARY[row.type as keyof typeof TYPE_VOCABULARY]?.label ?? row.type)
             : "—"}
         </Cell>
-        <Cell figure className="text-left">
-          {row.symbol ?? "—"}
-        </Cell>
+        <Cell data>{row.symbol ?? "—"}</Cell>
         <Cell figure>{row.quantity !== null ? formatQuantity(row.quantity) : "—"}</Cell>
         <Cell figure>{row.fee_quantity !== null ? formatQuantity(row.fee_quantity) : ""}</Cell>
       </tr>
