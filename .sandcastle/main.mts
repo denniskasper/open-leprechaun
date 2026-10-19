@@ -47,11 +47,17 @@ const SANDBOX_DATABASE = "leprechaun_sandcastle";
 // download the world. Host paths, created on first run.
 const CACHE_ROOT = join(homedir(), ".cache", "sandcastle", "open-leprechaun");
 
+// `pnpm test:e2e` would start Postgres through docker, which the sandbox has
+// not got; the database is already up, so migrate it and run Playwright.
+const E2E =
+  "apps/api/.venv/bin/python -m alembic -c apps/api/alembic.ini upgrade head && pnpm --filter @open-leprechaun/web test:e2e";
+
 const CHECKS = [
   { name: "lint", command: "pnpm lint" },
   { name: "api tests", command: "apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml -q" },
   { name: "typecheck", command: "pnpm typecheck" },
   { name: "web tests", command: "pnpm test:web" },
+  { name: "e2e", command: E2E },
 ];
 
 // ---------------------------------------------------------------------------
@@ -203,6 +209,8 @@ const hooks = {
       // The API refuses to start without .env; DATABASE_URL above overrides its host address.
       { command: "test -f .env || cp .env.example .env" },
       { command: "pnpm install --frozen-lockfile && pnpm setup:api", timeoutMs: 900_000 },
+      // A no-op unless @playwright/test moved past the browser baked into the image.
+      { command: "pnpm --filter @open-leprechaun/web exec playwright install chromium", timeoutMs: 600_000 },
     ],
   },
 };

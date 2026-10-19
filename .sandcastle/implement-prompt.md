@@ -21,11 +21,13 @@ Implement issue #{{ISSUE_NUMBER}} — that issue only, not its siblings under th
 2. **Build test-first** — follow the `/tdd` skill at the seams the issue names.
    UI work starts with the `/frontend-design` skill, as `AGENTS.md` requires.
 3. **Verify** — all of these must pass before you finish. The database is already up;
-   do not run `pnpm test:api` or anything else that calls `docker`.
+   do not run `pnpm test:api`, `pnpm test:e2e` or anything else that calls `docker`.
    - `pnpm lint` (run `pnpm format` first if formatting is off)
    - `apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml`
    - `pnpm typecheck`
    - `pnpm test:web`
+   - `apps/api/.venv/bin/python -m alembic -c apps/api/alembic.ini upgrade head && pnpm --filter @open-leprechaun/web test:e2e`
+     (Playwright against the real API and web app; Chromium is installed)
 4. **Self-review** — run the `/code-review` skill against `{{TARGET_BRANCH}}`, with
    issue #{{ISSUE_NUMBER}} above as the spec, and fix what it finds.
 5. **Commit** — small Conventional Commits, as `AGENTS.md` describes. Reference the

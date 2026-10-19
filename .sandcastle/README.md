@@ -29,8 +29,9 @@ takes a while per issue — leave it.
 
 - **Pick** — open `ready-for-agent`, not `spec`, no open blocker, no open PR from
   `sandcastle/issue-<n>`.
-- **Implement, review, check** — inside the sandbox, against a Postgres database
-  of its own (`leprechaun_sandcastle`) on the Compose container.
+- **Implement, review, check** — lint, API and web tests, typecheck and the Playwright
+  e2e suite, inside the sandbox, against a Postgres database of its own
+  (`leprechaun_sandcastle`) on the Compose container.
 - **Land** — the host pushes and opens the PR; a draft if a check failed. An agent
   that gets stuck comments on the issue and moves it to `needs-triage`.
 
