@@ -135,21 +135,23 @@ The cells come from the same file, so every table reads alike:
   values and not its caption.
 - **`RowHeading`** — the cell that names its row, `scope="row"`.
 - **`Cell`** — `figure` sets a value right-aligned in the fixed-pitch face, on
-  one line.
+  one line; `data` keeps the face for a code, a date or a count in words, read
+  from the left.
 - **`Timestamp`** — a timestamp in a cell; a narrow column breaks it between
   its date and its time, nowhere else.
 - **`DetailRow`** — what a row opens beneath itself (a form, the fills behind
   a position), kept to the width in view while the table scrolls under it.
 
-The frame (`.table-frame` in `index.css`) draws the rule under every row and
-the pinned column's background; a row that tints itself puts the tint on its
+The frame (`.table-frame` in `index.css`, with `.table-detail` for what a
+row opens) draws the rule under every row and the pinned column's background; a row that tints itself puts the tint on its
 cells. The frame is a size container and takes the width of the block it
 sits in — inside a box that sizes to its content (`w-fit`, an inline flex
 row) it collapses, so never put it in one.
 
 `apps/web/e2e/tables.spec.ts` loads every table screen at 1440px and at
-390px: the page never scrolls sideways, at 1440px no table does, and where a
-table scrolls its first column stays put. A new table screen joins its list.
+390px: the page never scrolls sideways, at 1440px no table does and a table
+of few columns stays narrower than the column, and where a table scrolls its
+first column stays put. A new table screen joins its list.
 
 ## Settings panels
 
