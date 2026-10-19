@@ -21,8 +21,8 @@ import {
   type StatutoryYear,
 } from "@/api/statutory";
 import { DECIMAL_PATTERN } from "@/api/transactions";
-import { PageHeader } from "@/components/page-header";
 import { ErrorState } from "@/components/patterns/error-state";
+import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -197,31 +197,39 @@ export function StatutoryPage() {
   }
 
   return (
-    <div className="space-y-10">
-      <PageHeader
-        eyebrow="Settings"
-        title="Statutory configuration"
-        description="Every constant the tax engines read — per year, with the source it came from. A rule change is an edit here, never a code change, and a year missing a required value refuses to compute rather than guessing."
-        actions={<AddYearControl onAdd={setDraftYear} />}
-      />
-
+    <SettingsPanel
+      title="Statutory configuration"
+      description="Every constant the tax engines read — per year, with the source it came from. A rule change is an edit here, never a code change, and a year missing a required value refuses to compute rather than guessing."
+    >
       {error ? (
-        <ErrorState
-          title="The statutory configuration could not be loaded"
-          detail="The API did not answer with the per-year values."
-          onRetry={() => void refetch()}
-        />
-      ) : data ? (
-        <div className="measure-list space-y-12">
-          <ElectionPanel election={data} />
-          <TreatyLimitsPanel />
-          <FundRedemptionValuesPanel />
-          {years.map((year, index) => (
-            <YearSection key={year.year} keys={data.keys} year={year} index={index} />
-          ))}
+        <div className="py-8">
+          <ErrorState
+            title="The statutory configuration could not be loaded"
+            detail="The API did not answer with the per-year values."
+            onRetry={() => void refetch()}
+          />
         </div>
-      ) : null}
-    </div>
+      ) : (
+        data && [
+          <ElectionsGroup key="elections" election={data} />,
+          <TreatyLimitsGroup key="treaty-limits" />,
+          <FundRedemptionValuesGroup key="fund-redemption-values" />,
+          <SettingsGroup
+            key="years"
+            title="Values by year"
+            description="The constants of each tax year, every one with the source it came from. A year is kept once its first value is stored."
+            measure="list"
+          >
+            <AddYearControl onAdd={setDraftYear} />
+            <div className="space-y-12">
+              {years.map((year) => (
+                <YearSection key={year.year} keys={data.keys} year={year} />
+              ))}
+            </div>
+          </SettingsGroup>,
+        ]
+      )}
+    </SettingsPanel>
   );
 }
 
@@ -252,7 +260,7 @@ function AddYearControl({ onAdd }: { onAdd: (year: number) => void }) {
   return (
     <form
       onSubmit={submit}
-      className="flex flex-wrap items-end justify-end gap-2"
+      className="flex flex-wrap items-end gap-2"
       aria-label="Add a year"
     >
       <div className="space-y-2">
@@ -279,14 +287,11 @@ function AddYearControl({ onAdd }: { onAdd: (year: number) => void }) {
       <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
         Cancel
       </Button>
-      <p className="basis-full text-right text-xs text-muted-foreground">
-        A year is kept once its first value is stored.
-      </p>
     </form>
   );
 }
 
-function ElectionPanel({ election }: { election: Election }) {
+function ElectionsGroup({ election }: { election: Election }) {
   const queryClient = useQueryClient();
   const id = useId();
   const choose = useMutation({
@@ -303,13 +308,11 @@ function ElectionPanel({ election }: { election: Election }) {
   }
 
   return (
-    <section className="rise rounded-xl border border-border p-5" aria-label="Elections">
-      <p className="microlabel text-muted-foreground">Elections</p>
-      <p className="mt-1 measure-prose text-sm text-muted-foreground">
-        These choices select which of the per-year values apply — the saver-allowance variant and
-        the church-tax rate. No engine doubles an amount or picks a rate in logic.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-6">
+    <SettingsGroup
+      title="Elections"
+      description="These choices select which of the per-year values apply — the saver-allowance variant and the church-tax rate. No engine doubles an amount or picks a rate in logic."
+    >
+      <div className="flex flex-wrap gap-6">
         <div className="space-y-2">
           <label htmlFor={`${id}-filing`} className="microlabel block text-muted-foreground">
             Filing status
@@ -334,15 +337,15 @@ function ElectionPanel({ election }: { election: Election }) {
         </div>
       </div>
       {choose.isError && (
-        <p role="alert" className="mt-3 text-sm text-alarm">
+        <p role="alert" className="text-sm text-alarm">
           {choose.error.message}
         </p>
       )}
-    </section>
+    </SettingsGroup>
   );
 }
 
-function TreatyLimitsPanel() {
+function TreatyLimitsGroup() {
   const { data, error, refetch } = useQuery({
     queryKey: ["treaty-limits"],
     queryFn: fetchTreatyLimits,
@@ -378,23 +381,19 @@ function TreatyLimitsPanel() {
   const failure = enter.error ?? remove.error;
 
   return (
-    <section className="rise rounded-xl border border-border p-5" aria-label="Treaty limits">
-      <p className="microlabel text-muted-foreground">Treaty limits</p>
-      <p className="mt-1 measure-prose text-sm text-muted-foreground">
-        The share of a gross dividend each double-taxation treaty lets the source country keep.
-        Foreign withholding tax is creditable up to it; anything above is reported as reclaimable
-        from that country. A country that withheld with no limit entered refuses to compute.
-      </p>
+    <SettingsGroup
+      title="Treaty limits"
+      description="The share of a gross dividend each double-taxation treaty lets the source country keep. Foreign withholding tax is creditable up to it; anything above is reported as reclaimable from that country. A country that withheld with no limit entered refuses to compute."
+      measure="list"
+    >
       {error ? (
-        <div className="mt-4">
-          <ErrorState
-            title="The treaty limits could not be loaded"
-            detail="The API did not answer with the per-country limits."
-            onRetry={() => void refetch()}
-          />
-        </div>
+        <ErrorState
+          title="The treaty limits could not be loaded"
+          detail="The API did not answer with the per-country limits."
+          onRetry={() => void refetch()}
+        />
       ) : data && data.length > 0 ? (
-        <ul className="mt-4 divide-y divide-border border-y border-border">
+        <ul className="divide-y divide-border border-y border-border">
           {data.map((limit) => (
             <li key={limit.country} className="flex flex-wrap items-baseline gap-x-4 py-2.5">
               <span className="w-8 font-mono text-sm font-medium">{limit.country}</span>
@@ -417,13 +416,13 @@ function TreatyLimitsPanel() {
           ))}
         </ul>
       ) : data ? (
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           No limit entered yet — enter one for each country that withheld tax on a dividend.
         </p>
       ) : null}
       <form
         onSubmit={submit}
-        className="mt-4 flex measure-form flex-wrap items-end gap-3"
+        className="flex measure-form flex-wrap items-end gap-3"
         aria-label="Enter a treaty limit"
       >
         <div className="space-y-2">
@@ -474,15 +473,15 @@ function TreatyLimitsPanel() {
         </Button>
       </form>
       {failure && (
-        <p role="alert" className="mt-3 text-sm text-alarm">
+        <p role="alert" className="text-sm text-alarm">
           {failure.message}
         </p>
       )}
-    </section>
+    </SettingsGroup>
   );
 }
 
-function FundRedemptionValuesPanel() {
+function FundRedemptionValuesGroup() {
   const { data, error, refetch } = useQuery({
     queryKey: ["fund-redemption-values"],
     queryFn: fetchFundRedemptionValues,
@@ -535,27 +534,19 @@ function FundRedemptionValuesPanel() {
   ];
 
   return (
-    <section
-      className="rise rounded-xl border border-border p-5"
-      aria-label="Fund redemption values"
+    <SettingsGroup
+      title="Fund redemption values"
+      description="What each fund published for one unit in a calendar year: its first and last redemption price and its distributions. With that year’s Basiszins they give the Vorabpauschale, declared the year after. A fund held across a year with no values entered refuses to compute — a market close is never substituted."
+      measure="list"
     >
-      <p className="microlabel text-muted-foreground">Fund redemption values</p>
-      <p className="mt-1 measure-prose text-sm text-muted-foreground">
-        What each fund published for one unit in a calendar year: its first and last redemption
-        price and its distributions. With that year’s Basiszins they give the Vorabpauschale,
-        declared the year after. A fund held across a year with no values entered refuses to
-        compute — a market close is never substituted.
-      </p>
       {error ? (
-        <div className="mt-4">
-          <ErrorState
-            title="The fund redemption values could not be loaded"
-            detail="The API did not answer with the per-fund values."
-            onRetry={() => void refetch()}
-          />
-        </div>
+        <ErrorState
+          title="The fund redemption values could not be loaded"
+          detail="The API did not answer with the per-fund values."
+          onRetry={() => void refetch()}
+        />
       ) : data && data.values.length > 0 ? (
-        <ul className="mt-4 divide-y divide-border border-y border-border">
+        <ul className="divide-y divide-border border-y border-border">
           {data.values.map((value) => {
             const symbol = symbolOf.get(value.instrument_id) ?? `#${value.instrument_id}`;
             return (
@@ -594,7 +585,7 @@ function FundRedemptionValuesPanel() {
           })}
         </ul>
       ) : data ? (
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {funds.length > 0
             ? "No values entered yet — enter a year for each fund held across its end."
             : "No fund is in the ledger yet — add the fund on Instruments or import a purchase first; its redemption values are then entered here per year."}
@@ -603,7 +594,7 @@ function FundRedemptionValuesPanel() {
       {funds.length > 0 && (
         <form
           onSubmit={submit}
-          className="mt-4 flex measure-form flex-wrap items-end gap-3"
+          className="flex measure-form flex-wrap items-end gap-3"
           aria-label="Enter fund redemption values"
         >
           <div className="space-y-2">
@@ -680,11 +671,11 @@ function FundRedemptionValuesPanel() {
         </form>
       )}
       {failure && (
-        <p role="alert" className="mt-3 text-sm text-alarm">
+        <p role="alert" className="text-sm text-alarm">
           {failure.message}
         </p>
       )}
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -714,23 +705,11 @@ function ElectionSelect<Choice extends string>({
   );
 }
 
-function YearSection({
-  keys,
-  year,
-  index,
-}: {
-  keys: StatutoryKeyDefinition[];
-  year: StatutoryYear;
-  index: number;
-}) {
+function YearSection({ keys, year }: { keys: StatutoryKeyDefinition[]; year: StatutoryYear }) {
   return (
-    <section
-      className="rise"
-      style={{ animationDelay: `${120 + index * 60}ms` }}
-      aria-label={`Statutory values ${year.year}`}
-    >
+    <section aria-label={`Statutory values ${year.year}`}>
       <div className="flex items-baseline gap-3 border-b border-border pb-2.5">
-        <h2 className="font-mono text-base tabular-nums">{year.year}</h2>
+        <h3 className="font-mono text-base tabular-nums">{year.year}</h3>
         {year.missing.length === 0 ? (
           <span className="microlabel inline-flex items-center gap-1 text-signal">
             <CircleCheck aria-hidden className="size-3" />
