@@ -29,9 +29,9 @@ import {
   type Venue,
 } from "@/api/connections";
 import { fetchPlatforms, type Account, type Platform } from "@/api/platforms";
-import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-panel";
 import { Cell, Heading, RowHeading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -216,93 +216,83 @@ export function ConnectionsPage() {
   const [adding, setAdding] = useState(false);
 
   return (
-    <div className="space-y-10">
-      <PageHeader
-        eyebrow="Settings"
-        title="Connections"
-        description="The credentialed link to each venue account. A credential is encrypted the moment it arrives and is never shown again — what remains is a label, a fingerprint and when it was last used."
-        actions={
-          <Button onClick={() => setAdding((open) => !open)}>
-            <Plus aria-hidden />
-            Add Connection
-          </Button>
-        }
-      />
-
-      {adding &&
-        venues.data &&
-        platforms.data &&
-        (platforms.data.length > 0 ? (
-          <AddConnectionForm
-            venues={venues.data}
-            platforms={platforms.data}
-            onDone={() => setAdding(false)}
+    <SettingsPanel
+      title="Connections"
+      description="The credentialed link to each venue account. A credential is encrypted the moment it arrives and is never shown again — what remains is a label, a fingerprint and when it was last used."
+    >
+      <SettingsGroup
+        title="Stored Connections"
+        description="Grouped by the Platform each links to. Test checks a credential, Sync pulls what the venue serves, and Reconcile compares what it holds against the ledger without writing anything."
+        measure="list"
+      >
+        {connections.error || venues.error || platforms.error ? (
+          <ErrorState
+            title="The connections could not be loaded"
+            detail="The API did not answer with the connections, venues or platforms."
+            onRetry={() => {
+              for (const query of [connections, venues, platforms]) {
+                if (query.error) void query.refetch();
+              }
+            }}
           />
-        ) : (
-          <p className="measure-prose text-sm text-muted-foreground">
-            No Platform is registered yet, and a Connection links to one —{" "}
-            <Link to="/settings/platforms" className="underline underline-offset-2">
-              register the venue as a Platform
-            </Link>{" "}
-            first.
-          </p>
-        ))}
-
-      {connections.error || venues.error || platforms.error ? (
-        <ErrorState
-          title="The connections could not be loaded"
-          detail="The API did not answer with the connections, venues or platforms."
-          onRetry={() => {
-            for (const query of [connections, venues, platforms]) {
-              if (query.error) void query.refetch();
+        ) : connections.data && connections.data.length === 0 ? (
+          <EmptyState
+            icon={KeyRound}
+            title="No Connections yet"
+            description="Enter a venue account's API credentials once — encrypted at rest, never displayed again — and every kind of data that venue serves syncs through the one Connection."
+            action={
+              !adding && (
+                <Button variant="outline" onClick={() => setAdding(true)}>
+                  <Plus aria-hidden />
+                  Add the first Connection
+                </Button>
+              )
             }
-          }}
-        />
-      ) : connections.data && connections.data.length === 0 && !adding ? (
-        <EmptyState
-          icon={KeyRound}
-          title="No Connections yet"
-          description="Enter a venue account's API credentials once — encrypted at rest, never displayed again — and every kind of data that venue serves syncs through the one Connection."
-          action={
-            <Button variant="outline" onClick={() => setAdding(true)}>
-              <Plus aria-hidden />
-              Add the first Connection
-            </Button>
-          }
-        />
-      ) : connections.data && platforms.data && venues.data ? (
-        <div className="measure-list space-y-12">
-          {groupByPlatform(connections.data, platforms.data).map((group, index) => (
-            <PlatformSection
-              key={group.platform.id}
-              group={group}
+          />
+        ) : connections.data && platforms.data && venues.data ? (
+          <div className="measure-list space-y-12">
+            {groupByPlatform(connections.data, platforms.data).map((group) => (
+              <PlatformSection key={group.platform.id} group={group} venues={venues.data} />
+            ))}
+          </div>
+        ) : null}
+      </SettingsGroup>
+      <SettingsGroup
+        title="New Connection"
+        description="Each Connection links to a registered Platform, through a key that must be read-only. The scope it needs is shown once a venue is chosen."
+      >
+        <Button onClick={() => setAdding((open) => !open)}>
+          <Plus aria-hidden />
+          Add Connection
+        </Button>
+        {adding &&
+          venues.data &&
+          platforms.data &&
+          (platforms.data.length > 0 ? (
+            <AddConnectionForm
               venues={venues.data}
-              index={index}
+              platforms={platforms.data}
+              onDone={() => setAdding(false)}
             />
+          ) : (
+            <p className="measure-prose text-sm text-muted-foreground">
+              No Platform is registered yet, and a Connection links to one —{" "}
+              <Link to="/settings/platforms" className="underline underline-offset-2">
+                register the venue as a Platform
+              </Link>{" "}
+              first.
+            </p>
           ))}
-        </div>
-      ) : null}
-    </div>
+      </SettingsGroup>
+    </SettingsPanel>
   );
 }
 
-function PlatformSection({
-  group,
-  venues,
-  index,
-}: {
-  group: PlatformGroup;
-  venues: Venue[];
-  index: number;
-}) {
+function PlatformSection({ group, venues }: { group: PlatformGroup; venues: Venue[] }) {
   return (
-    <section
-      className="rise"
-      style={{ animationDelay: `${120 + index * 60}ms` }}
-      aria-label={group.platform.name}
-    >
+    <section aria-label={group.platform.name}>
       <div className="flex items-center gap-2.5 border-b border-border pb-2.5">
-        <h2 className="microlabel text-muted-foreground">{group.platform.name}</h2>
+        <h3 className="microlabel text-muted-foreground">{group.platform.name}</h3>
         <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
           {group.connections.length}
         </span>
@@ -405,7 +395,7 @@ function ConnectionRow({
   return (
     <article className="py-4" aria-label={connection.label}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="text-base font-medium">{connection.label}</h3>
+        <h4 className="text-base font-medium">{connection.label}</h4>
         <span
           className="inline-flex items-baseline gap-1.5 font-mono text-xs tabular-nums text-muted-foreground"
           title="A digest of the API key — all that is ever shown of it."
@@ -873,11 +863,9 @@ function AddConnectionForm({
   return (
     <form
       onSubmit={submit}
-      className="rise measure-form rounded-xl border border-border p-5"
+      className="rise measure-form"
       aria-label="Add a Connection"
     >
-      <p className="microlabel mb-4 text-muted-foreground">New Connection</p>
-
       <div className="grid gap-3 @lg:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${id}-platform`} className="microlabel block text-muted-foreground">
