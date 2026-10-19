@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 // The promise of the frame (docs/agents/design.md, "Tables"), held on every
@@ -8,11 +9,15 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // What only a venue or the tax engine could state is supplied here, with
 // figures and names as long as real ones run.
 
-async function arrangeAccount(request: APIRequestContext, platform: string): Promise<number> {
+async function arrangePlatform(request: APIRequestContext): Promise<number> {
   const created = await request.post("/api/platforms", {
-    data: { name: platform, kind: "exchange" },
+    data: { name: `E2E Tables ${randomUUID()}`, kind: "exchange" },
   });
-  const platformId = ((await created.json()) as { id: number }).id;
+  return ((await created.json()) as { id: number }).id;
+}
+
+async function arrangeAccount(request: APIRequestContext): Promise<number> {
+  const platformId = await arrangePlatform(request);
   const account = await request.post(`/api/platforms/${platformId}/accounts`, {
     data: { name: "Spot and derivatives" },
   });
@@ -28,7 +33,7 @@ async function numeraire(request: APIRequestContext): Promise<number> {
 }
 
 async function arrangeCash(request: APIRequestContext): Promise<void> {
-  const account = await arrangeAccount(request, `E2E Tables ${Date.now()}`);
+  const account = await arrangeAccount(request);
   await request.post("/api/transactions", {
     data: {
       type: "opening_balance",
@@ -217,16 +222,26 @@ type Screen = {
   arrange?: (page: Page, request: APIRequestContext) => Promise<unknown>;
   /** What to open once loaded, so every table is in view. */
   open?: (page: Page) => Promise<unknown>;
+  /** Few columns: each table stays narrower than the column at 1440px. */
+  compact?: true;
+  /** Wide enough that a phone has to scroll some table sideways. */
+  wide?: true;
 };
 
 const SCREENS: Screen[] = [
-  { name: "Holdings", path: "/holdings", arrange: (_page, request) => arrangeCash(request) },
+  {
+    name: "Holdings",
+    path: "/holdings",
+    arrange: (_page, request) => arrangeCash(request),
+    wide: true,
+  },
   {
     name: "Transactions",
     path: "/transactions",
     arrange: (_page, request) => arrangeCash(request),
+    wide: true,
   },
-  { name: "Instruments", path: "/instruments" },
+  { name: "Instruments", path: "/instruments", wide: true },
   {
     name: "Import batches",
     path: "/imports",
@@ -236,7 +251,7 @@ const SCREENS: Screen[] = [
         data: {
           source: `e2e-tables-${run}`,
           label: `a-long-statement-export-named-by-its-venue-${run}.csv`,
-          account_id: await arrangeAccount(request, `E2E Tables ${run}`),
+          account_id: await arrangeAccount(request),
           rows: [
             {
               external_id: "row-1",
@@ -283,11 +298,13 @@ const SCREENS: Screen[] = [
     path: "/tax/overview",
     arrange: (page) =>
       page.route("**/api/multi-year-overview", (route) => route.fulfill({ json: OVERVIEW })),
+    compact: true,
   },
   {
     name: "Open futures positions",
     path: "/futures",
     arrange: (page) => page.route("**/api/futures/live", (route) => route.fulfill({ json: LIVE })),
+    wide: true,
   },
   {
     name: "Futures history, fills and funding",
@@ -300,7 +317,7 @@ const SCREENS: Screen[] = [
       const stamp = Date.now();
       await request.post("/api/futures/positions", {
         data: {
-          account_id: await arrangeAccount(request, `E2E Tables ${stamp}`),
+          account_id: await arrangeAccount(request),
           symbol: `E2T${String(stamp).slice(-6)}-USDT-SWAP`,
           side: "long",
           quantity: "1250.5",
@@ -320,15 +337,13 @@ const SCREENS: Screen[] = [
         .click();
       await expect(page.getByRole("group", { name: "Funding payments" })).toBeVisible();
     },
+    wide: true,
   },
   {
     name: "Connection reconciliation",
     path: "/settings/connections",
     arrange: async (page, request) => {
-      const created = await request.post("/api/platforms", {
-        data: { name: `E2E Tables ${Date.now()}`, kind: "exchange" },
-      });
-      const platformId = ((await created.json()) as { id: number }).id;
+      const platformId = await arrangePlatform(request);
       await page.route("**/api/connections", (route) =>
         route.fulfill({ json: [CONNECTION(platformId)] }),
       );
@@ -337,6 +352,7 @@ const SCREENS: Screen[] = [
       );
     },
     open: (page) => page.getByRole("button", { name: "Reconcile", exact: true }).click(),
+    compact: true,
   },
 ];
 
@@ -351,6 +367,17 @@ function tableOverflows(page: Page): Promise<number[]> {
     .locator("#content table")
     .evaluateAll((tables) =>
       tables.map((table) => table.parentElement!.scrollWidth - table.parentElement!.clientWidth),
+    );
+}
+
+/** How much of the column each table leaves free: more than none where it fits its content. */
+function tableSlack(page: Page): Promise<number[]> {
+  return page
+    .locator("#content table")
+    .evaluateAll((tables) =>
+      tables.map(
+        (table) => table.parentElement!.clientWidth - table.getBoundingClientRect().width,
+      ),
     );
 }
 
@@ -388,7 +415,15 @@ for (const screen of SCREENS) {
         for (const overflow of await tableOverflows(page)) {
           expect(overflow).toBe(0);
         }
+        if (screen.compact) {
+          for (const slack of await tableSlack(page)) {
+            expect(slack).toBeGreaterThan(0);
+          }
+        }
       } else {
+        if (screen.wide) {
+          expect(Math.max(...(await tableOverflows(page)))).toBeGreaterThan(0);
+        }
         for (const offset of await pinnedOffsets(page)) {
           expect(offset).toBe(0);
         }
