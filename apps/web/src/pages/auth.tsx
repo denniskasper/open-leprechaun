@@ -1,15 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clover } from "lucide-react";
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { fetchSetupStatus, logIn, MINIMUM_PASSWORD_LENGTH, runSetup } from "@/api/auth";
 import { CodeField } from "@/components/patterns/code-field";
 import { ErrorState } from "@/components/patterns/error-state";
 import { PasswordField } from "@/components/patterns/password-field";
-import { EnvironmentBadge } from "@/components/shell/instance";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthShell } from "@/components/shell/auth-shell";
 import { Button } from "@/components/ui/button";
-import { watchSystemTheme } from "@/lib/theme";
 
 /**
  * The two screens that exist before the shell does: first-run setup and
@@ -42,7 +39,7 @@ export function SetupPage() {
   }
 
   return (
-    <AuthScreen
+    <AuthShell
       eyebrow="First run"
       title="Set the password"
       description="A fresh instance serves nothing until its Admin has a password. It is set once, here, and this screen never returns."
@@ -74,7 +71,7 @@ export function SetupPage() {
           {enter.isPending ? "Setting up…" : "Set password and enter"}
         </Button>
       </form>
-    </AuthScreen>
+    </AuthShell>
   );
 }
 
@@ -115,7 +112,7 @@ export function LoginPage() {
 
   if (codeOwed) {
     return (
-      <AuthScreen
+      <AuthShell
         eyebrow="Two-factor is on"
         title="Enter the code"
         description="The password was right. This instance also asks for the current code from your authenticator app."
@@ -136,12 +133,12 @@ export function LoginPage() {
             Start over
           </Button>
         </form>
-      </AuthScreen>
+      </AuthShell>
     );
   }
 
   return (
-    <AuthScreen
+    <AuthShell
       eyebrow="This instance is protected"
       title="Log in"
       description="The session lives in an httpOnly cookie and renews itself with use; an idle month logs you out."
@@ -162,7 +159,7 @@ export function LoginPage() {
           {enter.isPending ? "Checking…" : "Log in"}
         </Button>
       </form>
-    </AuthScreen>
+    </AuthShell>
   );
 }
 
@@ -193,55 +190,4 @@ function useEnter({ setUpFirst = false }: { setUpFirst?: boolean } = {}) {
       navigate(setUpFirst ? "/first-run" : "/", { replace: true });
     },
   });
-}
-
-function AuthScreen({
-  eyebrow,
-  title,
-  description,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  useEffect(() => watchSystemTheme(), []);
-
-  return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <header className="flex h-16 items-center gap-2 border-b border-border px-4 sm:px-8">
-        <span className="flex items-center gap-2.5">
-          <Clover aria-hidden className="size-4 text-primary" />
-          <span className="microlabel text-foreground">Open Leprechaun</span>
-        </span>
-        <EnvironmentBadge />
-        <div className="flex-1" />
-        <ThemeToggle />
-      </header>
-
-      <main className="flex flex-1 items-center justify-center px-4 py-10">
-        <div className="w-full max-w-sm">
-          <p className="rise microlabel text-muted-foreground" style={{ animationDelay: "60ms" }}>
-            {eyebrow}
-          </p>
-          <h1
-            className="rise mt-3 text-display font-wide font-semibold uppercase"
-            style={{ animationDelay: "120ms" }}
-          >
-            {title}
-          </h1>
-          <p
-            className="rise mt-4 text-sm text-pretty text-muted-foreground"
-            style={{ animationDelay: "180ms" }}
-          >
-            {description}
-          </p>
-          <div className="rise mt-8" style={{ animationDelay: "240ms" }}>
-            {children}
-          </div>
-        </div>
-      </main>
-    </div>
-  );
 }
