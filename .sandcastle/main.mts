@@ -279,7 +279,7 @@ async function work(number: number): Promise<Outcome> {
     `Closes #${number}`,
     prSection(lastTag(implement.stdout, "summary")) ?? "",
     `## Review\n\n${(review && prSection(lastTag(review.stdout, "review"))) || "_The reviewer left no summary._"}`,
-    `## Checks\n\n${CHECKS.map((c) => `- [${failedChecks.includes(c.name) ? " " : "x"}] ${c.name}`).join("\n")}`,
+    `## Sandbox checks\n\n${CHECKS.map((c) => `- [${failedChecks.includes(c.name) ? " " : "x"}] ${c.name}`).join("\n")}`,
     "🤖 Generated with [Claude Code](https://claude.com/claude-code) via [Sandcastle](https://github.com/mattpocock/sandcastle)",
   ].join("\n\n");
 
