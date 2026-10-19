@@ -7,10 +7,10 @@ import {
   setSchedule,
   type ScheduledTask,
 } from "@/api/scheduled-tasks";
-import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Lamp, TONE, type Tone } from "@/components/patterns/lamp";
+import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatNumber, formatTimestamp } from "@/lib/format";
@@ -86,51 +86,54 @@ export function ScheduledTasksPage() {
   const failing = data ? failingTasks(data) : [];
 
   return (
-    <div className="space-y-10">
-      <PageHeader
-        eyebrow="Settings"
-        title="Scheduled tasks"
-        description="Work the application repeats on its own. Each task follows a cron expression read on the Europe/Berlin clock, never overlaps itself, and records how its last run ended."
-      />
-
-      {error ? (
-        <ErrorState
-          title="The scheduled tasks could not be loaded"
-          detail="The API did not answer with the task list."
-          onRetry={() => void refetch()}
-        />
-      ) : data && data.length === 0 ? (
-        <EmptyState
-          icon={CalendarClock}
-          title="No scheduled tasks"
-          description="This version of the application declares no repeating work, so there is nothing to schedule."
-        />
-      ) : (
-        data && (
-          <>
-            {failing.length > 0 && (
-              <ErrorState
-                title={
-                  failing.length === 1
-                    ? "1 task failed on its last run"
-                    : `${failing.length} tasks failed on their last run`
-                }
-                detail={`${failing.map((task) => task.name).join(", ")}. What failed is stated beside each task below; run it again once the cause is fixed.`}
-              />
-            )}
-            <div className="measure-list divide-y divide-border border-y border-border">
-              {data.map((task, index) => (
-                <TaskRow key={task.key} task={task} now={dataUpdatedAt} index={index} />
-              ))}
-            </div>
-          </>
-        )
-      )}
-    </div>
+    <SettingsPanel
+      title="Scheduled tasks"
+      description="Work the application repeats on its own. Each task follows a cron expression read on the Europe/Berlin clock, never overlaps itself, and records how its last run ended."
+    >
+      <SettingsGroup
+        title="Tasks"
+        description="How each task's last run ended, when it is next due, and the schedule it follows. Run now starts a run at once, whatever the schedule says, enabled or not."
+        measure="list"
+      >
+        {error ? (
+          <ErrorState
+            title="The scheduled tasks could not be loaded"
+            detail="The API did not answer with the task list."
+            onRetry={() => void refetch()}
+          />
+        ) : data && data.length === 0 ? (
+          <EmptyState
+            icon={CalendarClock}
+            title="No scheduled tasks"
+            description="This version of the application declares no repeating work, so there is nothing to schedule."
+          />
+        ) : (
+          data && (
+            <>
+              {failing.length > 0 && (
+                <ErrorState
+                  title={
+                    failing.length === 1
+                      ? "1 task failed on its last run"
+                      : `${failing.length} tasks failed on their last run`
+                  }
+                  detail={`${failing.map((task) => task.name).join(", ")}. What failed is stated beside each task below; run it again once the cause is fixed.`}
+                />
+              )}
+              <div className="measure-list divide-y divide-border border-y border-border">
+                {data.map((task) => (
+                  <TaskRow key={task.key} task={task} now={dataUpdatedAt} />
+                ))}
+              </div>
+            </>
+          )
+        )}
+      </SettingsGroup>
+    </SettingsPanel>
   );
 }
 
-function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index: number }) {
+function TaskRow({ task, now }: { task: ScheduledTask; now: number }) {
   const queryClient = useQueryClient();
 
   function adopt(updated: ScheduledTask) {
@@ -152,13 +155,12 @@ function TaskRow({ task, now, index }: { task: ScheduledTask; now: number; index
   return (
     <article
       aria-label={task.name}
-      className="rise grid gap-x-10 gap-y-5 py-6 @3xl:grid-cols-[minmax(0,1fr)_19rem]"
-      style={{ animationDelay: `${60 + index * 60}ms` }}
+      className="grid gap-x-10 gap-y-5 py-6 @3xl:grid-cols-[minmax(0,1fr)_19rem]"
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Lamp tone={taskTone(shown)} size="sm" pulsing={inFlight} />
-          <h2 className="text-base font-medium">{task.name}</h2>
+          <h3 className="text-base font-medium">{task.name}</h3>
           <span className={`microlabel ${TONE[taskTone(shown)].text}`}>
             {describeStatus(shown)}
           </span>
