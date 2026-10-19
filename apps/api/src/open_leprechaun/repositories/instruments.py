@@ -346,17 +346,17 @@ class Refusal(Enum):
     """Why a write did not happen, in the caller's terms rather than SQL's."""
 
     no_such_instrument = "no_such_instrument"
+    # The currency every figure is expressed in (ADR-0011) — judged before
+    # anything refers to it, because nothing would make it removable.
+    numeraire = "numeraire"
 
 
 @dataclass(frozen=True)
 class InstrumentHolders:
-    """What keeps an Instrument from being removed: being the numéraire, which
-    is judged before anything else, or the kinds of ledger fact that refer to
-    it — named, never counted."""
+    """What keeps an Instrument from being removed: the kinds of ledger fact
+    that refer to it — named, never counted."""
 
-    symbol: str
-    numeraire: bool
-    uses: tuple[str, ...] = ()
+    uses: tuple[str, ...]
 
 
 # Every fact in the ledger that refers to an Instrument, each as the condition
@@ -391,16 +391,14 @@ def delete_instrument(engine: Engine, instrument_id: int) -> InstrumentHolders |
     The RESTRICT foreign keys stay the backstop.
     """
     with engine.begin() as connection:
-        found = connection.execute(
-            text(
-                "SELECT symbol, is_numeraire FROM instrument WHERE id = :instrument_id FOR UPDATE"
-            ),
+        is_numeraire = connection.execute(
+            text("SELECT is_numeraire FROM instrument WHERE id = :instrument_id FOR UPDATE"),
             {"instrument_id": instrument_id},
-        ).one_or_none()
-        if found is None:
+        ).scalar_one_or_none()
+        if is_numeraire is None:
             return Refusal.no_such_instrument
-        if found.is_numeraire:
-            return InstrumentHolders(symbol=found.symbol, numeraire=True)
+        if is_numeraire:
+            return Refusal.numeraire
         referred = connection.execute(
             text(
                 "SELECT "
@@ -410,7 +408,7 @@ def delete_instrument(engine: Engine, instrument_id: int) -> InstrumentHolders |
         ).one()
         uses = tuple(use for use in _REFERRED_TO_BY if getattr(referred, use))
         if uses:
-            return InstrumentHolders(symbol=found.symbol, numeraire=False, uses=uses)
+            return InstrumentHolders(uses=uses)
         connection.execute(
             text("DELETE FROM instrument WHERE id = :instrument_id"),
             {"instrument_id": instrument_id},

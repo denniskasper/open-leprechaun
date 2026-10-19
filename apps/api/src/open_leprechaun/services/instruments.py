@@ -179,7 +179,7 @@ class Refused:
 
 
 # What each kind of ledger fact is called where a refusal names it.
-_RECORDED_IN = {
+_KIND_OF_RECORD = {
     "transaction_leg": "transactions",
     "futures_fill": "futures fills",
     "funding_payment": "funding payments",
@@ -196,10 +196,12 @@ def remove_instrument(engine: Engine, instrument_id: int) -> Refused | Refusal |
     figure is expressed in it. A refusal names the kinds of record in the way
     and never how many there are. None means it is gone."""
     held = instruments.delete_instrument(engine, instrument_id)
+    if held is Refusal.numeraire:
+        numeraire = instruments.get(engine, instrument_id)
+        assert numeraire is not None
+        return Refused(f"{numeraire.symbol} is the numéraire, so it stays for good.")
     if not isinstance(held, instruments.InstrumentHolders):
         return held
-    if held.numeraire:
-        return Refused(f"{held.symbol} is the numéraire, so it stays for good.")
-    named = [_RECORDED_IN[use] for use in held.uses]
+    named = [_KIND_OF_RECORD[use] for use in held.uses]
     listed = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
     return Refused(f"This Instrument stays for good: it is recorded in {listed}.")
