@@ -102,7 +102,8 @@ two fields side by side from `@lg` (32rem), three from `@xl` (36rem), a
 group's heading beside its controls from `@2xl` (42rem); no threshold sits
 below `@md` (28rem), wider than the column of any phone held upright. Inside
 a table an `@`-variant answers to the table frame instead, which is the
-width in view. `apps/web/design/breakpoints.test.ts` keeps viewport
+width in view, and inside a settings group to the group's controls (see
+Settings panels). `apps/web/design/breakpoints.test.ts` keeps viewport
 breakpoints out of `pages/` and `components/patterns/`;
 `apps/web/e2e/columns.spec.ts` loads Portfolio, Health, the Imports forms
 and the Settings panels at 768px, where the column is narrowest beside the
@@ -178,17 +179,21 @@ first column stays put. A new table screen joins its list.
 
 ## Settings panels
 
-A screen under Settings is one **panel**. A new one is built from
+A screen under Settings is one **panel**. Every one is built from
 `apps/web/src/components/patterns/settings-panel.tsx`, never from a bespoke
-frame; `apps/web/src/pages/security.tsx` is the reference. Platforms,
-Connections, Statutory and Scheduled tasks predate the convention and still
-open with `PageHeader` directly — bring one onto it when next reworking it.
+frame; `apps/web/src/pages/security.tsx` is the reference.
+`apps/web/design/settings-panels.test.ts` holds each entry under Settings in
+`navigation.ts` to it.
 
 - **`SettingsPanel`** — the heading and one line saying what the panel
   governs. It renders the `PageHeader` itself, so a panel does not add its own.
 - **`SettingsGroup`** — one named group of controls: title and description on
   the left, controls on the right, stacked in a narrow column. Groups are
-  ruled apart by hairlines; no cards, no boxes.
+  ruled apart by hairlines; no cards, no boxes. The controls take
+  `measure-form`, or `measure-list` (`measure="list"`) where the group holds a
+  row list. They are a query container: an `@`-variant inside a group answers
+  to the width the controls have, which depends on whether the heading sits
+  beside them.
 
 The description is where a consequence is stated, before the control that
 causes it ("ends every Session, this one included") — not in a confirmation

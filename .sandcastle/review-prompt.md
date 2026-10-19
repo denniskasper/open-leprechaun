@@ -30,6 +30,8 @@ If you changed anything, re-run every check and keep them green:
 - `apps/api/.venv/bin/python -m pytest -c apps/api/pyproject.toml`
 - `pnpm typecheck`
 - `pnpm test:web`
+- `apps/api/.venv/bin/python -m alembic -c apps/api/alembic.ini upgrade head && pnpm --filter @open-leprechaun/web test:e2e`
+  (Playwright against the real API and web app; Chromium is installed)
 
 Commit fixes as Conventional Commits. Do not push, bump versions, or edit
 `CHANGELOG.md`. No personal financial data anywhere — this repo is public.

@@ -26,10 +26,10 @@ import {
   type Withholding,
 } from "@/api/platforms";
 import { fetchConnections, type Connection } from "@/api/connections";
-import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { RemoveButtons, useRemoval } from "@/components/patterns/removal";
+import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -146,49 +146,54 @@ export function PlatformsPage() {
   const [registering, setRegistering] = useState(false);
 
   return (
-    <div className="space-y-10">
-      <PageHeader
-        eyebrow="Settings"
-        title="Platforms"
-        description="Every place that holds value — grouped by kind. An Account under one is a single holding, and the boundary FIFO lot matching works within."
-        actions={
-          <Button onClick={() => setRegistering((open) => !open)}>
-            <Plus aria-hidden />
-            Register Platform
-          </Button>
-        }
-      />
-
-      {registering && (
-        <RegisterPlatformForm onDone={() => setRegistering(false)} />
-      )}
-
-      {error ? (
-        <ErrorState
-          title="The platforms could not be loaded"
-          detail="The API did not answer with the platform list."
-          onRetry={() => void refetch()}
-        />
-      ) : data && data.length === 0 && !registering ? (
-        <EmptyState
-          icon={Vault}
-          title="No Platforms yet"
-          description="Register the places that hold value — an exchange, a cold-storage device, a software wallet, a broker, a bank — then add each holding under one as an Account."
-          action={
-            <Button variant="outline" onClick={() => setRegistering(true)}>
-              <Plus aria-hidden />
-              Register the first Platform
-            </Button>
-          }
-        />
-      ) : data ? (
-        <div className="measure-list space-y-12">
-          {groupByKind(data).map((group, index) => (
-            <KindSection key={group.kind} group={group} index={index} />
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <SettingsPanel
+      title="Platforms"
+      description="Every place that holds value — grouped by kind. An Account under one is a single holding, and the boundary FIFO lot matching works within."
+    >
+      <SettingsGroup
+        title="Registered Platforms"
+        description="Grouped by kind, each with the Accounts under it. A Platform is removed only once it holds no Account and no Connection."
+        measure="list"
+      >
+        {error ? (
+          <ErrorState
+            title="The platforms could not be loaded"
+            detail="The API did not answer with the platform list."
+            onRetry={() => void refetch()}
+          />
+        ) : data && data.length === 0 ? (
+          <EmptyState
+            icon={Vault}
+            title="No Platforms yet"
+            description="Register the places that hold value — an exchange, a cold-storage device, a software wallet, a broker, a bank — then add each holding under one as an Account."
+            action={
+              !registering && (
+                <Button variant="outline" onClick={() => setRegistering(true)}>
+                  <Plus aria-hidden />
+                  Register the first Platform
+                </Button>
+              )
+            }
+          />
+        ) : data ? (
+          <div className="measure-list space-y-12">
+            {groupByKind(data).map((group) => (
+              <KindSection key={group.kind} group={group} />
+            ))}
+          </div>
+        ) : null}
+      </SettingsGroup>
+      <SettingsGroup
+        title="New Platform"
+        description="Name the place and say what kind it is. Its Accounts are added under it once it is registered."
+      >
+        <Button onClick={() => setRegistering((open) => !open)}>
+          <Plus aria-hidden />
+          Register Platform
+        </Button>
+        {registering && <RegisterPlatformForm onDone={() => setRegistering(false)} />}
+      </SettingsGroup>
+    </SettingsPanel>
   );
 }
 
@@ -215,10 +220,9 @@ function RegisterPlatformForm({ onDone }: { onDone: () => void }) {
   return (
     <form
       onSubmit={submit}
-      className="rise measure-form rounded-xl border border-border p-5"
+      className="rise measure-form"
       aria-label="Register a Platform"
     >
-      <p className="microlabel mb-4 text-muted-foreground">New Platform</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1 space-y-2">
           <label htmlFor={nameId} className="microlabel block text-muted-foreground">
@@ -276,20 +280,16 @@ function KindSelect({
   );
 }
 
-function KindSection({ group, index }: { group: KindGroup; index: number }) {
+function KindSection({ group }: { group: KindGroup }) {
   const Icon = KIND_ICON[group.kind];
 
   return (
-    <section
-      className="rise"
-      style={{ animationDelay: `${120 + index * 60}ms` }}
-      aria-label={KIND_VOCABULARY[group.kind].plural}
-    >
+    <section aria-label={KIND_VOCABULARY[group.kind].plural}>
       <div className="flex items-center gap-2.5 border-b border-border pb-2.5">
         <Icon aria-hidden className="size-4 text-muted-foreground" />
-        <h2 className="microlabel text-muted-foreground">
+        <h3 className="microlabel text-muted-foreground">
           {KIND_VOCABULARY[group.kind].plural}
-        </h2>
+        </h3>
         <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
           {group.platforms.length}
         </span>
@@ -320,7 +320,7 @@ function PlatformRow({ platform }: { platform: Platform }) {
         <RenamePlatformForm platform={platform} onDone={() => setEditing(false)} />
       ) : (
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-medium">{platform.name}</h3>
+          <h4 className="text-base font-medium">{platform.name}</h4>
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
             {accountCount(platform.kind, platform.accounts.length)}
           </span>

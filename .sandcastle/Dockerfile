@@ -26,6 +26,17 @@ ARG AGENT_GID=1000
 
 RUN groupadd -o -g $AGENT_GID agent \
   && useradd -o -m -u $AGENT_UID -g $AGENT_GID -d /home/agent -s /bin/bash agent
+
+# Chromium and the system libraries it needs, so the agent can run the
+# Playwright e2e suite. The version matches @playwright/test in
+# apps/web/package.json; the sandbox setup hook installs the browser again
+# if the two ever drift, which is why the agent owns the browsers directory.
+ARG PLAYWRIGHT_VERSION=1.62.1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx --yes playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium \
+  && rm -rf /var/lib/apt/lists/* /root/.npm \
+  && chown -R ${AGENT_UID}:${AGENT_GID} /ms-playwright
+
 USER ${AGENT_UID}:${AGENT_GID}
 
 # Created here so the bind-mounted caches main.mts adds land in directories
