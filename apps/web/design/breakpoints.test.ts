@@ -14,11 +14,11 @@ const ROOTS = ["src/pages", "src/components/patterns"];
 const VIEWPORT_VARIANT =
   /(?<![\w@[-])(?:(?:max-)?(?:sm|md|lg|xl|2xl)|(?:min|max)-\[[^\]]+\]):(?=\S)/g;
 
-/** Each component source under a root, as its name there and its path. */
+/** Each source under a root, tests aside, as its name there and its path. */
 function sources(root: string): [string, string][] {
   const directory = fileURLToPath(new URL(`../${root}/`, import.meta.url));
   return readdirSync(directory, { recursive: true, encoding: "utf8" })
-    .filter((name) => name.endsWith(".tsx"))
+    .filter((name) => /\.tsx?$/.test(name) && !name.endsWith(".test.ts"))
     .map((name) => [name, join(directory, name)]);
 }
 

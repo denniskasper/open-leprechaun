@@ -6,11 +6,20 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // grid on these screens has to have collapsed to what that column holds —
 // nothing sticking out of its cell, no cell over another.
 
+/** A broker of this run's own, whose Add Depot form is the fullest of its kind. */
+const BROKER = `E2E Columns broker ${Date.now()}`;
+
+async function arrangePlatform(
+  request: APIRequestContext,
+  name: string,
+  kind: string,
+): Promise<number> {
+  const platform = await request.post("/api/platforms", { data: { name, kind } });
+  return ((await platform.json()) as { id: number }).id;
+}
+
 async function arrangeCash(request: APIRequestContext): Promise<void> {
-  const platform = await request.post("/api/platforms", {
-    data: { name: `E2E Columns ${Date.now()}`, kind: "bank" },
-  });
-  const platformId = ((await platform.json()) as { id: number }).id;
+  const platformId = await arrangePlatform(request, `E2E Columns ${Date.now()}`, "bank");
   const account = await request.post(`/api/platforms/${platformId}/accounts`, {
     data: { name: "Cash" },
   });
@@ -58,7 +67,12 @@ const SCREENS: Screen[] = [
   {
     name: "Platforms",
     path: "/settings/platforms",
-    open: (page) => page.getByRole("button", { name: "Register Platform" }).click(),
+    arrange: (request) => arrangePlatform(request, BROKER, "broker"),
+    open: (page) =>
+      page
+        .getByRole("article", { name: BROKER })
+        .getByRole("button", { name: "Add Depot" })
+        .click(),
   },
   {
     name: "Connections",
@@ -83,21 +97,22 @@ function misfits(page: Page): Promise<Misfit[]> {
   return page.locator("#content").evaluate((content) => {
     // Node-side types know no DOM, so the shapes are taken from the region.
     type Box = ReturnType<typeof content.getBoundingClientRect>;
-    type Node = NonNullable<typeof content.firstElementChild>;
-    const document = content.ownerDocument;
-    const style = (node: Node) => document.defaultView!.getComputedStyle(node);
-    const name = (node: Node) =>
+    type Tag = NonNullable<typeof content.firstElementChild>;
+    const dom = content.ownerDocument;
+    const style = (node: Tag) => dom.defaultView!.getComputedStyle(node);
+    /** How a misfit names a node: its tag and classes. */
+    const label = (node: Tag) =>
       `${node.tagName.toLowerCase()}.${[...node.classList].join(".")}`.slice(0, 120);
-    const shown = (node: Node) => {
+    const shown = (node: Tag) => {
       const box = node.getBoundingClientRect();
       return box.width > 1 && box.height > 1 && !node.closest(".sr-only, .table-frame");
     };
     /** The box each line of text inside a node takes, with the text. */
-    const lines = (node: Node) =>
+    const lines = (node: Tag) =>
       [...node.childNodes]
         .filter((child) => child.nodeType === child.TEXT_NODE && child.textContent?.trim())
         .map((child) => {
-          const range = document.createRange();
+          const range = dom.createRange();
           range.selectNodeContents(child);
           return { box: range.getBoundingClientRect(), text: child.textContent!.trim() };
         });
@@ -115,8 +130,8 @@ function misfits(page: Page): Promise<Misfit[]> {
           const down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
           if (across > 1 && down > 1) {
             found.push({
-              grid: name(grid),
-              problem: `${name(cells[i]!)} overlaps ${name(cells[i + 1 + j]!)}`,
+              grid: label(grid),
+              problem: `${label(cells[i]!)} overlaps ${label(cells[i + 1 + j]!)}`,
             });
           }
         }),
@@ -130,13 +145,13 @@ function misfits(page: Page): Promise<Misfit[]> {
         const runaway =
           inside
             .filter((node) => node !== cell && outside(node.getBoundingClientRect()))
-            .map(name)[0] ??
+            .map(label)[0] ??
           inside
             .flatMap(lines)
             .filter((line) => outside(line.box))
             .map((line) => `"${line.text.slice(0, 40)}"`)[0];
         if (runaway) {
-          found.push({ grid: name(grid), problem: `${runaway} runs out of ${name(cell)}` });
+          found.push({ grid: label(grid), problem: `${runaway} runs out of ${label(cell)}` });
         }
       });
     }
