@@ -701,7 +701,7 @@ function InstrumentRow({
   return (
     <>
       <tr className="rise" style={{ animationDelay: `${120 + index * 40}ms` }}>
-        <Cell className="font-mono tabular-nums">
+        <Cell data>
           {instrument.symbol}
           {instrument.is_numeraire && (
             <span
@@ -739,7 +739,7 @@ function InstrumentRow({
         <Cell className="text-muted-foreground">
           {FAMILY_LABEL[instrument.family]} · {instrument.type}
         </Cell>
-        <Cell className="font-mono tabular-nums" title={instrument.contract_address ?? undefined}>
+        <Cell data title={instrument.contract_address ?? undefined}>
           {identityOf(instrument)}
         </Cell>
         <Cell>
@@ -748,7 +748,7 @@ function InstrumentRow({
         <Cell figure>
           <PriceCell entry={entry} />
         </Cell>
-        <Cell className="font-mono tabular-nums text-muted-foreground">
+        <Cell data className="text-muted-foreground">
           <ListingsSummary instrument={instrument} managing={managing} onManage={onManage} />
         </Cell>
       </tr>
