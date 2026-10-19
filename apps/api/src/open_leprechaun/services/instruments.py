@@ -1,6 +1,8 @@
 """What the application knows about Instruments beyond storage: the overview
-that lets a reader tell two same-symbol rows apart, and the numéraire rule the
-tax tickets read — whether moving an Instrument is itself a disposal."""
+that lets a reader tell two same-symbol rows apart, the numéraire rule the
+tax tickets read — whether moving an Instrument is itself a disposal — and
+the rule for taking one back, which is refused in words the Admin can act
+on."""
 
 from dataclasses import dataclass
 from typing import Literal, Protocol
@@ -8,6 +10,7 @@ from typing import Literal, Protocol
 from sqlalchemy import Engine
 
 from open_leprechaun.repositories import imports, instruments, stances
+from open_leprechaun.repositories.instruments import Refusal
 
 
 class CarriesNumeraireFlag(Protocol):
@@ -165,3 +168,40 @@ def add_by_hand(
             f"The {kind} {symbol!r} was refused, yet no Instrument holds its identity."
         )
     return AlreadyExists(symbol=existing.symbol, name=existing.name)
+
+
+@dataclass(frozen=True)
+class Refused:
+    """A removal the rule refused: nothing was deleted, and the reason says
+    what keeps the Instrument — in words, never in counts."""
+
+    reason: str
+
+
+# What each kind of ledger fact is called where a refusal names it.
+_KIND_OF_RECORD = {
+    "transaction_leg": "transactions",
+    "futures_fill": "futures fills",
+    "funding_payment": "funding payments",
+    "futures_position": "futures positions",
+    "capital_income": "capital income",
+    "corporate_action": "corporate actions",
+}
+
+
+def remove_instrument(engine: Engine, instrument_id: int) -> Refused | Refusal | None:
+    """An Instrument may be removed only while nothing in the ledger refers to
+    it — the repair for a mistyped identity, which is never edited because it
+    is what the Instrument is (ADR-0010). The numéraire never goes: every
+    figure is expressed in it. A refusal names the kinds of record in the way
+    and never how many there are. None means it is gone."""
+    held = instruments.delete_instrument(engine, instrument_id)
+    if held is Refusal.numeraire:
+        numeraire = instruments.get(engine, instrument_id)
+        assert numeraire is not None
+        return Refused(f"{numeraire.symbol} is the numéraire, so it stays for good.")
+    if not isinstance(held, instruments.InstrumentHolders):
+        return held
+    named = [_KIND_OF_RECORD[use] for use in held.uses]
+    listed = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+    return Refused(f"This Instrument stays for good: it is recorded in {listed}.")

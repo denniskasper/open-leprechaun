@@ -210,7 +210,10 @@
   /* The table frame (components/patterns/table.tsx): the column's width, its
      table as wide as the content needs and scrolling sideways only past the
      column. A size container, so a row's detail keeps to what is in view. */
+  /* Relative, so what a cell positions absolutely — a screen-reader-only
+     label, say — is clipped by the frame instead of widening the page. */
   .table-frame {
+    position: relative;
     container-type: inline-size;
     overflow-x: auto;
     scrollbar-width: thin;

@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Shapes } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
-import { fetchInstruments, type Instrument, type Listing } from "@/api/instruments";
+import {
+  fetchInstruments,
+  removeInstrument,
+  type Instrument,
+  type Listing,
+} from "@/api/instruments";
 import {
   fetchCryptoPrices,
   fetchSecurityPrices,
@@ -25,9 +30,11 @@ import {
   type NewSecurity,
   type ResolvedListing,
 } from "@/api/securities";
+import { fetchFundRedemptionValues } from "@/api/statutory";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { RemoveButtons, useRemoval } from "@/components/patterns/removal";
 import { Cell, DetailRow, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,6 +232,42 @@ export function unheldListings(resolved: ResolvedListing[], held: Listing[]): Re
   const key = (venue: string, currency: string) => `${venue.toLowerCase()} ${currency}`;
   const known = new Set(held.map((listing) => key(listing.venue, listing.quote_currency)));
   return resolved.filter((listing) => !known.has(key(listing.venue, listing.quote_currency)));
+}
+
+/** "a", "a and b", "a, b and c". */
+function listed(parts: string[]): string {
+  return parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+/**
+ * What the row says before a removal is confirmed (issue 9): what the Admin
+ * declared about the Instrument that goes with it — its Stance, its Listings,
+ * a fund's redemption values by year. `redemptionYears` is null when they
+ * could not be looked up, so the warning stands without the years. Null when
+ * nothing declared would go; stored prices go too, but nobody typed those in.
+ */
+export function whatGoesWith(
+  instrument: Instrument,
+  redemptionYears: number[] | null,
+): string | null {
+  const parts: string[] = [];
+  const decisions = instrument.stances.length + (instrument.dangerous ? 1 : 0);
+  if (decisions > 0) {
+    parts.push(decisions === 1 ? "its Stance" : "its Stances");
+  }
+  if (instrument.listings.length > 0) {
+    const markets = instrument.listings.map(
+      (listing) => `${listing.venue} (${listing.quote_currency})`,
+    );
+    parts.push(`its ${markets.length === 1 ? "Listing" : "Listings"} on ${listed(markets)}`);
+  }
+  if (redemptionYears === null) {
+    parts.push("any redemption values entered for it");
+  } else if (redemptionYears.length > 0) {
+    const years = [...redemptionYears].sort((a, b) => a - b).map(String);
+    parts.push(`its redemption values for ${listed(years)}`);
+  }
+  return parts.length === 0 ? null : `Removing it also removes ${listed(parts)}.`;
 }
 
 export function InstrumentsPage() {
@@ -630,6 +673,9 @@ const INSTRUMENT_COLUMNS = [
   "Listings",
 ];
 
+// The data columns, and the trailing one each row's Remove stands in.
+const COLUMN_COUNT = INSTRUMENT_COLUMNS.length + 1;
+
 function InstrumentTable({
   instruments,
   prices,
@@ -651,6 +697,9 @@ function InstrumentTable({
               {column}
             </Heading>
           ))}
+          <Heading>
+            <span className="sr-only">Remove</span>
+          </Heading>
         </tr>
       </thead>
       <tbody>
@@ -698,6 +747,26 @@ function InstrumentRow({
   onManage: (open: boolean) => void;
 }) {
   const cell = classificationCell(instrument);
+  const removal = useRemoval(() => removeInstrument(instrument.id), ["instruments"]);
+  const goes = useWhatGoesWith(instrument, removal.confirming);
+  // The row shows one thing at a time: a removal half asked for, or refused,
+  // does not stand beside an editor opened after it — nor an open editor
+  // beside a removal asked for after it.
+  const opening = (open: (opened: boolean) => void) => (opened: boolean) => {
+    if (opened) {
+      removal.keep();
+      removal.forget();
+    }
+    open(opened);
+  };
+  const asking = {
+    ...removal,
+    ask: () => {
+      if (editing) onEdit(false);
+      if (managing) onManage(false);
+      removal.ask();
+    },
+  };
   return (
     <>
       <tr className="rise" style={{ animationDelay: `${120 + index * 40}ms` }}>
@@ -743,17 +812,40 @@ function InstrumentRow({
           {identityOf(instrument)}
         </Cell>
         <Cell>
-          <ClassificationSummary cell={cell} editing={editing} onEdit={onEdit} />
+          <ClassificationSummary cell={cell} editing={editing} onEdit={opening(onEdit)} />
         </Cell>
         <Cell figure>
           <PriceCell entry={entry} />
         </Cell>
         <Cell data className="text-muted-foreground">
-          <ListingsSummary instrument={instrument} managing={managing} onManage={onManage} />
+          <ListingsSummary
+            instrument={instrument}
+            managing={managing}
+            onManage={opening(onManage)}
+          />
+        </Cell>
+        <Cell className="text-right whitespace-nowrap">
+          <RemoveButtons
+            removal={asking}
+            name={`${instrument.symbol} ${identityOf(instrument)}`}
+            className="h-7 px-2"
+          />
         </Cell>
       </tr>
+      {((removal.confirming && goes) || removal.refusal) && (
+        <DetailRow columns={COLUMN_COUNT}>
+          {removal.confirming && goes && (
+            <p className="measure-prose text-sm text-muted-foreground">{goes}</p>
+          )}
+          {removal.refusal && (
+            <p role="alert" className="measure-prose text-sm text-alarm">
+              {removal.refusal}
+            </p>
+          )}
+        </DetailRow>
+      )}
       {editing && cell.kind !== "not_applicable" && (
-        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
+        <DetailRow columns={COLUMN_COUNT}>
           <SettleForm
             instrument={instrument}
             review={cell.kind === "review"}
@@ -762,12 +854,39 @@ function InstrumentRow({
         </DetailRow>
       )}
       {managing && instrument.family === "security" && (
-        <DetailRow columns={INSTRUMENT_COLUMNS.length}>
+        <DetailRow columns={COLUMN_COUNT}>
           <ListingsEditor instrument={instrument} />
         </DetailRow>
       )}
     </>
   );
+}
+
+/**
+ * The sentence a row shows while its removal waits to be confirmed. A fund's
+ * redemption values are looked up only then; until they answer the row says
+ * nothing rather than leave a year out, and a failed lookup still warns.
+ */
+function useWhatGoesWith(instrument: Instrument, confirming: boolean): string | null {
+  const fund = instrument.family === "security" && FUND_TYPES.includes(instrument.type);
+  const redemption = useQuery({
+    queryKey: ["fund-redemption-values"],
+    queryFn: fetchFundRedemptionValues,
+    enabled: confirming && fund,
+  });
+  if (!fund) {
+    return whatGoesWith(instrument, []);
+  }
+  if (redemption.error) {
+    return whatGoesWith(instrument, null);
+  }
+  if (!redemption.data) {
+    return null;
+  }
+  const years = redemption.data.values
+    .filter((value) => value.instrument_id === instrument.id)
+    .map((value) => value.year);
+  return whatGoesWith(instrument, years);
 }
 
 /**

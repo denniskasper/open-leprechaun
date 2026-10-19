@@ -285,6 +285,10 @@ The same directory holds the rest of what screens share:
 - **Amount**, **Money** and **Price** (`figure.tsx`) — a figure rounded for
   reading, its digits as stated on hover. See Numbers above.
 - **Table** and its cells (`table.tsx`) — see Tables above.
+- **RemoveButtons** with `useRemoval` (`removal.tsx`) — the inline two-step a
+  row is removed by: "Remove", then "Remove for good" or "Keep". It is never
+  disabled by a guess; the server's refusal is kept for the row to show in a
+  `role="alert"` line.
 - **CodeField** and **QrCode** — see Settings panels above.
 
 ## Motion

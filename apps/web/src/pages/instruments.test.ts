@@ -11,6 +11,7 @@ import {
   staleExplanation,
   stanceWarning,
   unheldListings,
+  whatGoesWith,
 } from "./instruments";
 
 function instrument(overrides: Partial<Instrument>): Instrument {
@@ -284,5 +285,70 @@ describe("unheldListings", () => {
     const holder = [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }];
 
     expect(unheldListings([{ venue: "Xetra", quote_currency: "EUR" }], holder)).toEqual([]);
+  });
+});
+
+describe("whatGoesWith", () => {
+  it("says nothing where nothing the Admin declared would go", () => {
+    expect(whatGoesWith(instrument({}), [])).toBeNull();
+  });
+
+  it("names a Stance, whether at an Account or everywhere", () => {
+    expect(whatGoesWith(instrument({ stances: [{ account_id: 7, stance: "kept" }] }), [])).toBe(
+      "Removing it also removes its Stance.",
+    );
+    expect(whatGoesWith(instrument({ dangerous: true }), [])).toBe(
+      "Removing it also removes its Stance.",
+    );
+    expect(
+      whatGoesWith(
+        instrument({ dangerous: true, stances: [{ account_id: 7, stance: "ignored" }] }),
+        [],
+      ),
+    ).toBe("Removing it also removes its Stances.");
+  });
+
+  it("names each Listing by its venue and currency", () => {
+    const listing = { id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true };
+    expect(whatGoesWith(security({ listings: [listing] }), [])).toBe(
+      "Removing it also removes its Listing on XETRA (EUR).",
+    );
+    expect(
+      whatGoesWith(
+        security({
+          listings: [listing, { id: 2, venue: "Tradegate", quote_currency: "EUR", price_source: false }],
+        }),
+        [],
+      ),
+    ).toBe("Removing it also removes its Listings on XETRA (EUR) and Tradegate (EUR).");
+  });
+
+  it("names the years redemption values were entered for, in order", () => {
+    expect(whatGoesWith(security({}), [2030, 2028, 2029])).toBe(
+      "Removing it also removes its redemption values for 2028, 2029 and 2030.",
+    );
+    expect(whatGoesWith(security({}), [2030])).toBe(
+      "Removing it also removes its redemption values for 2030.",
+    );
+  });
+
+  it("still warns of redemption values it could not look up", () => {
+    expect(whatGoesWith(security({}), null)).toBe(
+      "Removing it also removes any redemption values entered for it.",
+    );
+  });
+
+  it("names everything in one sentence", () => {
+    expect(
+      whatGoesWith(
+        security({
+          stances: [{ account_id: 7, stance: "kept" }],
+          listings: [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }],
+        }),
+        [2030],
+      ),
+    ).toBe(
+      "Removing it also removes its Stance, its Listing on XETRA (EUR) and its redemption values for 2030.",
+    );
   });
 });

@@ -139,6 +139,11 @@ display label and a resolution hint, never authoritative.
 Securities key on **ISIN**, with an identifier history so that a lot acquired under a superseded
 identifier survives a merger or redomiciliation. WKN and ticker are lookup aliases only.
 
+An Instrument may be removed only while nothing in the ledger refers to it — no transaction leg,
+futures record, capital income or corporate action. What the Admin declared about it — its
+**Stance**, its **Listings**, its identifier history — goes with it, and so do its stored prices;
+history never does, so an Instrument that has any stays for good. The numéraire is never removed.
+
 _Avoid_: keying anything on a symbol alone. Two unrelated tokens can share a ticker, and keyed
 that way they collapse into one row where the loser inherits the winner's price, name and logo.
 

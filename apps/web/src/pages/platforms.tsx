@@ -6,7 +6,6 @@ import {
   Pencil,
   Plus,
   Briefcase,
-  Trash2,
   Vault,
   Wallet,
 } from "lucide-react";
@@ -29,6 +28,7 @@ import {
 import { fetchConnections, type Connection } from "@/api/connections";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { RemoveButtons, useRemoval } from "@/components/patterns/removal";
 import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -303,87 +303,11 @@ function KindSection({ group }: { group: KindGroup }) {
   );
 }
 
-/**
- * The inline two-step every removal on this screen goes through, the same one
- * a Connection is removed by. The button is never disabled by a guess about what
- * the row holds: the server is the one authority on whether removal is
- * allowed, and its refusal is kept here to be shown at the row.
- */
-function useRemoval(remove: () => Promise<void>) {
-  const [confirming, setConfirming] = useState(false);
-  const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: remove,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platforms"] }),
-  });
-
-  return {
-    confirming,
-    pending: mutation.isPending,
-    refusal: mutation.error?.message,
-    ask: () => setConfirming(true),
-    keep: () => setConfirming(false),
-    confirm: () => mutation.mutate(),
-    forget: mutation.reset,
-  };
-}
-
-type Removal = ReturnType<typeof useRemoval>;
-
-/** Remove → "Remove for good" / "Keep". `name` tells one row's buttons from the next. */
-function RemoveButtons({
-  removal,
-  name,
-  className = "",
-}: {
-  removal: Removal;
-  name: string;
-  className?: string;
-}) {
-  if (removal.confirming) {
-    return (
-      <>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`text-alarm ${className}`}
-          disabled={removal.pending}
-          aria-label={`Remove ${name} for good`}
-          onClick={removal.confirm}
-        >
-          {removal.pending ? "Removing…" : "Remove for good"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={className}
-          aria-label={`Keep ${name}`}
-          onClick={removal.keep}
-        >
-          Keep
-        </Button>
-      </>
-    );
-  }
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className={`text-muted-foreground ${className}`}
-      aria-label={`Remove ${name}`}
-      onClick={removal.ask}
-    >
-      <Trash2 aria-hidden />
-      Remove
-    </Button>
-  );
-}
-
 function PlatformRow({ platform }: { platform: Platform }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
   const noun = KIND_VOCABULARY[platform.kind].account;
-  const removal = useRemoval(() => removePlatform(platform.id));
+  const removal = useRemoval(() => removePlatform(platform.id), ["platforms"]);
 
   // A refusal names the Accounts in the way; once that list changes it no
   // longer describes this Platform, so it is not left standing.
@@ -706,7 +630,7 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
 
 function AccountLine({ account, platform }: { account: Account; platform: Platform }) {
   const [editing, setEditing] = useState(false);
-  const removal = useRemoval(() => removeAccount(account.id));
+  const removal = useRemoval(() => removeAccount(account.id), ["platforms"]);
 
   if (editing) {
     return (
