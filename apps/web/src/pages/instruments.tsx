@@ -749,6 +749,15 @@ function InstrumentRow({
   const cell = classificationCell(instrument);
   const removal = useRemoval(() => removeInstrument(instrument.id), ["instruments"]);
   const goes = useWhatGoesWith(instrument, removal.confirming);
+  // The row shows one thing at a time: a removal half asked for, or refused,
+  // does not stand beside an editor opened after it.
+  const opening = (open: (opened: boolean) => void) => (opened: boolean) => {
+    if (opened) {
+      removal.keep();
+      removal.forget();
+    }
+    open(opened);
+  };
   return (
     <>
       <tr className="rise" style={{ animationDelay: `${120 + index * 40}ms` }}>
@@ -794,13 +803,17 @@ function InstrumentRow({
           {identityOf(instrument)}
         </Cell>
         <Cell>
-          <ClassificationSummary cell={cell} editing={editing} onEdit={onEdit} />
+          <ClassificationSummary cell={cell} editing={editing} onEdit={opening(onEdit)} />
         </Cell>
         <Cell figure>
           <PriceCell entry={entry} />
         </Cell>
         <Cell data className="text-muted-foreground">
-          <ListingsSummary instrument={instrument} managing={managing} onManage={onManage} />
+          <ListingsSummary
+            instrument={instrument}
+            managing={managing}
+            onManage={opening(onManage)}
+          />
         </Cell>
         <Cell className="text-right whitespace-nowrap">
           <RemoveButtons
