@@ -127,6 +127,16 @@ function lastTag(stdout: string, tag: string): string | undefined {
   return matches.at(-1)?.[1]?.trim();
 }
 
+/** Agent text for the PR body, minus the lines the body adds itself. */
+function prSection(text: string | undefined): string | undefined {
+  return text
+    ?.split("\n")
+    .filter((line) => !/^🤖 Generated with|^(Refs|Closes) #\d+\s*$/.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /**
  * Runs text the agent wrote through the repo's commit-msg guard before it is
  * published, since no git hook sees PR or issue text. No hook (a fresh clone),
@@ -267,8 +277,8 @@ async function work(number: number): Promise<Outcome> {
     sh("git", ["log", "--reverse", "--format=%s", `${baseBranch}..${branch}`]).split("\n")[0]!;
   const body = [
     `Closes #${number}`,
-    lastTag(implement.stdout, "summary") ?? "",
-    `## Review\n\n${(review && lastTag(review.stdout, "review")) ?? "_The reviewer left no summary._"}`,
+    prSection(lastTag(implement.stdout, "summary")) ?? "",
+    `## Review\n\n${(review && prSection(lastTag(review.stdout, "review"))) || "_The reviewer left no summary._"}`,
     `## Checks\n\n${CHECKS.map((c) => `- [${failedChecks.includes(c.name) ? " " : "x"}] ${c.name}`).join("\n")}`,
     "🤖 Generated with [Claude Code](https://claude.com/claude-code) via [Sandcastle](https://github.com/mattpocock/sandcastle)",
   ].join("\n\n");

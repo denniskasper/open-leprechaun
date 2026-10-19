@@ -46,7 +46,8 @@ When the issue is done, committed, and every check passes, end your final messag
 <pr-title>a Conventional Commits subject for the pull request, under ~50 chars</pr-title>
 <summary>
 Markdown for the pull request body: what changed and why, and any decision a
-reviewer should know about. No figures from real accounts.
+reviewer should know about. No figures from real accounts. Leave out
+`Closes`/`Refs` lines and any "Generated with" attribution — the host adds them.
 </summary>
 <promise>COMPLETE</promise>
 
