@@ -138,8 +138,8 @@ def test_any_year_may_be_entered_even_before_the_ledger_begins(client, db):
     assert _used(client, broker) == [{"year": 2009, "amount_eur": "801.00"}]
 
 
-@pytest.mark.parametrize("amount", ["-0.01", "12.345", "abc"])
-def test_a_negative_or_over_precise_amount_is_refused(client, db, amount):
+@pytest.mark.parametrize("amount", ["-0.01", "12.345", "abc", "1000000000000", "1000000000000.00"])
+def test_a_negative_over_precise_or_oversized_amount_is_refused(client, db, amount):
     broker = _platform(client)
 
     refused = client.put(

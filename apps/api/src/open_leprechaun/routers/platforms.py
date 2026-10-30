@@ -324,8 +324,10 @@ def record_withholding(
         )
 
 
-# The euro amount a tax certificate states: to the cent, never below zero.
-CertificateAmount = Annotated[Money, Field(decimal_places=2)]
+# The euro amount a tax certificate states: to the cent, never below zero,
+# and below the column's twelve whole digits, so an absurd figure is refused
+# rather than overflowing the database.
+CertificateAmount = Annotated[Money, Field(lt=Decimal(10) ** 12, decimal_places=2)]
 
 # Any year a certificate can be for, before the ledger's first event
 # included; bounded only so nothing past four digits reaches the database.
