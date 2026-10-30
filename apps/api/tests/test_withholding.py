@@ -209,13 +209,13 @@ def test_an_account_may_override_its_brokers_behaviour_and_clear_it_again(db):
 def test_an_account_under_a_bank_may_override_its_banks_behaviour_and_clear_it_again(db):
     bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
     platforms.set_withholding(db, bank, behaviour="none")
-    main = platforms.create_account(db, bank, name="Giro")
+    giro = platforms.create_account(db, bank, name="Giro")
 
-    assert platforms.set_withholding_override(db, main, behaviour="at_source") is None
+    assert platforms.set_withholding_override(db, giro, behaviour="at_source") is None
     (row,) = platforms.list_accounts(db)
     assert row.withholding_override == "at_source"
 
-    assert platforms.set_withholding_override(db, main, behaviour=None) is None
+    assert platforms.set_withholding_override(db, giro, behaviour=None) is None
     (row,) = platforms.list_accounts(db)
     assert row.withholding_override is None
 
@@ -223,16 +223,16 @@ def test_an_account_under_a_bank_may_override_its_banks_behaviour_and_clear_it_a
 def test_clearing_a_bank_accounts_override_is_fine_while_it_holds_positions(db):
     """Only a broker's Depot must have its behaviour set before it holds a
     position, so only there does a held position keep an override standing —
-    a bank's Account held cash long before banks could withhold."""
+    a bank's Account holds cash whatever its behaviour."""
     bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
-    main = platforms.create_account(db, bank, name="Giro")
-    platforms.set_withholding_override(db, main, behaviour="at_source")
+    giro = platforms.create_account(db, bank, name="Giro")
+    platforms.set_withholding_override(db, giro, behaviour="at_source")
     created = transactions.create_transaction(
-        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(main, _eur(db))
+        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(giro, _eur(db))
     )
     assert isinstance(created, int)
 
-    assert platforms.set_withholding_override(db, main, behaviour=None) is None
+    assert platforms.set_withholding_override(db, giro, behaviour=None) is None
     (row,) = platforms.list_accounts(db)
     assert row.withholding_override is None
 
@@ -374,10 +374,10 @@ def test_an_account_under_a_bank_holds_positions_with_no_withholding_behaviour_s
     broker's alone (issue 29): a bank that may now withhold still holds cash
     in an Account nothing has declared anything about."""
     bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
-    main = platforms.create_account(db, bank, name="Giro")
+    giro = platforms.create_account(db, bank, name="Giro")
 
     created = transactions.create_transaction(
-        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(main, _eur(db))
+        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(giro, _eur(db))
     )
 
     assert isinstance(created, int)
@@ -573,16 +573,16 @@ def test_the_api_answers_conflict_for_clearing_an_override_a_held_depot_rests_on
 
 def test_the_api_records_and_clears_an_override_under_a_bank(client, db):
     bank = client.post("/api/platforms", json={"name": "Sparkasse", "kind": "bank"}).json()["id"]
-    main = client.post(f"/api/platforms/{bank}/accounts", json={"name": "Giro"}).json()["id"]
+    giro = client.post(f"/api/platforms/{bank}/accounts", json={"name": "Giro"}).json()["id"]
 
     recorded = client.put(
-        f"/api/accounts/{main}/withholding-override", json={"behaviour": "at_source"}
+        f"/api/accounts/{giro}/withholding-override", json={"behaviour": "at_source"}
     )
     assert recorded.status_code == 204
     (platform,) = client.get("/api/platforms").json()
     assert platform["accounts"][0]["withholding_override"] == "at_source"
 
-    cleared = client.put(f"/api/accounts/{main}/withholding-override", json={"behaviour": None})
+    cleared = client.put(f"/api/accounts/{giro}/withholding-override", json={"behaviour": None})
     assert cleared.status_code == 204
     (platform,) = client.get("/api/platforms").json()
     assert platform["accounts"][0]["withholding_override"] is None

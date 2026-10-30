@@ -68,7 +68,19 @@ def _statutes(store, *, year=2031):
         )
 
 
-def _depot(db, *, withholding, platform_name="Broker", name="Depot", kind="broker"):
+def _depot(db, *, withholding, platform_name="Broker", name="Depot"):
+    return _withholding_account(
+        db, kind="broker", withholding=withholding, platform_name=platform_name, name=name
+    )
+
+
+def _bank_account(db, *, withholding, platform_name):
+    return _withholding_account(
+        db, kind="bank", withholding=withholding, platform_name=platform_name, name="Giro"
+    )
+
+
+def _withholding_account(db, *, kind, withholding, platform_name, name):
     platform_id = platforms.create_platform(db, name=platform_name, kind=kind)
     assert platforms.set_withholding(db, platform_id, behaviour=withholding) is None
     created = platforms.create_account(db, platform_id, name=name)
@@ -412,14 +424,14 @@ def test_income_settled_at_source_is_distinguished_from_income_still_to_declare(
     assert [receipt.settled_at_source for receipt in report.receipts] == [True, False, False]
 
 
-def test_income_at_a_withholding_banks_depot_counts_as_settled_at_source(store):
-    """A German bank withholds the same way a broker does (issue 29): its
-    Depot's income was settled before it arrived, and a bank that withholds
-    nothing leaves its income to declare."""
+def test_income_at_a_withholding_bank_counts_as_settled_at_source(store):
+    """A German bank withholds the same way a broker does (issue 29): income
+    at an Account under a bank that withholds was settled before it arrived,
+    and a bank that withholds nothing leaves its income to declare."""
     _statutes(store)
     eur = _eur(store)
-    withholding = _depot(store, withholding="at_source", platform_name="Hausbank", kind="bank")
-    gross = _depot(store, withholding="none", platform_name="Direktbank", kind="bank")
+    withholding = _bank_account(store, withholding="at_source", platform_name="Hausbank")
+    gross = _bank_account(store, withholding="none", platform_name="Direktbank")
     _receive(
         store,
         withholding,

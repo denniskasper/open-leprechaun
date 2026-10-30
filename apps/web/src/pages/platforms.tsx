@@ -563,13 +563,27 @@ function WithholdingLine({ platform }: { platform: Platform }) {
           {platform.withholding ? "Edit withholding" : "Set withholding"}
         </Button>
       </div>
-      {editing && <WithholdingForm platform={platform} onDone={() => setEditing(false)} />}
+      {editing && (
+        <WithholdingForm
+          platform={platform}
+          institution={institution}
+          onDone={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
 
-function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
-  const institution = KIND_VOCABULARY[platform.kind].singular.toLowerCase();
+function WithholdingForm({
+  platform,
+  institution,
+  onDone,
+}: {
+  platform: Platform;
+  /** "broker" or "bank" — what the order was lodged with, in running prose. */
+  institution: string;
+  onDone: () => void;
+}) {
   const [behaviour, setBehaviour] = useState<Withholding>(platform.withholding ?? "at_source");
   const [order, setOrder] = useState(platform.exemption_order_eur ?? "");
   const behaviourId = useId();

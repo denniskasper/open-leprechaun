@@ -601,8 +601,8 @@ _Avoid_: applying it as a **Freigrenze**. It is a deduction, not an all-or-nothi
 An exemption order lodged with a German broker or bank, telling it to let income through untaxed
 until an allocated slice of the **Sparerpauschbetrag** is used up. Recorded per withholding
 **Platform**; absent means none. A bank the ledger does not otherwise track is entered as a `bank`
-Platform with no Accounts to hold its order. It matters because income that already passed untaxed at source has consumed
-allowance the engine must not grant again.
+Platform with no Accounts to hold its order. It matters because income that already passed untaxed
+at source has consumed allowance the engine must not grant again.
 
 ### Abgeltungsteuer
 
@@ -673,9 +673,10 @@ limit; the difference is the reclaimable part.
 
 ### Kapitalertragsteuer at source
 
-Tax a German broker or bank withholds and remits on the Admin's behalf. It distinguishes a withholding
-**Depot**, where income is largely settled already, from a foreign one, where everything must be
-declared. The report shows amounts settled at source separately from amounts still to declare.
+Tax a German broker or bank withholds and remits on the Admin's behalf. It distinguishes a
+withholding **Depot** or bank **Account**, where income is largely settled already, from a foreign
+one, where everything must be declared. The report shows amounts settled at source separately from
+amounts still to declare.
 
 ### Form line
 
