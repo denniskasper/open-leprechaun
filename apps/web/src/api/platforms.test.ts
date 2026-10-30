@@ -225,11 +225,11 @@ describe("setWithholding", () => {
   });
 
   it("surfaces the API's own words for a refusal", async () => {
-    respondWith(409, { detail: "Only a broker Platform carries withholding behaviour." });
+    respondWith(409, { detail: "Only a broker or bank Platform carries withholding behaviour." });
 
     await expect(
       setWithholding(1, { behaviour: "at_source", exemption_order_eur: null }),
-    ).rejects.toThrow("Only a broker Platform carries withholding behaviour.");
+    ).rejects.toThrow("Only a broker or bank Platform carries withholding behaviour.");
   });
 });
 
@@ -247,10 +247,10 @@ describe("setWithholdingOverride", () => {
   });
 
   it("surfaces the API's own words for a refusal", async () => {
-    respondWith(409, { detail: "Only an Account under a broker carries an override." });
+    respondWith(409, { detail: "Only an Account under a broker or bank carries an override." });
 
     await expect(setWithholdingOverride(1, "none")).rejects.toThrow(
-      "Only an Account under a broker carries an override.",
+      "Only an Account under a broker or bank carries an override.",
     );
   });
 });

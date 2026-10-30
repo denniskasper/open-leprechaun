@@ -69,7 +69,30 @@ export function accountCount(kind: PlatformKind, held: number): string {
   return `${held} ${noun}${held === 1 ? "" : "s"}`;
 }
 
-/** The two behaviours a broker can have, in the Admin's words. */
+/**
+ * Whether this kind withholds at source and takes an exemption order: a
+ * German broker does, and a German bank the same way (issue 29).
+ */
+export function canWithhold(kind: PlatformKind): boolean {
+  return kind === "broker" || kind === "bank";
+}
+
+/**
+ * What a Platform that can withhold says while its behaviour is unset, and
+ * whether that calls for caution. Only a broker's Depots are barred from
+ * holding positions until it is set; a bank's income simply falls on the side
+ * still to declare, an answer rather than a gap.
+ */
+export function unsetWithholding(kind: PlatformKind): { sentence: string; caution: boolean } {
+  return kind === "broker"
+    ? {
+        sentence: "Withholding not set — its Depots cannot hold positions until it is.",
+        caution: true,
+      }
+    : { sentence: "Withholding not set — income here counts as still to declare.", caution: false };
+}
+
+/** The two behaviours a broker or bank can have, in the Admin's words. */
 export const WITHHOLDING_LABEL: Record<Withholding, string> = {
   at_source: "Withholds at source",
   none: "No withholding at source",
@@ -360,7 +383,7 @@ function PlatformRow({ platform }: { platform: Platform }) {
         </p>
       )}
 
-      {platform.kind === "broker" && <WithholdingLine platform={platform} />}
+      {canWithhold(platform.kind) && <WithholdingLine platform={platform} />}
       {platform.kind === "broker" && <ServedByLine platform={platform} />}
 
       {platform.accounts.length > 0 && (
@@ -506,6 +529,8 @@ function ServedByLine({ platform }: { platform: Platform }) {
 
 function WithholdingLine({ platform }: { platform: Platform }) {
   const [editing, setEditing] = useState(false);
+  const institution = KIND_VOCABULARY[platform.kind].singular.toLowerCase();
+  const unset = unsetWithholding(platform.kind);
 
   return (
     <div className="mt-1.5">
@@ -518,15 +543,15 @@ function WithholdingLine({ platform }: { platform: Platform }) {
             {platform.exemption_order_eur !== null && (
               <span
                 className="font-mono text-xs tabular-nums text-muted-foreground"
-                title="Exemption order (Freistellungsauftrag) lodged with this broker — income passes untaxed until this slice of the saver's allowance is used up."
+                title={`Exemption order (Freistellungsauftrag) lodged with this ${institution} — income passes untaxed until this slice of the saver's allowance is used up.`}
               >
                 {formatMoneyExact(platform.exemption_order_eur, "EUR")} exemption order
               </span>
             )}
           </>
         ) : (
-          <span className="text-caution">
-            Withholding not set — its Depots cannot hold positions until it is.
+          <span className={unset.caution ? "text-caution" : "text-muted-foreground"}>
+            {unset.sentence}
           </span>
         )}
         <Button
@@ -544,6 +569,7 @@ function WithholdingLine({ platform }: { platform: Platform }) {
 }
 
 function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+  const institution = KIND_VOCABULARY[platform.kind].singular.toLowerCase();
   const [behaviour, setBehaviour] = useState<Withholding>(platform.withholding ?? "at_source");
   const [order, setOrder] = useState(platform.exemption_order_eur ?? "");
   const behaviourId = useId();
@@ -616,7 +642,7 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
       </div>
       {behaviour === "at_source" && (
         <p id={`${orderId}-hint`} className="mt-2 text-xs text-muted-foreground">
-          The Freistellungsauftrag lodged with this broker — leave empty for none.
+          The Freistellungsauftrag lodged with this {institution} — leave empty for none.
         </p>
       )}
       {record.isError && (
@@ -666,7 +692,7 @@ function AccountLine({ account, platform }: { account: Account; platform: Platfo
         </span>
       )}
       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-        {platform.kind === "broker" && <OverrideSelect account={account} />}
+        {canWithhold(platform.kind) && <OverrideSelect account={account} platform={platform} />}
         <Button
           variant="ghost"
           size="sm"
@@ -770,7 +796,8 @@ function EditAccountForm({
   );
 }
 
-function OverrideSelect({ account }: { account: Account }) {
+function OverrideSelect({ account, platform }: { account: Account; platform: Platform }) {
+  const vocabulary = KIND_VOCABULARY[platform.kind];
   const queryClient = useQueryClient();
 
   const record = useMutation({
@@ -792,10 +819,10 @@ function OverrideSelect({ account }: { account: Account }) {
           record.mutate(event.target.value === "" ? null : (event.target.value as Withholding))
         }
         aria-label={`Withholding override for ${account.name}`}
-        title="This one Depot's exception — for a brand operating through several entities with different tax status."
+        title={`This one ${vocabulary.account}'s exception — for a brand operating through several entities with different tax status.`}
       >
         <option value="" className="bg-background text-foreground">
-          Broker&apos;s withholding
+          {vocabulary.singular}&apos;s withholding
         </option>
         {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
           <option key={value} value={value} className="bg-background text-foreground">

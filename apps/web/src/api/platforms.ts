@@ -15,8 +15,8 @@ export const platformKindSchema = z.enum([
 ]);
 
 /**
- * How a broker treats income at source (ticket 43): withheld already, or
- * arriving gross with everything still to declare.
+ * How a broker or bank treats income at source (ticket 43, issue 29):
+ * withheld already, or arriving gross with everything still to declare.
  */
 export const withholdingSchema = z.enum(["at_source", "none"]);
 
@@ -37,7 +37,7 @@ export const platformSchema = z.object({
   id: z.number(),
   name: z.string(),
   kind: platformKindSchema,
-  /** Only ever set on a broker; a Depot may hold nothing until it is. */
+  /** Only ever set on a broker or a bank; a broker's Depot may hold nothing until it is. */
   withholding: withholdingSchema.nullable(),
   /** Fixed-point decimal string off the API; absent means no exemption order. */
   exemption_order_eur: z.string().nullable(),
