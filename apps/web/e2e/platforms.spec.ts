@@ -168,9 +168,10 @@ test("a broker's allowance used at source is entered, listed and cleared", async
   const used = row.getByRole("region", { name: "Allowance used at source" });
   await expect(used.getByText(/None entered/)).toBeVisible();
 
-  const adding = `Add a year's allowance used at source for ${name}`;
-  await used.getByRole("button", { name: adding }).click();
-  const form = used.getByRole("form", { name: adding });
+  await used.getByRole("button", { name: "Add year" }).click();
+  const form = used.getByRole("form", {
+    name: `Add a year's allowance used at source for ${name}`,
+  });
   await form.getByLabel("Tax year").fill("2021");
   await form.getByLabel("Amount used (EUR)").fill("123.45");
   await form.getByRole("button", { name: "Save" }).click();
@@ -179,7 +180,7 @@ test("a broker's allowance used at source is entered, listed and cleared", async
   const line = used.getByRole("listitem").filter({ hasText: "2021" });
   await expect(line).toContainText("123.45");
 
-  const figure = "the allowance used in 2021";
+  const figure = `the allowance used at ${name} in 2021`;
   await line.getByRole("button", { name: `Remove ${figure}`, exact: true }).click();
   await line.getByRole("button", { name: `Remove ${figure} for good` }).click();
   await expect(used.getByRole("listitem")).toHaveCount(0);

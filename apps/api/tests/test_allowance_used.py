@@ -271,3 +271,16 @@ def test_a_removal_refused_for_an_account_and_used_amounts_names_both(client, db
         "This Platform still holds the Account 'Depot' and an allowance used at source"
         " — remove them first."
     )
+
+
+@pytest.mark.parametrize("year", ["0", "10000", "3000000000"])
+def test_a_year_no_certificate_can_be_for_is_refused(client, db, year):
+    broker = _platform(client)
+
+    stored = client.put(
+        f"/api/platforms/{broker}/allowance-used/{year}", json={"amount_eur": "1.00"}
+    )
+    cleared = client.delete(f"/api/platforms/{broker}/allowance-used/{year}")
+
+    assert (stored.status_code, cleared.status_code) == (422, 422)
+    assert _used(client, broker) == []

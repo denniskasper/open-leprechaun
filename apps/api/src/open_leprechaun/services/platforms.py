@@ -117,9 +117,9 @@ def remove_platform(engine: Engine, platform_id: int) -> Refused | Refusal | Non
     ]
     # Named without a count or a year: the Admin clears them one by one in the
     # withholding settings, where they are listed.
-    if held.allowance_used:
+    if held.holds_allowance_used:
         in_the_way.append("an allowance used at source")
-    held_count = len(held.accounts) + len(held.connections) + held.allowance_used
+    held_count = len(held.accounts) + len(held.connections) + int(held.holds_allowance_used)
     them = "it" if held_count == 1 else "them"
     return Refused(f"This Platform still holds {' and '.join(in_the_way)} — remove {them} first.")
 

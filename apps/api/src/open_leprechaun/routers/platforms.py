@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -327,7 +327,21 @@ def record_withholding(
 # The euro amount a tax certificate states: to the cent, never below zero.
 CertificateAmount = Annotated[Money, Field(decimal_places=2)]
 
-_CANNOT_WITHHOLD = "Only a broker or bank Platform records an allowance used at source."
+# Any year a certificate can be for, before the ledger's first event
+# included; bounded only so nothing past four digits reaches the database.
+TaxYear = Annotated[int, Path(ge=1, le=9999)]
+
+
+def _refuse_allowance(refused: Refusal | None) -> None:
+    """One answer for a store and a clear alike: the Platform is gone, or of
+    a kind no exemption order can stand at."""
+    if refused is Refusal.no_such_platform:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
+    if refused is Refusal.cannot_withhold:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a broker or bank Platform records an allowance used at source.",
+        )
 
 
 class AllowanceUsedRequest(BaseModel):
@@ -340,18 +354,18 @@ class AllowanceUsedRequest(BaseModel):
     status_code=204,
 )
 def record_allowance_used(
-    platform_id: int, year: int, request: AllowanceUsedRequest, admin: AdminDep, engine: EngineDep
+    platform_id: int,
+    year: TaxYear,
+    request: AllowanceUsedRequest,
+    admin: AdminDep,
+    engine: EngineDep,
 ) -> None:
     """The figure exactly as the institution's annual tax certificate states
     it (issue 28) — never worked out from the ledger, for any year, and
     whatever the Platform's withholding behaviour now is."""
-    refused = platforms.set_allowance_used(
-        engine, platform_id, year=year, amount_eur=request.amount_eur
+    _refuse_allowance(
+        platforms.set_allowance_used(engine, platform_id, year=year, amount_eur=request.amount_eur)
     )
-    if refused is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
-    if refused is Refusal.cannot_withhold:
-        raise HTTPException(status_code=409, detail=_CANNOT_WITHHOLD)
 
 
 @router.delete(
@@ -359,14 +373,12 @@ def record_allowance_used(
     summary="Clear the allowance this Platform's exemption order used in a year",
     status_code=204,
 )
-def clear_allowance_used(platform_id: int, year: int, admin: AdminDep, engine: EngineDep) -> None:
+def clear_allowance_used(
+    platform_id: int, year: TaxYear, admin: AdminDep, engine: EngineDep
+) -> None:
     """Afterwards the year holds nothing — so clearing one that held nothing
     already is no error."""
-    refused = platforms.clear_allowance_used(engine, platform_id, year=year)
-    if refused is Refusal.no_such_platform:
-        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
-    if refused is Refusal.cannot_withhold:
-        raise HTTPException(status_code=409, detail=_CANNOT_WITHHOLD)
+    _refuse_allowance(platforms.clear_allowance_used(engine, platform_id, year=year))
 
 
 class WithholdingOverrideRequest(BaseModel):

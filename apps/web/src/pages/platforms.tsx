@@ -667,7 +667,6 @@ function AllowanceUsedList({ platform }: { platform: Platform }) {
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-muted-foreground"
-          aria-label={`Add a year's allowance used at source for ${platform.name}`}
           onClick={() => setAdding((open) => !open)}
         >
           <Plus aria-hidden />
@@ -695,7 +694,7 @@ function AllowanceUsedList({ platform }: { platform: Platform }) {
 function AllowanceUsedLine({ platform, figure }: { platform: Platform; figure: AllowanceUsed }) {
   const [editing, setEditing] = useState(false);
   const removal = useRemoval(() => clearAllowanceUsed(platform.id, figure.year), ["platforms"]);
-  const name = `the allowance used in ${figure.year}`;
+  const name = `the allowance used at ${platform.name} in ${figure.year}`;
 
   if (editing) {
     return (
@@ -754,7 +753,10 @@ function EditAllowanceUsedForm({
   const edit = useRowEdit(() => setAllowanceUsed(platform.id, figure.year, amount.trim()), onDone);
 
   return (
-    <form {...edit.form} aria-label={`Edit the allowance used in ${figure.year}`}>
+    <form
+      {...edit.form}
+      aria-label={`Edit the allowance used at ${platform.name} in ${figure.year}`}
+    >
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <span className="w-12 font-mono tabular-nums">{figure.year}</span>
         <label htmlFor={amountId} className="sr-only">
@@ -777,6 +779,9 @@ function EditAllowanceUsedForm({
   );
 }
 
+/** A Tax Year as the add form takes it: four digits, as a certificate prints it. */
+const YEAR_PATTERN = "[0-9]{4}";
+
 /**
  * A year and its amount. Saving a year that already has a figure replaces it,
  * as the API does — a correction needs no separate removal.
@@ -793,7 +798,7 @@ function AddAllowanceUsedForm({ platform, onDone }: { platform: Platform; onDone
   return (
     <form
       {...edit.form}
-      className="mt-2 measure-form"
+      className="mt-2 measure-form rounded-xl border border-border p-4"
       aria-label={`Add a year's allowance used at source for ${platform.name}`}
     >
       <div className="flex flex-wrap items-end gap-3">
@@ -807,7 +812,7 @@ function AddAllowanceUsedForm({ platform, onDone }: { platform: Platform; onDone
             value={year}
             onChange={(event) => setYear(event.target.value)}
             inputMode="numeric"
-            pattern="[0-9]{4}"
+            pattern={YEAR_PATTERN}
             className="h-8 w-24 font-mono tabular-nums"
           />
         </div>
@@ -830,7 +835,10 @@ function AddAllowanceUsedForm({ platform, onDone }: { platform: Platform; onDone
             autoFocus
           />
         </div>
-        <EditButtons edit={edit} incomplete={!/^[0-9]{4}$/.test(year) || !amount.trim()} />
+        <EditButtons
+          edit={edit}
+          incomplete={!new RegExp(`^${YEAR_PATTERN}$`).test(year) || !amount.trim()}
+        />
       </div>
       <p id={`${id}-amount-hint`} className="mt-2 text-xs text-muted-foreground">
         &ldquo;In Anspruch genommener Sparer-Pauschbetrag&rdquo; on the year&apos;s tax
