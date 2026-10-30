@@ -21,6 +21,7 @@
 //   pnpm sandcastle            — up to MAX_ISSUES issues
 //   pnpm sandcastle 17         — just issue #17
 
+import "./run-log.mts";
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { execFileSync } from "node:child_process";
