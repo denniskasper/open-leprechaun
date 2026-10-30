@@ -99,9 +99,9 @@ export const WITHHOLDING_LABEL: Record<Withholding, string> = {
 };
 
 /**
- * What actually applies to one Depot: the Account's own override first, the
- * Platform's word second — null while nothing has been declared, which is
- * the state in which the Depot may hold no position.
+ * What actually applies to one Account under a broker or bank: its own
+ * override first, the Platform's word second — null while nothing has been
+ * declared, which is the state in which a broker's Depot may hold no position.
  */
 export function effectiveWithholding(platform: Platform, account: Account): Withholding | null {
   return account.withholding_override ?? platform.withholding;
