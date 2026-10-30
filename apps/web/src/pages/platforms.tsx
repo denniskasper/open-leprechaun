@@ -12,15 +12,18 @@ import {
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   addAccount,
+  clearAllowanceUsed,
   editAccount,
   fetchPlatforms,
   registerPlatform,
   removeAccount,
   removePlatform,
   renamePlatform,
+  setAllowanceUsed,
   setWithholding,
   setWithholdingOverride,
   type Account,
+  type AllowanceUsed,
   type Platform,
   type PlatformKind,
   type Withholding,
@@ -33,7 +36,7 @@ import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-pan
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatMoneyExact } from "@/lib/format";
+import { formatEur, formatMoneyExact } from "@/lib/format";
 
 interface Vocabulary {
   /** The heading a group of these places wears. */
@@ -82,6 +85,21 @@ export const WITHHOLDING_LABEL: Record<Withholding, string> = {
  */
 export function effectiveWithholding(platform: Platform, account: Account): Withholding | null {
   return account.withholding_override ?? platform.withholding;
+}
+
+/** The kinds a Freistellungsauftrag can stand at, and so use allowance through. */
+const ALLOWANCE_KINDS: readonly PlatformKind[] = ["broker", "bank"];
+
+/**
+ * The year an added figure most likely belongs to: the last one whose
+ * certificate can have arrived — the year before this one — or, where that is
+ * entered already, the latest earlier year still without a figure.
+ */
+export function suggestedYear(used: AllowanceUsed[], today: Date = new Date()): number {
+  const entered = new Set(used.map((figure) => figure.year));
+  let year = today.getFullYear() - 1;
+  while (entered.has(year)) year -= 1;
+  return year;
 }
 
 /** How a broker's history reaches the ledger, and so what keeping it current takes. */
@@ -361,6 +379,7 @@ function PlatformRow({ platform }: { platform: Platform }) {
       )}
 
       {platform.kind === "broker" && <WithholdingLine platform={platform} />}
+      {ALLOWANCE_KINDS.includes(platform.kind) && <AllowanceUsedList platform={platform} />}
       {platform.kind === "broker" && <ServedByLine platform={platform} />}
 
       {platform.accounts.length > 0 && (
@@ -518,9 +537,9 @@ function WithholdingLine({ platform }: { platform: Platform }) {
             {platform.exemption_order_eur !== null && (
               <span
                 className="font-mono text-xs tabular-nums text-muted-foreground"
-                title="Exemption order (Freistellungsauftrag) lodged with this broker — income passes untaxed until this slice of the saver's allowance is used up."
+                title="The exemption order (Freistellungsauftrag) lodged with this broker — for information only. What it used each year is what reduces the allowance."
               >
-                {formatMoneyExact(platform.exemption_order_eur, "EUR")} exemption order
+                {formatMoneyExact(platform.exemption_order_eur, "EUR")} order lodged
               </span>
             )}
           </>
@@ -593,7 +612,7 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
         {behaviour === "at_source" && (
           <div className="space-y-2">
             <label htmlFor={orderId} className="microlabel block text-muted-foreground">
-              Exemption order (EUR)
+              Order lodged (EUR)
             </label>
             <Input
               id={orderId}
@@ -616,7 +635,8 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
       </div>
       {behaviour === "at_source" && (
         <p id={`${orderId}-hint`} className="mt-2 text-xs text-muted-foreground">
-          The Freistellungsauftrag lodged with this broker — leave empty for none.
+          The Freistellungsauftrag lodged with this broker, for information only — leave empty
+          for none.
         </p>
       )}
       {record.isError && (
@@ -624,6 +644,199 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
           {record.error.message}
         </p>
       )}
+    </form>
+  );
+}
+
+/**
+ * The allowance used at source, year by year, exactly as each annual tax
+ * certificate states it. Shown whatever the Platform's withholding is now:
+ * a past year's certificate stays true after a change.
+ */
+function AllowanceUsedList({ platform }: { platform: Platform }) {
+  const [adding, setAdding] = useState(false);
+  const headingId = useId();
+
+  return (
+    <section className="my-3 pl-4" aria-labelledby={headingId}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h5 id={headingId} className="microlabel text-muted-foreground">
+          Allowance used at source
+        </h5>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-muted-foreground"
+          aria-label={`Add a year's allowance used at source for ${platform.name}`}
+          onClick={() => setAdding((open) => !open)}
+        >
+          <Plus aria-hidden />
+          Add year
+        </Button>
+      </div>
+      {platform.allowance_used.length > 0 ? (
+        <ul className="mt-1 divide-y divide-border border-y border-border">
+          {platform.allowance_used.map((figure) => (
+            <AllowanceUsedLine key={figure.year} platform={platform} figure={figure} />
+          ))}
+        </ul>
+      ) : (
+        !adding && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            None entered — add each year as its annual tax certificate states it, 0 included.
+          </p>
+        )
+      )}
+      {adding && <AddAllowanceUsedForm platform={platform} onDone={() => setAdding(false)} />}
+    </section>
+  );
+}
+
+function AllowanceUsedLine({ platform, figure }: { platform: Platform; figure: AllowanceUsed }) {
+  const [editing, setEditing] = useState(false);
+  const removal = useRemoval(() => clearAllowanceUsed(platform.id, figure.year), ["platforms"]);
+  const name = `the allowance used in ${figure.year}`;
+
+  if (editing) {
+    return (
+      <li className="py-1.5 text-sm">
+        <EditAllowanceUsedForm
+          platform={platform}
+          figure={figure}
+          onDone={() => setEditing(false)}
+        />
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-6 gap-y-1 py-1 text-sm">
+      <span className="w-12 font-mono tabular-nums">{figure.year}</span>
+      <span className="w-32 text-right font-mono tabular-nums">{formatEur(figure.amount_eur)}</span>
+      <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-muted-foreground"
+          aria-label={`Edit ${name}`}
+          onClick={() => {
+            removal.keep();
+            removal.forget();
+            setEditing(true);
+          }}
+        >
+          <Pencil aria-hidden />
+          Edit
+        </Button>
+        <RemoveButtons removal={removal} name={name} className="h-7 px-2" />
+      </span>
+      {removal.refusal && (
+        <p role="alert" className="basis-full text-sm text-alarm">
+          {removal.refusal}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** A year's amount, edited in place; the year is what the row is, so it stays. */
+function EditAllowanceUsedForm({
+  platform,
+  figure,
+  onDone,
+}: {
+  platform: Platform;
+  figure: AllowanceUsed;
+  onDone: () => void;
+}) {
+  const [amount, setAmount] = useState(figure.amount_eur);
+  const amountId = useId();
+  const edit = useRowEdit(() => setAllowanceUsed(platform.id, figure.year, amount.trim()), onDone);
+
+  return (
+    <form {...edit.form} aria-label={`Edit the allowance used in ${figure.year}`}>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <span className="w-12 font-mono tabular-nums">{figure.year}</span>
+        <label htmlFor={amountId} className="sr-only">
+          Amount used (EUR)
+        </label>
+        <Input
+          id={amountId}
+          required
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          inputMode="decimal"
+          className="h-8 w-32 text-right font-mono tabular-nums"
+          {...edit.refusedField}
+          autoFocus
+        />
+        <EditButtons edit={edit} incomplete={!amount.trim()} />
+      </div>
+      <EditRefusal edit={edit} />
+    </form>
+  );
+}
+
+/**
+ * A year and its amount. Saving a year that already has a figure replaces it,
+ * as the API does — a correction needs no separate removal.
+ */
+function AddAllowanceUsedForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+  const [year, setYear] = useState(() => String(suggestedYear(platform.allowance_used)));
+  const [amount, setAmount] = useState("");
+  const id = useId();
+  const edit = useRowEdit(
+    () => setAllowanceUsed(platform.id, Number(year), amount.trim()),
+    onDone,
+  );
+
+  return (
+    <form
+      {...edit.form}
+      className="mt-2 measure-form"
+      aria-label={`Add a year's allowance used at source for ${platform.name}`}
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <label htmlFor={`${id}-year`} className="microlabel block text-muted-foreground">
+            Tax year
+          </label>
+          <Input
+            id={`${id}-year`}
+            required
+            value={year}
+            onChange={(event) => setYear(event.target.value)}
+            inputMode="numeric"
+            pattern="[0-9]{4}"
+            className="h-8 w-24 font-mono tabular-nums"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor={`${id}-amount`} className="microlabel block text-muted-foreground">
+            Amount used (EUR)
+          </label>
+          <Input
+            id={`${id}-amount`}
+            required
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            inputMode="decimal"
+            placeholder="0.00"
+            className="h-8 w-36 font-mono tabular-nums"
+            aria-invalid={edit.refusedField["aria-invalid"]}
+            aria-describedby={[`${id}-amount-hint`, edit.refusedField["aria-describedby"]]
+              .filter(Boolean)
+              .join(" ")}
+            autoFocus
+          />
+        </div>
+        <EditButtons edit={edit} incomplete={!/^[0-9]{4}$/.test(year) || !amount.trim()} />
+      </div>
+      <p id={`${id}-amount-hint`} className="mt-2 text-xs text-muted-foreground">
+        &ldquo;In Anspruch genommener Sparer-Pauschbetrag&rdquo; on the year&apos;s tax
+        certificate, to the cent.
+      </p>
+      <EditRefusal edit={edit} />
     </form>
   );
 }

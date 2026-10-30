@@ -33,6 +33,16 @@ export const accountSchema = z.object({
   base_currency: z.string().nullable(),
 });
 
+/**
+ * How much of the Sparerpauschbetrag the Platform's exemption order used in
+ * one Tax Year, as its annual tax certificate states it.
+ */
+export const allowanceUsedSchema = z.object({
+  year: z.number(),
+  /** Fixed-point decimal string off the API, to the cent. */
+  amount_eur: z.string(),
+});
+
 export const platformSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -42,12 +52,15 @@ export const platformSchema = z.object({
   /** Fixed-point decimal string off the API; absent means no exemption order. */
   exemption_order_eur: z.string().nullable(),
   accounts: z.array(accountSchema),
+  /** Ordered by year; only ever on a broker or a bank. */
+  allowance_used: z.array(allowanceUsedSchema),
 });
 
 export type PlatformKind = z.infer<typeof platformKindSchema>;
 export type Withholding = z.infer<typeof withholdingSchema>;
 export type Account = z.infer<typeof accountSchema>;
 export type Platform = z.infer<typeof platformSchema>;
+export type AllowanceUsed = z.infer<typeof allowanceUsedSchema>;
 
 export interface NewPlatform {
   name: string;
@@ -114,6 +127,30 @@ export async function setWithholdingOverride(
   const response = await putJson(`${ACCOUNTS_URL}/${accountId}/withholding-override`, { behaviour });
   if (!response.ok) {
     throw await refusal(response, "The withholding override could not be recorded.");
+  }
+}
+
+/** Stores the year's figure, or replaces the one it held. */
+export async function setAllowanceUsed(
+  platformId: number,
+  year: number,
+  amountEur: string,
+): Promise<void> {
+  const response = await putJson(`${PLATFORMS_URL}/${platformId}/allowance-used/${year}`, {
+    amount_eur: amountEur,
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The allowance used at source could not be recorded.");
+  }
+}
+
+/** Afterwards the year holds nothing, whether or not it held anything before. */
+export async function clearAllowanceUsed(platformId: number, year: number): Promise<void> {
+  const response = await request(`${PLATFORMS_URL}/${platformId}/allowance-used/${year}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The allowance used at source could not be cleared.");
   }
 }
 

@@ -44,6 +44,7 @@ function platform(overrides: Partial<Platform>): Platform {
     withholding: null,
     exemption_order_eur: null,
     accounts: [],
+    allowance_used: [],
     ...overrides,
   };
 }

@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addAccount,
+  clearAllowanceUsed,
   editAccount,
   fetchPlatforms,
   registerPlatform,
   removeAccount,
   removePlatform,
   renamePlatform,
+  setAllowanceUsed,
   setWithholding,
   setWithholdingOverride,
 } from "./platforms";
@@ -29,6 +31,7 @@ const kraken = {
       base_currency: null,
     },
   ],
+  allowance_used: [],
 };
 
 const device = {
@@ -49,6 +52,7 @@ const device = {
       base_currency: null,
     },
   ],
+  allowance_used: [],
 };
 
 const broker = {
@@ -68,6 +72,10 @@ const broker = {
       withholding_override: "none",
       base_currency: "EUR",
     },
+  ],
+  allowance_used: [
+    { year: 2024, amount_eur: "412.37" },
+    { year: 2025, amount_eur: "0.00" },
   ],
 };
 
@@ -100,7 +108,7 @@ describe("fetchPlatforms", () => {
     await expect(fetchPlatforms()).resolves.toEqual([kraken, device]);
   });
 
-  it("carries a broker's withholding, exemption order and Depot semantics", async () => {
+  it("carries a broker's withholding, exemption order, used amounts and Depots", async () => {
     respondWith(200, [broker]);
 
     await expect(fetchPlatforms()).resolves.toEqual([broker]);
@@ -230,6 +238,42 @@ describe("setWithholding", () => {
     await expect(
       setWithholding(1, { behaviour: "at_source", exemption_order_eur: null }),
     ).rejects.toThrow("Only a broker Platform carries withholding behaviour.");
+  });
+});
+
+describe("setAllowanceUsed", () => {
+  it("puts the year's figure on the platform, money as a string", async () => {
+    respondWith(204, null);
+
+    await setAllowanceUsed(3, 2025, "412.37");
+
+    expect(fetch).toHaveBeenCalledWith("/api/platforms/3/allowance-used/2025", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount_eur: "412.37" }),
+    });
+  });
+
+  it("surfaces the API's own words for a refusal", async () => {
+    respondWith(409, {
+      detail: "Only a broker or bank Platform records an allowance used at source.",
+    });
+
+    await expect(setAllowanceUsed(1, 2025, "1.00")).rejects.toThrow(
+      "Only a broker or bank Platform records an allowance used at source.",
+    );
+  });
+});
+
+describe("clearAllowanceUsed", () => {
+  it("deletes the year's figure", async () => {
+    respondWith(204, undefined);
+
+    await clearAllowanceUsed(3, 2025);
+
+    expect(fetch).toHaveBeenCalledWith("/api/platforms/3/allowance-used/2025", {
+      method: "DELETE",
+    });
   });
 });
 
