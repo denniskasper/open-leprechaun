@@ -22,8 +22,11 @@ pnpm sandcastle        # up to MAX_ISSUES issues, oldest first
 pnpm sandcastle 17     # just #17
 ```
 
-Logs stream to `.sandcastle/logs/`. A run of two agents plus the full test suite
-takes a while per issue — leave it.
+Logs stream to `.sandcastle/logs/`: each agent's own, and the runner's in `run.log`,
+appended to on every run. Follow a run started in the background with
+`tail -F .sandcastle/logs/run.log`. Never redirect its output to a shared path such as
+`/tmp/sandcastle-run.log`: other repositories' runners pick the same name and overwrite it.
+A run of two agents plus the full test suite takes a while per issue — leave it.
 
 ## What happens
 
