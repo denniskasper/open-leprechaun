@@ -327,10 +327,11 @@ function PlatformRow({ platform }: { platform: Platform }) {
   const noun = KIND_VOCABULARY[platform.kind].account;
   const removal = useRemoval(() => removePlatform(platform.id), ["platforms"]);
 
-  // A refusal names the Accounts in the way; once that list changes it no
-  // longer describes this Platform, so it is not left standing.
+  // A refusal names the Accounts and allowance used in the way; once either
+  // list changes it no longer describes this Platform, so it is not left
+  // standing.
   const { forget } = removal;
-  useEffect(forget, [forget, platform.accounts.length]);
+  useEffect(forget, [forget, platform.accounts.length, platform.allowance_used.length]);
 
   return (
     <article className="py-4" aria-label={platform.name}>
