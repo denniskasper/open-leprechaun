@@ -25,8 +25,9 @@ class Refusal(Enum):
     no_such_platform = "no_such_platform"
     name_taken = "name_taken"
     no_such_account = "no_such_account"
-    not_a_broker = "not_a_broker"
-    not_under_a_broker = "not_under_a_broker"
+    # Withholding asked of a Platform, or an Account under one, that is
+    # neither a broker nor a bank — no other kind withholds (issue 29).
+    cannot_withhold = "cannot_withhold"
     # Clearing an override that alone answers for a Depot's held positions
     # (ticket 43) — the positions would stand against an unknown.
     would_unset_a_held_depot = "would_unset_a_held_depot"
@@ -146,19 +147,21 @@ def set_withholding(
     behaviour: str,
     exemption_order_eur: Decimal | None = None,
 ) -> Refusal | None:
-    """Record how the broker treats income at source, and the exemption-order
-    amount lodged there — one act, because the amount may only stand with the
-    behaviour that gives it meaning. None means it was recorded.
+    """Record how the broker or bank treats income at source, and the
+    exemption-order amount lodged there — one act, because the amount may
+    only stand with the behaviour that gives it meaning. None means it was
+    recorded.
 
-    The update carries the kind in its WHERE clause, so only a broker can be
-    written and the follow-up read merely names which refusal happened.
+    The update carries the kind in its WHERE clause, so only a broker or a
+    bank can be written and the follow-up read merely names which refusal
+    happened.
     """
     with engine.begin() as connection:
         recorded = connection.execute(
             text(
                 "UPDATE platform SET withholding = :behaviour,"
                 " exemption_order_eur = :exemption_order_eur"
-                " WHERE id = :platform_id AND kind = 'broker'"
+                " WHERE id = :platform_id AND kind IN ('broker', 'bank')"
             ),
             {
                 "behaviour": behaviour,
@@ -172,7 +175,7 @@ def set_withholding(
             text("SELECT kind FROM platform WHERE id = :platform_id"),
             {"platform_id": platform_id},
         ).scalar_one_or_none()
-        return Refusal.no_such_platform if kind is None else Refusal.not_a_broker
+        return Refusal.no_such_platform if kind is None else Refusal.cannot_withhold
 
 
 def set_withholding_override(
@@ -183,9 +186,10 @@ def set_withholding_override(
     the exception with None. None as the answer means it was recorded.
 
     The mirror of the leg guard: an override that alone answers for a Depot
-    already holding legs may not be cleared while the Platform still states
-    nothing, so the update itself refuses that case and the follow-up reads
-    only name which refusal happened.
+    already holding legs may not be cleared while the broker still states
+    nothing, so the update itself refuses that case and the follow-up read
+    only names which refusal happened. A bank's Account holds legs with no
+    behaviour set, so nothing it holds keeps its override standing.
     """
     with engine.begin() as connection:
         recorded = connection.execute(
@@ -193,8 +197,9 @@ def set_withholding_override(
                 "UPDATE account SET withholding_override = :behaviour"
                 " FROM platform"
                 " WHERE account.id = :account_id AND platform.id = account.platform_id"
-                " AND platform.kind = 'broker'"
+                " AND platform.kind IN ('broker', 'bank')"
                 " AND (CAST(:behaviour AS text) IS NOT NULL"
+                "  OR platform.kind = 'bank'"
                 "  OR platform.withholding IS NOT NULL"
                 "  OR NOT EXISTS (SELECT 1 FROM transaction_leg"
                 "   WHERE transaction_leg.account_id = account.id))"
@@ -203,17 +208,17 @@ def set_withholding_override(
         )
         if recorded.rowcount == 1:
             return None
-        under_broker = connection.execute(
+        kind = connection.execute(
             text(
-                "SELECT platform.kind = 'broker' FROM account"
+                "SELECT platform.kind FROM account"
                 " JOIN platform ON platform.id = account.platform_id"
                 " WHERE account.id = :account_id"
             ),
             {"account_id": account_id},
         ).scalar_one_or_none()
-        if under_broker is None:
+        if kind is None:
             return Refusal.no_such_account
-        return Refusal.would_unset_a_held_depot if under_broker else Refusal.not_under_a_broker
+        return Refusal.would_unset_a_held_depot if kind == "broker" else Refusal.cannot_withhold
 
 
 def create_account(

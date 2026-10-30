@@ -45,8 +45,8 @@ ClearableText = Annotated[
 _NO_SUCH_PLATFORM = "No such Platform."
 _NO_SUCH_ACCOUNT = "No such Account."
 
-# How a broker treats income at source (ticket 43): withheld already, or
-# arriving gross with everything still to declare.
+# How a broker or bank treats income at source (ticket 43, issue 29): withheld
+# already, or arriving gross with everything still to declare.
 Withholding = Literal["at_source", "none"]
 
 # The base currency a Depot keeps its cash reporting in — a code, not prose.
@@ -83,8 +83,8 @@ class PlatformResponse(BaseModel):
     id: int
     name: str
     kind: PlatformKind
-    # Only ever set on a broker; the exemption order only where income is
-    # withheld at source, and absent means none (ticket 43).
+    # Only ever set on a broker or a bank; the exemption order only where
+    # income is withheld at source, and absent means none (ticket 43).
     withholding: Withholding | None
     exemption_order_eur: Money | None
     accounts: list[AccountResponse]
@@ -280,8 +280,9 @@ class WithholdingRequest(BaseModel):
 
     @model_validator(mode="after")
     def _order_only_where_withheld(self) -> Self:
-        # A Freistellungsauftrag is lodged with a broker that withholds — on
-        # a Platform that keeps nothing the amount would answer no question.
+        # A Freistellungsauftrag is lodged with a broker or bank that
+        # withholds — on a Platform that keeps nothing the amount would
+        # answer no question.
         if self.exemption_order_eur is not None and self.behaviour != "at_source":
             raise ValueError("an exemption order may only stand where income is withheld at source")
         return self
@@ -289,7 +290,7 @@ class WithholdingRequest(BaseModel):
 
 @router.put(
     "/platforms/{platform_id}/withholding",
-    summary="Record how this broker treats income at source",
+    summary="Record how this broker or bank treats income at source",
     status_code=204,
 )
 def record_withholding(
@@ -306,9 +307,9 @@ def record_withholding(
     )
     if refused is Refusal.no_such_platform:
         raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
-    if refused is Refusal.not_a_broker:
+    if refused is Refusal.cannot_withhold:
         raise HTTPException(
-            status_code=409, detail="Only a broker Platform carries withholding behaviour."
+            status_code=409, detail="Only a broker or bank Platform carries withholding behaviour."
         )
 
 
@@ -319,7 +320,7 @@ class WithholdingOverrideRequest(BaseModel):
 
 @router.put(
     "/accounts/{account_id}/withholding-override",
-    summary="State this one Depot's exception to its broker's withholding",
+    summary="State this one Account's exception to its broker's or bank's withholding",
     status_code=204,
 )
 def record_withholding_override(
@@ -331,9 +332,9 @@ def record_withholding_override(
     refused = platforms.set_withholding_override(engine, account_id, behaviour=request.behaviour)
     if refused is Refusal.no_such_account:
         raise HTTPException(status_code=404, detail=_NO_SUCH_ACCOUNT)
-    if refused is Refusal.not_under_a_broker:
+    if refused is Refusal.cannot_withhold:
         raise HTTPException(
-            status_code=409, detail="Only an Account under a broker carries an override."
+            status_code=409, detail="Only an Account under a broker or bank carries an override."
         )
     if refused is Refusal.would_unset_a_held_depot:
         raise HTTPException(
