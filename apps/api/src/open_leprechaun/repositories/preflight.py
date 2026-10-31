@@ -9,7 +9,7 @@ from collections.abc import Iterable
 
 from sqlalchemy import Engine, Row, text
 
-from open_leprechaun.repositories import capital_income
+from open_leprechaun.repositories.capital_income import SETTLED_AT_SOURCE_SQL
 
 
 def unacknowledged_arrivals(engine: Engine, *, year: int) -> list[Row]:
@@ -82,28 +82,25 @@ def platforms_missing_allowance_used(
     """Every Platform with an Account that received income of these types
     settled at source in the Tax Year, and no allowance used at source
     entered for that year. Settled at source is the capital-income receipts'
-    own judgement (repositories/capital_income.withholding_accounts), Depot
-    overrides included, read on the same snapshot as the legs it judges."""
+    own judgement (repositories/capital_income), per-Account overrides
+    included."""
     with engine.connect() as connection:
-        accounts = capital_income.withholding_accounts(connection)
-        if not accounts:
-            return []
         return list(
             connection.execute(
                 text(
-                    "SELECT DISTINCT p.id, p.name"
+                    "SELECT DISTINCT platform.id, platform.name"
                     " FROM transaction_leg l"
                     " JOIN transaction t ON t.id = l.transaction_id"
-                    " JOIN account a ON a.id = l.account_id"
-                    " JOIN platform p ON p.id = a.platform_id"
-                    " WHERE l.role = 'in' AND l.account_id = ANY(:accounts)"
+                    " JOIN account ON account.id = l.account_id"
+                    " JOIN platform ON platform.id = account.platform_id"
+                    f" WHERE l.role = 'in' AND {SETTLED_AT_SOURCE_SQL}"
                     " AND t.type = ANY(:income_types)"
                     " AND extract(year FROM t.occurred_at AT TIME ZONE 'Europe/Berlin')"
                     "  = :year"
                     " AND NOT EXISTS (SELECT 1 FROM allowance_used u"
-                    "  WHERE u.platform_id = p.id AND u.year = :year)"
-                    " ORDER BY p.name, p.id"
+                    "  WHERE u.platform_id = platform.id AND u.year = :year)"
+                    " ORDER BY platform.name, platform.id"
                 ),
-                {"accounts": sorted(accounts), "income_types": list(income_types), "year": year},
+                {"income_types": sorted(income_types), "year": year},
             ).all()
         )

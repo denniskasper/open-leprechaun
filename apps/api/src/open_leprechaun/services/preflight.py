@@ -283,7 +283,7 @@ def _missing_allowance_used(engine: Engine, year: int) -> Blocker | None:
     becoming a zero. Entering 0 is an answer; nothing entered is not. The
     income types are the capital-income producer's own."""
     missing = preflight_repository.platforms_missing_allowance_used(
-        engine, year=year, income_types=capital_income.INCOME_TYPES
+        engine, year=year, income_types=capital_income.SECTION_20_INCOME_TYPES
     )
     if not missing:
         return None

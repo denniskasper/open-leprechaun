@@ -320,12 +320,14 @@ def test_a_lot_shortfall_blocks_finalisation(db, client):
 # --- The allowance used at source (issue 32) --------------------------------
 
 
-def _withholding_account(db, *, platform_name, behaviour, kind="broker", override=None):
+def _withholding_account(
+    db, *, platform_name, behaviour, kind="broker", name="Depot", override=None
+):
     """An Account under a broker or bank that states its withholding
-    behaviour — and, where given, the Depot's own override of it."""
+    behaviour — and, where given, the Account's own override of it."""
     platform_id = platforms.create_platform(db, name=platform_name, kind=kind)
     assert platforms.set_withholding(db, platform_id, behaviour=behaviour) is None
-    account = platforms.create_account(db, platform_id, name="Depot")
+    account = platforms.create_account(db, platform_id, name=name)
     assert isinstance(account, int)
     if override is not None:
         assert platforms.set_withholding_override(db, account, behaviour=override) is None
@@ -347,7 +349,7 @@ def _dividend(db, account, eur, *, occurred_at=SOLD):
     return created
 
 
-def _used(client, platform_id, *, year=2025, amount="0"):
+def _enter_used_amount(client, platform_id, *, year=2025, amount="0"):
     stored = client.put(
         f"/api/platforms/{platform_id}/allowance-used/{year}", json={"amount_eur": amount}
     )
@@ -373,7 +375,7 @@ def test_income_settled_at_source_with_no_used_amount_blocks_finalisation(db, cl
     assert "2025" in blocker["detail"]
     assert "0 is a valid entry" in blocker["detail"]
 
-    _used(client, broker, amount="0")
+    _enter_used_amount(client, broker, amount="0")
     assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
 
 
@@ -381,7 +383,7 @@ def test_a_used_amount_entered_for_another_year_does_not_clear_the_blocker(db, c
     eur = _eur(db)
     broker, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
     _dividend(db, depot, eur)
-    _used(client, broker, year=2024, amount="100.00")
+    _enter_used_amount(client, broker, year=2024, amount="100.00")
     report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
 
     refused = client.post(f"/api/reports/{report_id}/finalise")
@@ -412,7 +414,7 @@ def test_income_at_a_depot_that_does_not_withhold_does_not_block(db, client):
 
 
 def test_a_depot_override_to_at_source_blocks_under_a_platform_that_withholds_nothing(db, client):
-    """The same judgement the capital-income receipts use: the Depot's own
+    """The same judgement the capital-income receipts use: the Account's own
     override first, the Platform's word second."""
     eur = _eur(db)
     _, depot = _withholding_account(
@@ -442,7 +444,7 @@ def test_two_platforms_missing_a_used_amount_make_one_blocker_naming_both(db, cl
     eur = _eur(db)
     _, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
     _, giro = _withholding_account(
-        db, platform_name="Sparkasse", behaviour="at_source", kind="bank"
+        db, platform_name="Sparkasse", behaviour="at_source", kind="bank", name="Giro"
     )
     _dividend(db, depot, eur)
     _dividend(db, giro, eur)
