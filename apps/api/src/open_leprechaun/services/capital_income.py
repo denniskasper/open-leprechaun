@@ -50,12 +50,24 @@ from open_leprechaun.services.security_disposals import (
 from open_leprechaun.services.stances import income_excluding_stance
 from open_leprechaun.services.tax_treatment import SECTION_20, TAX_CONSEQUENCES
 
-__all__ = ["CATEGORY", "ExcludedEvent", "IncomeReceipt", "Receipts", "receipts_through"]
+__all__ = [
+    "CATEGORY",
+    "INCOME_TYPES",
+    "ExcludedEvent",
+    "IncomeReceipt",
+    "Receipts",
+    "receipts_through",
+]
 
 CATEGORY = "sonstige"
 """Where every dividend, distribution and interest payment lands (§20 Abs. 1
 Nr. 1, 3 und 7 EStG): the general pot — the aktien pot holds share *sales*
 alone (§20 Abs. 6 Satz 4 EStG)."""
+
+INCOME_TYPES = frozenset(
+    type for type, consequence in TAX_CONSEQUENCES.items() if consequence.income == SECTION_20
+)
+"""The Transaction types whose received legs are §20 capital income."""
 
 
 @dataclass(frozen=True)
@@ -135,7 +147,7 @@ def receipts_through(engine: Engine, source: ReferenceRateSource, *, through_yea
     counted = []
     excluded = []
     for transaction in transaction_rows:
-        if TAX_CONSEQUENCES[transaction.type].income != SECTION_20:
+        if transaction.type not in INCOME_TYPES:
             continue
         tax_year = fx.event_date(transaction.occurred_at).year
         if tax_year > through_year:
