@@ -115,12 +115,25 @@ def _private_sale_fields(
     return fields
 
 
-def _kap_fields(*, inlaendische: str, auslaendische: str) -> dict[str, Field]:
+def _kap_fields(*, inlaendische: str, auslaendische: str, kap_bet: str) -> dict[str, Field]:
     """The Anlage KAP fields that sit on the same lines in 2024 and 2025 —
     each read from both years' forms, not assumed across. Only the printed
-    exclusions on Zeilen 18 and 19 differ between the two."""
+    exclusions on Zeilen 18 and 19 and the Anlage KAP-BET lines Zeile 17
+    refers to differ between the two."""
     return {
         "kap.abzug.kapitalertraege": Field(("7",), "Kapitalerträge"),
+        "kap.sparer_pauschbetrag.erklaerte": Field(
+            ("16",),
+            "In Anspruch genommener Sparer-Pauschbetrag, der auf die in den Zeilen 7 bis 15,"
+            " 30 und 33 erklärten Kapitalerträge entfällt (ggf. „0“)",
+        ),
+        "kap.sparer_pauschbetrag.nicht_erklaerte": Field(
+            ("17",),
+            "Bei Eintragungen in den Zeilen 7 bis 15, 18 bis 27, 30, 33, 52 und 54 der Anlage"
+            f" KAP, in den Zeilen {kap_bet} der Anlage KAP-BET sowie in der Anlage KAP-INV:"
+            " In Anspruch genommener Sparer-Pauschbetrag, der auf die in der Anlage KAP nicht"
+            " erklärten Kapitalerträge entfällt (ggf. „0“)",
+        ),
         # One figure, two lines: the form splits by the paying institution,
         # so the label is both lines' labels.
         "kap.kapitalertraege": Field(("18", "19"), f"{inlaendische} / {auslaendische}"),
@@ -256,6 +269,7 @@ LAYOUTS: dict[int, dict[str, Field]] = {
             inlaendische="Inländische Kapitalerträge (ohne Beträge laut den Zeilen 24 bis 26a)",
             auslaendische="Ausländische Kapitalerträge (ohne Beträge laut den Zeilen 24, 25,"
             " 26a und 52)",
+            kap_bet="8 bis 30, 33 und 34",
         ),
         **_KAP_TERMINGESCHAEFTE_FIELDS,
         **_KAP_INV_FIELDS,
@@ -278,6 +292,7 @@ LAYOUTS: dict[int, dict[str, Field]] = {
         **_kap_fields(
             inlaendische="Inländische Kapitalerträge (ohne Beträge laut den Zeilen 26 und 26a)",
             auslaendische="Ausländische Kapitalerträge (ohne Beträge laut den Zeilen 26a und 52)",
+            kap_bet="8 bis 24, 27 und 28",
         ),
         **_KAP_INV_FIELDS,
     },
@@ -748,6 +763,17 @@ _OVER_USED_NOTE = (
     " will be taxed on assessment."
 )
 
+_DECLARED_ALLOWANCE_NOTE = (
+    "0: this report declares only income not taxed at source, and an exemption order"
+    " is used only where income is taxed at source."
+)
+
+_UNDECLARED_ALLOWANCE_NOTE = (
+    "The allowance used at source in the year: every Platform's figure as its"
+    " Jahressteuerbescheinigung states it, summed. Leave this line empty if you request"
+    " the Günstigerprüfung."
+)
+
 _CREDITABLE_NOTE = (
     "The creditable part of what was withheld: each receipt's Quellensteuer up to its"
     " treaty limit. The appendix states what was withheld; any excess is reclaimable"
@@ -776,6 +802,7 @@ def _capital_income(
     declare — fund income excepted, which Anlage KAP-INV takes. The to-declare
     total is net of its losses, and the "enthaltene" lines restate what it
     contains: share gains, share losses, other losses — a loss as its amount.
+    Zeilen 16 and 17 state the allowance exemption orders used at source.
     Where the year's form still gives Termingeschäfte lines of their own
     (2024), their losses stay out of the total, as that form's label says."""
     if section20.balances is None:
@@ -830,6 +857,9 @@ def _capital_income(
         note=_CERTIFICATE_NOTE,
         ambiguous=True,
     )
+    assessment = section20.assessment
+    if assessment is not None:
+        lines.extend(_allowance_used(sheet, assessment.allowance_used_at_source_eur))
     state(
         "kap.kapitalertraege",
         [item for item in declare if not (apart and futures(item) and _loss(item))],
@@ -863,7 +893,6 @@ def _capital_income(
         )
     lines.extend(_withheld_taxes(sheet, section20))
 
-    assessment = section20.assessment
     balances = [
         Balance(
             key=f"kap.balance.{balance.category}",
@@ -918,6 +947,31 @@ def _gain(item: _CapitalItem) -> bool:
 
 def _loss(item: _CapitalItem) -> bool:
     return item.gross_eur is not None and item.gross_eur < 0
+
+
+def _allowance_used(sheet: _Sheet, used_eur: Decimal) -> list[FormLine]:
+    """Zeilen 16 and 17, which the form wants "ggf. „0“" — so both always
+    stand. Exemption orders are used only where income is taxed at source,
+    and this application declares only income that was not: Zeile 16, the
+    allowance used on income declared in Zeilen 7 to 15, is therefore 0, and
+    Zeile 17 takes the year's whole allowance used at source. Neither figure
+    comes from a ledger record, so no appendix line backs it."""
+    return [
+        sheet.line(
+            "kap.sparer_pauschbetrag.erklaerte",
+            Decimal(0),
+            backed_by=(),
+            side=WITHHELD_AT_SOURCE,
+            note=_DECLARED_ALLOWANCE_NOTE,
+        ),
+        sheet.line(
+            "kap.sparer_pauschbetrag.nicht_erklaerte",
+            used_eur,
+            backed_by=(),
+            side=WITHHELD_AT_SOURCE,
+            note=_UNDECLARED_ALLOWANCE_NOTE,
+        ),
+    ]
 
 
 def _withheld_taxes(sheet: _Sheet, section20: Section20Year) -> list[FormLine]:
