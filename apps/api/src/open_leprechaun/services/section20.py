@@ -323,11 +323,11 @@ def _eaten(
 PERSONAL_RATE_NOTE = (
     "Assessment at the personal rate (Günstigerprüfung, § 32d Abs. 6 EStG) may"
     " yield less tax and can be requested on the return — this report does not"
-    " compute it."
+    " compute it. Requesting it means you leave Anlage KAP Zeile 17 empty."
 )
 """The note every assessment carries (ADR-0007): the comparison exists, the
 return can ask for it, and this application deliberately computes only the
-flat scheme."""
+flat scheme. The Anleitung forbids a Zeile 17 entry beside the request."""
 
 
 @dataclass(frozen=True)

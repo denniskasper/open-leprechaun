@@ -377,6 +377,14 @@ def _amounts(section):
     return {line["key"]: Decimal(line["amount_eur"]) for line in section["lines"]}
 
 
+_NOTHING_USED_AT_SOURCE = {
+    "kap.sparer_pauschbetrag.erklaerte": Decimal(0),
+    "kap.sparer_pauschbetrag.nicht_erklaerte": Decimal(0),
+}
+"""Zeilen 16 and 17, which every Anlage KAP section states — 0 on both
+where no exemption order used anything."""
+
+
 def test_income_at_a_broker_that_withholds_nothing_is_to_declare_and_says_which_lines(db, client):
     """Anlage KAP splits income not taxed at source into inländische (Zeile
     18) and ausländische Kapitalerträge (Zeile 19) by the paying
@@ -413,6 +421,7 @@ def test_sales_fill_the_included_gain_and_loss_lines(db, client):
     kap = _section(_forms(client, year=2025), "kap")
 
     assert _amounts(kap) == {
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("140"),
         "kap.aktien_gewinne": Decimal("500"),
         "kap.verluste_ohne_aktien": Decimal("100"),
@@ -453,6 +462,7 @@ def test_the_2024_form_keeps_termingeschaefte_on_lines_of_their_own(db, client):
     kap = _section(_forms(client, year=2024), "kap")
 
     assert _amounts(kap) == {
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("500"),
         "kap.termingeschaefte_gewinne": Decimal("500"),
         "kap.termingeschaefte_verluste": Decimal("200"),
@@ -471,6 +481,7 @@ def test_the_2025_form_folds_termingeschaefte_into_the_general_lines(db, client)
     kap = _section(_forms(client, year=2025), "kap")
 
     assert _amounts(kap) == {
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("300"),
         "kap.verluste_ohne_aktien": Decimal("200"),
     }
@@ -511,6 +522,8 @@ def test_amounts_withheld_at_source_stand_apart_from_amounts_to_declare(db, clie
     sides = {line["key"]: line["side"] for line in kap["lines"]}
     assert sides == {
         "kap.abzug.kapitalertraege": "withheld_at_source",
+        "kap.sparer_pauschbetrag.erklaerte": "withheld_at_source",
+        "kap.sparer_pauschbetrag.nicht_erklaerte": "withheld_at_source",
         "kap.kapitalertraege": "to_declare",
         "kap.steuer.kapitalertragsteuer": "withheld_at_source",
         "kap.steuer.solidaritaetszuschlag": "withheld_at_source",
@@ -518,6 +531,7 @@ def test_amounts_withheld_at_source_stand_apart_from_amounts_to_declare(db, clie
         "kap.steuer.auslaendische_anrechenbar": "to_declare",
     }
     assert _amounts(kap) == {
+        **_NOTHING_USED_AT_SOURCE,
         "kap.abzug.kapitalertraege": Decimal("100"),
         "kap.kapitalertraege": Decimal("85"),
         "kap.steuer.kapitalertragsteuer": Decimal("25"),
@@ -619,6 +633,132 @@ def test_capital_income_awaiting_a_valuation_states_no_line_and_says_why(db, cli
     assert "awaits a valuation" in kap["note"]
     assert "leg:" in kap["note"]
     assert "awaits a valuation" in _section(forms, "kapinv")["note"]
+
+
+# --- Anlage KAP: the allowance used at source (Zeilen 16, 17) --------------
+
+_ZEILE_16_LABEL = (
+    "In Anspruch genommener Sparer-Pauschbetrag, der auf die in den Zeilen 7 bis 15, 30"
+    " und 33 erklärten Kapitalerträge entfällt (ggf. „0“)"
+)
+
+_ZEILE_17_LABELS = {
+    2024: "Bei Eintragungen in den Zeilen 7 bis 15, 18 bis 27, 30, 33, 52 und 54 der Anlage"
+    " KAP, in den Zeilen 8 bis 30, 33 und 34 der Anlage KAP-BET sowie in der Anlage"
+    " KAP-INV: In Anspruch genommener Sparer-Pauschbetrag, der auf die in der Anlage KAP"
+    " nicht erklärten Kapitalerträge entfällt (ggf. „0“)",
+    2025: "Bei Eintragungen in den Zeilen 7 bis 15, 18 bis 27, 30, 33, 52 und 54 der Anlage"
+    " KAP, in den Zeilen 8 bis 24, 27 und 28 der Anlage KAP-BET sowie in der Anlage"
+    " KAP-INV: In Anspruch genommener Sparer-Pauschbetrag, der auf die in der Anlage KAP"
+    " nicht erklärten Kapitalerträge entfällt (ggf. „0“)",
+}
+
+
+def _enter_used(client, platform_id, year, amount):
+    stored = client.put(
+        f"/api/platforms/{platform_id}/allowance-used/{year}", json={"amount_eur": amount}
+    )
+    assert stored.status_code == 204, stored.text
+
+
+def _broker_or_bank(client, name, kind="broker"):
+    return client.post("/api/platforms", json={"name": name, "kind": kind}).json()["id"]
+
+
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_zeile_17_states_the_year_s_used_total_and_zeile_16_states_zero(db, client, year):
+    """The form asks on Zeilen 16 and 17 for the allowance exemption orders
+    already used. This application declares only income not taxed at
+    source, so Zeile 16 is 0; Zeile 17 takes the year's total across every
+    Platform — 120 € at a broker and 80 € at a bank — and the 50 € entered
+    for the year before does not count. Each line carries its own year's
+    printed label."""
+    _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(year))
+    broker = _broker_or_bank(client, "German broker")
+    bank = _broker_or_bank(client, "Savings bank", kind="bank")
+    _enter_used(client, broker, year, "120")
+    _enter_used(client, bank, year, "80")
+    _enter_used(client, broker, year - 1, "50")
+
+    kap = _section(_forms(client, year=year), "kap")
+
+    declared = _line(kap, "kap.sparer_pauschbetrag.erklaerte")
+    undeclared = _line(kap, "kap.sparer_pauschbetrag.nicht_erklaerte")
+    assert declared["form_lines"] == ["16"]
+    assert declared["label"] == _ZEILE_16_LABEL
+    assert Decimal(declared["amount_eur"]) == Decimal(0)
+    assert undeclared["form_lines"] == ["17"]
+    assert undeclared["label"] == _ZEILE_17_LABELS[year]
+    assert Decimal(undeclared["amount_eur"]) == Decimal("200")
+    assert declared["mapping"] == undeclared["mapping"] == "unambiguous"
+
+
+@pytest.mark.parametrize("year", [2024, 2025])
+def test_both_allowance_lines_are_stated_when_no_used_amount_is_recorded(db, client, year):
+    """The form wants both lines "ggf. „0“": with nothing entered for the
+    year, each still stands, stating 0."""
+    _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(year))
+
+    kap = _section(_forms(client, year=year), "kap")
+
+    for key, zeile in (
+        ("kap.sparer_pauschbetrag.erklaerte", "16"),
+        ("kap.sparer_pauschbetrag.nicht_erklaerte", "17"),
+    ):
+        stated = _line(kap, key)
+        assert stated["form_lines"] == [zeile]
+        assert stated["mapping"] == "unambiguous"
+        assert Decimal(stated["amount_eur"]) == Decimal(0)
+
+
+def test_a_year_with_no_recorded_form_states_the_allowance_lines_unmapped(db, client):
+    """ADR-0023: a year whose form was never read still states both
+    figures, under the nearest mapped year's labels and with no line
+    number."""
+    _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(2026))
+    _enter_used(client, _broker_or_bank(client, "German broker"), 2026, "75")
+
+    kap = _section(_forms(client, year=2026), "kap")
+
+    declared = _line(kap, "kap.sparer_pauschbetrag.erklaerte")
+    undeclared = _line(kap, "kap.sparer_pauschbetrag.nicht_erklaerte")
+    assert declared["form_lines"] == undeclared["form_lines"] == []
+    assert declared["mapping"] == undeclared["mapping"] == "unmapped"
+    assert declared["label"] == _ZEILE_16_LABEL
+    assert undeclared["label"] == _ZEILE_17_LABELS[2025]
+    assert "2026" in undeclared["note"]
+    assert Decimal(declared["amount_eur"]) == Decimal(0)
+    assert Decimal(undeclared["amount_eur"]) == Decimal("75")
+
+
+def test_the_personal_rate_note_says_günstigerprüfung_leaves_zeile_17_empty(db, client):
+    """The Anleitung forbids a Zeile 17 entry when the Günstigerprüfung is
+    requested, so the note offering it says so."""
+    _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(2025))
+
+    kap = _section(_forms(client, year=2025), "kap")
+
+    assert "Günstigerprüfung" in kap["tax"]["note"]
+    assert "leave Anlage KAP Zeile 17 empty" in kap["tax"]["note"]
+
+
+def test_the_allowance_lines_are_frozen_with_the_report(db, client):
+    """A correction after generation leaves the report's Zeile 17 as it was
+    generated; a report generated afterwards states the corrected total."""
+    _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(2025))
+    broker = _broker_or_bank(client, "German broker")
+    _enter_used(client, broker, 2025, "120")
+    report_id = _report_id(client, year=2025)
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+    _enter_used(client, broker, 2025, "150")
+
+    frozen = client.get(f"/api/reports/{report_id}").json()["figures"]["forms"]
+    undeclared = _line(_section(frozen, "kap"), "kap.sparer_pauschbetrag.nicht_erklaerte")
+    assert Decimal(undeclared["amount_eur"]) == Decimal("120")
+    regenerated = _section(_forms(client, year=2025), "kap")
+    undeclared = _line(regenerated, "kap.sparer_pauschbetrag.nicht_erklaerte")
+    assert Decimal(undeclared["amount_eur"]) == Decimal("150")
 
 
 # --- Anlage KAP-INV: fund income not taxed at source -------------------------
