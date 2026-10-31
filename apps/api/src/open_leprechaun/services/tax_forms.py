@@ -343,7 +343,8 @@ class FormSection:
     balances: tuple[Balance, ...]
     tax: TaxStatement
     # What the section as a whole must say — set where it states no lines
-    # because the year awaits a valuation.
+    # because the year awaits a valuation, or where exemption orders used more
+    # than the whole allowance.
     note: str | None = None
 
 
@@ -741,6 +742,12 @@ _FLAT_RATE_NOTE = (
 
 _AWAITING_NOTE = "The year awaits a valuation, so no tax is stated."
 
+_OVER_USED_NOTE = (
+    "The allowance is over-used: exemption orders used more of the Sparerpauschbetrag at"
+    " source than the allowance for the filing status, so none is deducted here and the"
+    " excess will be taxed on assessment."
+)
+
 _CREDITABLE_NOTE = (
     "The creditable part of what was withheld: each receipt's Quellensteuer up to its"
     " treaty limit. The appendix states what was withheld; any excess is reclaimable"
@@ -901,7 +908,7 @@ def _capital_income(
         )
         if assessment is not None
         else replace(_NO_TAX_STATED, note=_AWAITING_NOTE),
-        note=None,
+        note=_OVER_USED_NOTE if assessment is not None and assessment.allowance_exceeded else None,
     )
 
 

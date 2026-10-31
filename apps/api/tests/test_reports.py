@@ -422,3 +422,40 @@ def test_with_no_used_amount_for_the_year_the_whole_allowance_applies(db, client
     assert Decimal(assessment["allowance_applied_eur"]) == Decimal("1000")
     assert Decimal(assessment["taxable_eur"]) == Decimal("500")
     assert assessment["allowance_exceeded"] is False
+
+
+def test_a_used_total_above_the_allowance_caps_the_deduction_and_says_so(db, client):
+    """700 at a broker and 600 at a bank are 1300 used of a 1000 allowance:
+    nothing more is deducted, the report says the excess is taxed on
+    assessment, and the figures stay recorded exactly as entered."""
+    _dividend(db, amount="900")
+    broker = _withholder(client, "Scalable")
+    bank = _withholder(client, "Sparkasse", kind="bank")
+    _use(client, broker, 2025, "700")
+    _use(client, bank, 2025, "600")
+
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    figures = client.get(f"/api/reports/{report_id}").json()["figures"]
+    assessment = figures["section20"]["assessment"]
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal(0)
+    assert Decimal(assessment["taxable_eur"]) == Decimal("900")
+    assert assessment["allowance_exceeded"] is True
+    (kap,) = [section for section in figures["forms"]["sections"] if section["key"] == "kap"]
+    assert "over-used" in kap["note"]
+    assert "taxed on assessment" in kap["note"]
+    listed = client.get("/api/platforms").json()
+    used = {platform["id"]: platform["allowance_used"] for platform in listed}
+    assert used[broker] == [{"year": 2025, "amount_eur": "700.00"}]
+    assert used[bank] == [{"year": 2025, "amount_eur": "600.00"}]
+
+
+def test_a_used_total_within_the_allowance_adds_no_note(db, client):
+    _dividend(db, amount="900")
+    _use(client, _withholder(client, "Scalable"), 2025, "1000")
+
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    figures = client.get(f"/api/reports/{report_id}").json()["figures"]
+    (kap,) = [section for section in figures["forms"]["sections"] if section["key"] == "kap"]
+    assert kap["note"] is None
