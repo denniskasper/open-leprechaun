@@ -5,7 +5,11 @@ in SQL so a check never hauls the ledger into Python to ask which year a leg
 belongs to.
 """
 
+from collections.abc import Iterable
+
 from sqlalchemy import Engine, Row, text
+
+from open_leprechaun.repositories import capital_income
 
 
 def unacknowledged_arrivals(engine: Engine, *, year: int) -> list[Row]:
@@ -70,3 +74,36 @@ def active_instrument_ids(engine: Engine, *, year: int) -> set[int]:
                 {"year": year},
             )
         }
+
+
+def platforms_missing_allowance_used(
+    engine: Engine, *, year: int, income_types: Iterable[str]
+) -> list[Row]:
+    """Every Platform with an Account that received income of these types
+    settled at source in the Tax Year, and no allowance used at source
+    entered for that year. Settled at source is the capital-income receipts'
+    own judgement (repositories/capital_income.withholding_accounts), Depot
+    overrides included, read on the same snapshot as the legs it judges."""
+    with engine.connect() as connection:
+        accounts = capital_income.withholding_accounts(connection)
+        if not accounts:
+            return []
+        return list(
+            connection.execute(
+                text(
+                    "SELECT DISTINCT p.id, p.name"
+                    " FROM transaction_leg l"
+                    " JOIN transaction t ON t.id = l.transaction_id"
+                    " JOIN account a ON a.id = l.account_id"
+                    " JOIN platform p ON p.id = a.platform_id"
+                    " WHERE l.role = 'in' AND l.account_id = ANY(:accounts)"
+                    " AND t.type = ANY(:income_types)"
+                    " AND extract(year FROM t.occurred_at AT TIME ZONE 'Europe/Berlin')"
+                    "  = :year"
+                    " AND NOT EXISTS (SELECT 1 FROM allowance_used u"
+                    "  WHERE u.platform_id = p.id AND u.year = :year)"
+                    " ORDER BY p.name, p.id"
+                ),
+                {"accounts": sorted(accounts), "income_types": list(income_types), "year": year},
+            ).all()
+        )
