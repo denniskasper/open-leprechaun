@@ -591,18 +591,28 @@ reason the declared figure survives contact with the Finanzamt.
 ### Sparerpauschbetrag
 
 The annual capital-income **deduction**, applied once across the combined total after loss
-offsetting and never per source. Reduced first by any portion already consumed at source under a
-**Freistellungsauftrag**, so the application can never claim more allowance than exists.
+offsetting and never per source. Reduced first by the year's **allowance used at source** — the
+amounts consumed under every **Freistellungsauftrag**, as each institution's certificate states
+them — so the application can never claim more allowance than exists. The amount lodged with an
+institution does not reduce it.
 
 _Avoid_: applying it as a **Freigrenze**. It is a deduction, not an all-or-nothing threshold.
 
 ### Freistellungsauftrag
 
 An exemption order lodged with a German broker or bank, telling it to let income through untaxed
-until an allocated slice of the **Sparerpauschbetrag** is used up. Recorded per withholding
-**Platform**; absent means none. A bank the ledger does not otherwise track is entered as a `bank`
-Platform with no Accounts to hold its order. It matters because income that already passed untaxed
-at source has consumed allowance the engine must not grant again.
+until an allocated slice of the **Sparerpauschbetrag** is used up. The amount lodged is recorded
+per withholding **Platform**, for information only; absent means none. A bank the ledger does not
+otherwise track is entered as a `bank` Platform with no Accounts to hold its order.
+
+What the order actually consumed is the **allowance used at source**: per `broker` or `bank`
+Platform and per Tax Year, entered exactly as the institution's annual tax certificate states it
+("in Anspruch genommener Sparer-Pauschbetrag"), never derived from the ledger (ADR-0031). The used
+amount, not the lodged amount, reduces the allowance, because income that already passed untaxed
+at source has consumed allowance the engine must not grant again. Entering 0 states that an order
+used nothing; nothing entered is unknown.
+
+_Avoid_: treating the lodged amount as what was used.
 
 ### Abgeltungsteuer
 

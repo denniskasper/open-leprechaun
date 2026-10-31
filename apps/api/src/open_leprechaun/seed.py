@@ -226,6 +226,27 @@ def _platforms(connection: Connection) -> None:
         )
 
 
+def _allowance_used(connection: Connection) -> None:
+    """The allowance used at source (issue 28) as the settings screen lists
+    it: a demonstration figure at the broker and a stated 0 at the bank, so
+    both an entered amount and an order that used nothing have a row to show.
+    The key is the Platform and year, so ON CONFLICT DO NOTHING keeps this
+    idempotent."""
+    used_rows = [
+        ("Scalable Capital", 2024, "250.00"),
+        ("Sparkasse", 2024, "0.00"),
+    ]
+    for platform_name, year, amount_eur in used_rows:
+        connection.execute(
+            text(
+                "INSERT INTO allowance_used (platform_id, year, amount_eur)"
+                " SELECT id, :year, :amount_eur FROM platform WHERE name = :platform_name"
+                " ON CONFLICT DO NOTHING"
+            ),
+            {"platform_name": platform_name, "year": year, "amount_eur": amount_eur},
+        )
+
+
 def _transactions(connection: Connection) -> None:
     """A ledger with every shape ticket 13 names: a trade carrying both sides
     and a fee in a third asset, income, and a transfer that is not assumed to
@@ -585,6 +606,7 @@ STEPS: Sequence[SeedStep] = (
     _instruments,
     _cash,
     _platforms,
+    _allowance_used,
     _transactions,
     _capital_income,
     _stances,

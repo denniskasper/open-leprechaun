@@ -15,8 +15,12 @@ from decimal import Decimal
 from enum import Enum
 
 from psycopg import errors
-from sqlalchemy import Engine, Row, text
+from sqlalchemy import Connection, Engine, Row, text
 from sqlalchemy.exc import IntegrityError
+
+# The kinds that withhold at source, and so carry a Freistellungsauftrag and
+# the allowance it used (issues 28 and 29): the German broker and bank.
+_WITHHOLDING_KINDS = "('broker', 'bank')"
 
 
 class Refusal(Enum):
@@ -25,8 +29,9 @@ class Refusal(Enum):
     no_such_platform = "no_such_platform"
     name_taken = "name_taken"
     no_such_account = "no_such_account"
-    # Withholding asked of a Platform, or an Account under one, that is
-    # neither a broker nor a bank — no other kind withholds (issue 29).
+    # Withholding, or an allowance used at source, asked of a Platform (or an
+    # Account under one) that is neither a broker nor a bank — no other kind
+    # withholds (issues 28 and 29).
     cannot_withhold = "cannot_withhold"
     # Clearing an override that alone answers for a Depot's held positions
     # (ticket 43) — the positions would stand against an unknown.
@@ -40,6 +45,9 @@ class PlatformHolders:
 
     accounts: tuple[str, ...]
     connections: tuple[str, ...]
+    # Any year's allowance used at source (issue 28): a past year's tax rests
+    # on it, so its presence holds the Platform — how many is not the point.
+    holds_allowance_used: bool
 
 
 @dataclass(frozen=True)
@@ -97,10 +105,10 @@ def delete_platform(engine: Engine, platform_id: int) -> PlatformHolders | Refus
     """Remove a Platform that holds nothing. None means it is gone; otherwise
     nothing was deleted, and the answer is what holds it.
 
-    The row is locked before it is judged: an Account or a Connection arriving
-    meanwhile needs the Platform's key, so it waits and then finds no Platform
-    — it can never slip in between the judgement and the delete. The RESTRICT
-    foreign keys stay the backstop.
+    The row is locked before it is judged: an Account, a Connection or an
+    allowance used at source arriving meanwhile needs the Platform's key, so
+    it waits and then finds no Platform — it can never slip in between the
+    judgement and the delete. The RESTRICT foreign keys stay the backstop.
     """
     with engine.begin() as connection:
         found = connection.execute(
@@ -119,8 +127,16 @@ def delete_platform(engine: Engine, platform_id: int) -> PlatformHolders | Refus
             ),
             {"platform_id": platform_id},
         ).scalars()
-        holders = PlatformHolders(accounts=tuple(accounts), connections=tuple(connections))
-        if holders.accounts or holders.connections:
+        allowance_used = connection.execute(
+            text("SELECT EXISTS (SELECT 1 FROM allowance_used WHERE platform_id = :platform_id)"),
+            {"platform_id": platform_id},
+        ).scalar_one()
+        holders = PlatformHolders(
+            accounts=tuple(accounts),
+            connections=tuple(connections),
+            holds_allowance_used=allowance_used,
+        )
+        if holders.accounts or holders.connections or holders.holds_allowance_used:
             return holders
         connection.execute(
             text("DELETE FROM platform WHERE id = :platform_id"), {"platform_id": platform_id}
@@ -161,7 +177,7 @@ def set_withholding(
             text(
                 "UPDATE platform SET withholding = :behaviour,"
                 " exemption_order_eur = :exemption_order_eur"
-                " WHERE id = :platform_id AND kind IN ('broker', 'bank')"
+                f" WHERE id = :platform_id AND kind IN {_WITHHOLDING_KINDS}"
             ),
             {
                 "behaviour": behaviour,
@@ -176,6 +192,76 @@ def set_withholding(
             {"platform_id": platform_id},
         ).scalar_one_or_none()
         return Refusal.no_such_platform if kind is None else Refusal.cannot_withhold
+
+
+def set_allowance_used(
+    engine: Engine, platform_id: int, *, year: int, amount_eur: Decimal
+) -> Refusal | None:
+    """Store, or replace, how much of the allowance this Platform's exemption
+    order used in the year, as its annual tax certificate states it. None
+    means it was stored.
+
+    Whatever the Platform's withholding behaviour now is — a past year's
+    certificate stays true after a change. The insert reads the Platform and
+    its kind in one statement, so only a kind that can withhold is written,
+    and the follow-up read merely names which refusal happened. A Platform
+    removed between the two loses to the foreign key, and is reported as gone.
+    """
+    try:
+        with engine.begin() as connection:
+            stored = connection.execute(
+                text(
+                    "INSERT INTO allowance_used (platform_id, year, amount_eur)"
+                    " SELECT id, :year, :amount_eur FROM platform"
+                    f" WHERE id = :platform_id AND kind IN {_WITHHOLDING_KINDS}"
+                    " ON CONFLICT (platform_id, year)"
+                    " DO UPDATE SET amount_eur = EXCLUDED.amount_eur"
+                ),
+                {"platform_id": platform_id, "year": year, "amount_eur": amount_eur},
+            )
+            if stored.rowcount == 1:
+                return None
+            return _why_no_allowance(connection, platform_id)
+    except IntegrityError:
+        return Refusal.no_such_platform
+
+
+def clear_allowance_used(engine: Engine, platform_id: int, *, year: int) -> Refusal | None:
+    """Take back the year's figure. None means nothing is stored for the year
+    now — whether or not anything was before."""
+    with engine.begin() as connection:
+        refused = _why_no_allowance(connection, platform_id)
+        if refused is None:
+            connection.execute(
+                text(
+                    "DELETE FROM allowance_used WHERE platform_id = :platform_id AND year = :year"
+                ),
+                {"platform_id": platform_id, "year": year},
+            )
+        return refused
+
+
+def _why_no_allowance(connection: Connection, platform_id: int) -> Refusal | None:
+    """None where the Platform is there and of a kind that can withhold."""
+    can_withhold = connection.execute(
+        text(f"SELECT kind IN {_WITHHOLDING_KINDS} FROM platform WHERE id = :platform_id"),
+        {"platform_id": platform_id},
+    ).scalar_one_or_none()
+    if can_withhold is None:
+        return Refusal.no_such_platform
+    return None if can_withhold else Refusal.cannot_withhold
+
+
+def list_allowance_used(engine: Engine) -> list[Row]:
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT platform_id, year, amount_eur FROM allowance_used"
+                    " ORDER BY platform_id, year"
+                )
+            ).all()
+        )
 
 
 def set_withholding_override(
@@ -197,7 +283,7 @@ def set_withholding_override(
                 "UPDATE account SET withholding_override = :behaviour"
                 " FROM platform"
                 " WHERE account.id = :account_id AND platform.id = account.platform_id"
-                " AND platform.kind IN ('broker', 'bank')"
+                f" AND platform.kind IN {_WITHHOLDING_KINDS}"
                 " AND (CAST(:behaviour AS text) IS NOT NULL"
                 "  OR platform.kind = 'bank'"
                 "  OR platform.withholding IS NOT NULL"

@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "b3d9e6a1f428"
-down_revision: str | None = "f2a6c8d4e1b7"
+down_revision: str | None = "a4e9c2f7b815"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

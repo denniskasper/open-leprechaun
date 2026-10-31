@@ -9,6 +9,7 @@ import {
   KIND_VOCABULARY,
   servedBy,
   SERVED_BY_WORDS,
+  suggestedYear,
   unsetWithholding,
   WITHHOLDING_LABEL,
 } from "./platforms";
@@ -21,6 +22,7 @@ function platform(overrides: Partial<Platform>): Platform {
     withholding: null,
     exemption_order_eur: null,
     accounts: [],
+    allowance_used: [],
     ...overrides,
   };
 }
@@ -192,5 +194,29 @@ describe("unsetWithholding", () => {
       sentence: "Withholding not set — income here counts as still to declare.",
       caution: false,
     });
+  });
+});
+
+describe("suggestedYear", () => {
+  const autumn = new Date(2026, 9, 30);
+
+  it("offers the last year whose certificate has arrived", () => {
+    expect(suggestedYear([], autumn)).toBe(2025);
+  });
+
+  it("walks back past the years already entered", () => {
+    expect(
+      suggestedYear(
+        [
+          { year: 2025, amount_eur: "10.00" },
+          { year: 2024, amount_eur: "0.00" },
+        ],
+        autumn,
+      ),
+    ).toBe(2023);
+  });
+
+  it("ignores a gap's neighbours that lie ahead of it", () => {
+    expect(suggestedYear([{ year: 2024, amount_eur: "10.00" }], autumn)).toBe(2025);
   });
 });
