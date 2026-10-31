@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -79,6 +79,11 @@ class AccountResponse(BaseModel):
     base_currency: str | None
 
 
+class AllowanceUsedResponse(BaseModel):
+    year: int
+    amount_eur: Money
+
+
 class PlatformResponse(BaseModel):
     id: int
     name: str
@@ -88,6 +93,9 @@ class PlatformResponse(BaseModel):
     withholding: Withholding | None
     exemption_order_eur: Money | None
     accounts: list[AccountResponse]
+    # The allowance used at source per Tax Year (issue 28), ordered by year;
+    # only ever on a broker or a bank.
+    allowance_used: list[AllowanceUsedResponse]
 
     @classmethod
     def of(cls, platform: PlatformOverview) -> PlatformResponse:
@@ -109,6 +117,10 @@ class PlatformResponse(BaseModel):
                     base_currency=account.base_currency,
                 )
                 for account in platform.accounts
+            ],
+            allowance_used=[
+                AllowanceUsedResponse(year=used.year, amount_eur=used.amount_eur)
+                for used in platform.allowance_used
             ],
         )
 
@@ -310,6 +322,65 @@ def record_withholding(
         raise HTTPException(
             status_code=409, detail="Only a broker Platform carries withholding behaviour."
         )
+
+
+# The euro amount a tax certificate states: to the cent, never below zero,
+# and below the column's twelve whole digits, so an absurd figure is refused
+# rather than overflowing the database.
+CertificateAmount = Annotated[Money, Field(lt=Decimal(10) ** 12, decimal_places=2)]
+
+# Any year a certificate can be for, before the ledger's first event
+# included; bounded only so nothing past four digits reaches the database.
+TaxYear = Annotated[int, Path(ge=1, le=9999)]
+
+
+def _refuse_allowance(refused: Refusal | None) -> None:
+    """One answer for a store and a clear alike: the Platform is gone, or of
+    a kind no exemption order can stand at."""
+    if refused is Refusal.no_such_platform:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PLATFORM)
+    if refused is Refusal.cannot_withhold:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a broker or bank Platform records an allowance used at source.",
+        )
+
+
+class AllowanceUsedRequest(BaseModel):
+    amount_eur: CertificateAmount
+
+
+@router.put(
+    "/platforms/{platform_id}/allowance-used/{year}",
+    summary="Store or replace the allowance this Platform's exemption order used in a year",
+    status_code=204,
+)
+def record_allowance_used(
+    platform_id: int,
+    year: TaxYear,
+    request: AllowanceUsedRequest,
+    admin: AdminDep,
+    engine: EngineDep,
+) -> None:
+    """The figure exactly as the institution's annual tax certificate states
+    it (issue 28) — never worked out from the ledger, for any year, and
+    whatever the Platform's withholding behaviour now is."""
+    _refuse_allowance(
+        platforms.set_allowance_used(engine, platform_id, year=year, amount_eur=request.amount_eur)
+    )
+
+
+@router.delete(
+    "/platforms/{platform_id}/allowance-used/{year}",
+    summary="Clear the allowance this Platform's exemption order used in a year",
+    status_code=204,
+)
+def clear_allowance_used(
+    platform_id: int, year: TaxYear, admin: AdminDep, engine: EngineDep
+) -> None:
+    """Afterwards the year holds nothing — so clearing one that held nothing
+    already is no error."""
+    _refuse_allowance(platforms.clear_allowance_used(engine, platform_id, year=year))
 
 
 class WithholdingOverrideRequest(BaseModel):

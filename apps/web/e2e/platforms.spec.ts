@@ -149,3 +149,42 @@ test("a Depot is refused a taken name, then edited", async ({ page, request }) =
   }
   expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
 });
+
+// The allowance used at source (issue 28), end to end: a broker's withholding
+// settings take a year's figure as its tax certificate states it, list it by
+// year, and clear it through the row's two-step. One Platform under a name
+// unique to the run, removed again once its figure is cleared.
+test("a broker's allowance used at source is entered, listed and cleared", async ({
+  page,
+  request,
+}) => {
+  const name = `E2E Allowance ${Date.now()}`;
+  const registered = await request.post("/api/platforms", { data: { name, kind: "broker" } });
+  expect(registered.status()).toBe(201);
+  const { id } = await registered.json();
+
+  await page.goto("/settings/platforms");
+  const row = page.getByRole("article", { name, exact: true });
+  const used = row.getByRole("region", { name: "Allowance used at source" });
+  await expect(used.getByText(/None entered/)).toBeVisible();
+
+  await used.getByRole("button", { name: "Add year" }).click();
+  const form = used.getByRole("form", {
+    name: `Add a year's allowance used at source for ${name}`,
+  });
+  await form.getByLabel("Tax year").fill("2021");
+  await form.getByLabel("Amount used (EUR)").fill("123.45");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(form).toHaveCount(0);
+
+  const line = used.getByRole("listitem").filter({ hasText: "2021" });
+  await expect(line).toContainText("123.45");
+
+  const figure = `the allowance used at ${name} in 2021`;
+  await line.getByRole("button", { name: `Remove ${figure}`, exact: true }).click();
+  await line.getByRole("button", { name: `Remove ${figure} for good` }).click();
+  await expect(used.getByRole("listitem")).toHaveCount(0);
+  await expect(used.getByText(/None entered/)).toBeVisible();
+
+  expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
+});

@@ -29,6 +29,15 @@ class Account:
 
 
 @dataclass(frozen=True)
+class AllowanceUsed:
+    """How much of the Sparerpauschbetrag the Platform's exemption order used
+    in one Tax Year, as its annual tax certificate states it (issue 28)."""
+
+    year: int
+    amount_eur: Decimal
+
+
+@dataclass(frozen=True)
 class PlatformOverview:
     id: int
     name: str
@@ -39,6 +48,9 @@ class PlatformOverview:
     withholding: str | None
     exemption_order_eur: Decimal | None
     accounts: tuple[Account, ...]
+    # Ordered by year; only ever on a broker or a bank, whatever its
+    # withholding behaviour now is.
+    allowance_used: tuple[AllowanceUsed, ...]
 
 
 def overview(engine: Engine) -> list[PlatformOverview]:
@@ -56,6 +68,11 @@ def overview(engine: Engine) -> list[PlatformOverview]:
                 base_currency=row.base_currency,
             )
         )
+    used_at: dict[int, list[AllowanceUsed]] = {}
+    for row in platforms.list_allowance_used(engine):
+        used_at.setdefault(row.platform_id, []).append(
+            AllowanceUsed(year=row.year, amount_eur=row.amount_eur)
+        )
     return [
         PlatformOverview(
             id=row.id,
@@ -64,6 +81,7 @@ def overview(engine: Engine) -> list[PlatformOverview]:
             withholding=row.withholding,
             exemption_order_eur=row.exemption_order_eur,
             accounts=tuple(accounts_of.get(row.id, [])),
+            allowance_used=tuple(used_at.get(row.id, [])),
         )
         for row in platforms.list_platforms(engine)
     ]
@@ -85,9 +103,10 @@ def _named(noun: str, names: tuple[str, ...]) -> str:
 
 
 def remove_platform(engine: Engine, platform_id: int) -> Refused | Refusal | None:
-    """A Platform may be removed only while it holds no Account and no
-    Connection — removing one never takes anything else with it. None means
-    it is gone."""
+    """A Platform may be removed only while it holds no Account, no
+    Connection and no allowance used at source — removing one never takes
+    anything else with it, and never silently changes a past year's tax. None
+    means it is gone."""
     held = platforms.delete_platform(engine, platform_id)
     if not isinstance(held, platforms.PlatformHolders):
         return held
@@ -96,7 +115,12 @@ def remove_platform(engine: Engine, platform_id: int) -> Refused | Refusal | Non
         for noun, names in (("Account", held.accounts), ("Connection", held.connections))
         if names
     ]
-    them = "it" if len(held.accounts) + len(held.connections) == 1 else "them"
+    # Named without a count or a year: the Admin clears them one by one in the
+    # withholding settings, where they are listed.
+    if held.holds_allowance_used:
+        in_the_way.append("an allowance used at source")
+    held_count = len(held.accounts) + len(held.connections) + int(held.holds_allowance_used)
+    them = "it" if held_count == 1 else "them"
     return Refused(f"This Platform still holds {' and '.join(in_the_way)} — remove {them} first.")
 
 

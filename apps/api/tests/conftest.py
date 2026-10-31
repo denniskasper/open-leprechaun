@@ -119,8 +119,10 @@ def db(alembic_config: AlembicConfig, engine: Engine) -> Engine:
         # Connections before Platforms for the same reason as Accounts; their
         # per-kind status rows follow by cascade.
         connection.execute(text("DELETE FROM connection"))
-        # Accounts first: a Platform still holding one refuses to go.
+        # Accounts first: a Platform still holding one refuses to go. So does
+        # one holding an allowance used at source.
         connection.execute(text("DELETE FROM account"))
+        connection.execute(text("DELETE FROM allowance_used"))
         connection.execute(text("DELETE FROM platform"))
         # Scheduled tasks reference nothing; a schedule one test chose or a
         # run it recorded must not answer another test's list.
