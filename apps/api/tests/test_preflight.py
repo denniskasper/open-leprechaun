@@ -29,7 +29,7 @@ from open_leprechaun.repositories import (
     statutory,
     transactions,
 )
-from open_leprechaun.repositories.transactions import Leg
+from open_leprechaun.repositories.transactions import CapitalIncome, Leg
 
 BOUGHT = datetime(2025, 3, 14, 12, 0, tzinfo=UTC)
 SOLD = datetime(2025, 6, 3, 12, 0, tzinfo=UTC)
@@ -315,6 +315,167 @@ def test_a_lot_shortfall_blocks_finalisation(db, client):
 
     _trade(db, account, eur, btc, given="10000", gotten="1", occurred_at=BOUGHT)
     assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+
+# --- The allowance used at source (issue 32) --------------------------------
+
+
+def _withholding_account(
+    db, *, platform_name, behaviour, kind="broker", name="Depot", override=None
+):
+    """An Account under a broker or bank that states its withholding
+    behaviour — and, where given, the Account's own override of it."""
+    platform_id = platforms.create_platform(db, name=platform_name, kind=kind)
+    assert platforms.set_withholding(db, platform_id, behaviour=behaviour) is None
+    account = platforms.create_account(db, platform_id, name=name)
+    assert isinstance(account, int)
+    if override is not None:
+        assert platforms.set_withholding_override(db, account, behaviour=override) is None
+    return platform_id, account
+
+
+def _dividend(db, account, eur, *, occurred_at=SOLD):
+    created = transactions.create_transaction(
+        db,
+        type="dividend",
+        occurred_at=occurred_at,
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=eur, role="in", quantity=Decimal("73.63"))],
+        capital_income=CapitalIncome(
+            kapitalertragsteuer=Decimal("25"), solidarity_surcharge=Decimal("1.37")
+        ),
+    )
+    assert isinstance(created, int)
+    return created
+
+
+def _enter_used_amount(client, platform_id, *, year=2025, amount="0"):
+    stored = client.put(
+        f"/api/platforms/{platform_id}/allowance-used/{year}", json={"amount_eur": amount}
+    )
+    assert stored.status_code == 204
+
+
+def test_income_settled_at_source_with_no_used_amount_blocks_finalisation(db, client):
+    """A forgotten certificate cannot silently become a zero: a withholding
+    Platform that settled income at source in the year, with no allowance
+    used at source entered for it, blocks by name — the sentence says 0 is a
+    valid entry and links the Platforms screen where the figure is entered."""
+    eur = _eur(db)
+    broker, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
+    _dividend(db, depot, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    refused = client.post(f"/api/reports/{report_id}/finalise")
+
+    blocker = _blockers(refused)["missing_allowance_used"]
+    assert blocker["resolve_path"] == "/settings/platforms"
+    assert blocker["count"] == 1
+    assert "Hausbroker" in blocker["detail"]
+    assert "2025" in blocker["detail"]
+    assert "0 is a valid entry" in blocker["detail"]
+
+    _enter_used_amount(client, broker, amount="0")
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+
+def test_a_used_amount_entered_for_another_year_does_not_clear_the_blocker(db, client):
+    eur = _eur(db)
+    broker, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
+    _dividend(db, depot, eur)
+    _enter_used_amount(client, broker, year=2024, amount="100.00")
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    refused = client.post(f"/api/reports/{report_id}/finalise")
+
+    assert "missing_allowance_used" in _blockers(refused)
+
+
+def test_income_settled_at_source_in_another_year_does_not_block(db, client):
+    """The check answers for the report's year alone: last year's
+    certificate is last year's report's to ask for."""
+    eur = _eur(db)
+    _, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
+    _dividend(db, depot, eur, occurred_at=datetime(2024, 6, 3, 12, 0, tzinfo=UTC))
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+
+def test_income_at_a_depot_that_does_not_withhold_does_not_block(db, client):
+    """Income still to declare consumed no allowance at source — there is
+    no certificate to ask for."""
+    eur = _eur(db)
+    _, depot = _withholding_account(db, platform_name="Auslandsbroker", behaviour="none")
+    _dividend(db, depot, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+
+def test_a_depot_override_to_at_source_blocks_under_a_platform_that_withholds_nothing(db, client):
+    """The same judgement the capital-income receipts use: the Account's own
+    override first, the Platform's word second."""
+    eur = _eur(db)
+    _, depot = _withholding_account(
+        db, platform_name="Markenbroker", behaviour="none", override="at_source"
+    )
+    _dividend(db, depot, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    refused = client.post(f"/api/reports/{report_id}/finalise")
+
+    assert "Markenbroker" in _blockers(refused)["missing_allowance_used"]["detail"]
+
+
+def test_a_depot_override_to_none_does_not_block_under_a_platform_that_withholds(db, client):
+    eur = _eur(db)
+    _, depot = _withholding_account(
+        db, platform_name="Markenbroker", behaviour="at_source", override="none"
+    )
+    _dividend(db, depot, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+
+
+def test_two_platforms_missing_a_used_amount_make_one_blocker_naming_both(db, client):
+    """A withholding bank answers the same way a broker does (issue 29)."""
+    eur = _eur(db)
+    _, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
+    _, giro = _withholding_account(
+        db, platform_name="Sparkasse", behaviour="at_source", kind="bank", name="Giro"
+    )
+    _dividend(db, depot, eur)
+    _dividend(db, giro, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    refused = client.post(f"/api/reports/{report_id}/finalise")
+
+    blocker = _blockers(refused)["missing_allowance_used"]
+    assert blocker["count"] == 2
+    assert "Hausbroker" in blocker["detail"]
+    assert "Sparkasse" in blocker["detail"]
+
+
+def test_an_override_finalises_past_a_missing_used_amount(db, client):
+    eur = _eur(db)
+    _, depot = _withholding_account(db, platform_name="Hausbroker", behaviour="at_source")
+    _dividend(db, depot, eur)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+
+    overridden = client.post(
+        f"/api/reports/{report_id}/finalise",
+        json={"override": {"acknowledgement": "The certificate is still on its way."}},
+    )
+
+    assert overridden.status_code == 204
+    report = client.get(f"/api/reports/{report_id}").json()
+    assert report["status"] == "final"
+    assert report["override_acknowledgement"] == "The certificate is still on its way."
+    assert [blocker["kind"] for blocker in report["overridden_blockers"]] == [
+        "missing_allowance_used"
+    ]
 
 
 # --- The override: acknowledged, recorded, shown wherever the report is -----

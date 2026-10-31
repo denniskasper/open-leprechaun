@@ -21,18 +21,23 @@ def declaration_rows(connection: Connection) -> list[Row]:
     )
 
 
+# The one statement of "is income here settled at source" over an `account`
+# joined to its `platform`: the Account's own override first, the Platform's
+# word second (ticket 43). Shared with the pre-flight's allowance check
+# (issue 32) so the judgement cannot drift between the receipts and it.
+SETTLED_AT_SOURCE_SQL = "COALESCE(account.withholding_override, platform.withholding) = 'at_source'"
+
+
 def withholding_accounts(connection: Connection) -> set[int]:
-    """The Accounts whose effective withholding behaviour is `at_source` —
-    the Account's own override first, the Platform's word second (ticket
-    43). Income there is settled; everywhere else it must be declared."""
+    """The Accounts whose effective withholding behaviour is `at_source`.
+    Income there is settled; everywhere else it must be declared."""
     return {
         row.id
         for row in connection.execute(
             text(
                 "SELECT account.id FROM account"
                 " JOIN platform ON platform.id = account.platform_id"
-                " WHERE COALESCE(account.withholding_override, platform.withholding)"
-                " = 'at_source'"
+                f" WHERE {SETTLED_AT_SOURCE_SQL}"
             )
         ).all()
     }

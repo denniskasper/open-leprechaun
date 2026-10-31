@@ -23,6 +23,7 @@ from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.repositories import preflight as preflight_repository
 from open_leprechaun.services import (
     advance_lump_sums,
+    capital_income,
     corporate_actions,
     disposals,
     fx,
@@ -273,6 +274,33 @@ def _unreviewed_corporate_actions(engine: Engine, year: int) -> Blocker | None:
     )
 
 
+def _missing_allowance_used(engine: Engine, year: int) -> Blocker | None:
+    """Withholding Platforms that settled §20 income at source in the
+    report's year and have no allowance used at source entered for it
+    (issue 32). Their exemption orders may have used allowance the engine
+    must not grant again, and only the institution's certificate can say how
+    much — so a forgotten certificate waits here rather than silently
+    becoming a zero. Entering 0 is an answer; nothing entered is not. The
+    income types are the capital-income producer's own."""
+    missing = preflight_repository.platforms_missing_allowance_used(
+        engine, year=year, income_types=capital_income.SECTION_20_INCOME_TYPES
+    )
+    if not missing:
+        return None
+    names = ", ".join(platform.name for platform in missing)
+    return Blocker(
+        kind="missing_allowance_used",
+        detail=(
+            f"{_count(len(missing), 'Platform')} settled income at source in {year}"
+            f" but {'has' if len(missing) == 1 else 'have'} no allowance used at source"
+            f" entered for the year: {names}. Enter the figure from each annual tax"
+            " certificate — 0 is a valid entry."
+        ),
+        resolve_path="/settings/platforms",
+        count=len(missing),
+    )
+
+
 def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
@@ -290,6 +318,7 @@ CHECKS: tuple[Check, ...] = (
     _missing_statutory_configuration,
     _missing_advance_lump_sum_inputs,
     _unreviewed_corporate_actions,
+    _missing_allowance_used,
 )
 """Every registered pre-flight check. A later ticket registers a further
 blocker by appending its check here — the finalisation flow reads only this

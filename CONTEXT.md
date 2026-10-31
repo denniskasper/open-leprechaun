@@ -610,7 +610,8 @@ Platform and per Tax Year, entered exactly as the institution's annual tax certi
 ("in Anspruch genommener Sparer-Pauschbetrag"), never derived from the ledger (ADR-0031). The used
 amount, not the lodged amount, reduces the allowance, because income that already passed untaxed
 at source has consumed allowance the engine must not grant again. Entering 0 states that an order
-used nothing; nothing entered is unknown.
+used nothing; nothing entered is unknown, and blocks finalising a year in which the Platform
+settled income at source.
 
 _Avoid_: treating the lodged amount as what was used.
 
