@@ -37,6 +37,7 @@ from open_leprechaun.ports.reference_rates import ReferenceRateSource
 from open_leprechaun.repositories import capital_income as capital_income_repository
 from open_leprechaun.repositories import futures as futures_repository
 from open_leprechaun.repositories import lots as lots_repository
+from open_leprechaun.repositories import platforms as platforms_repository
 from open_leprechaun.repositories import statutory as statutory_repository
 from open_leprechaun.services import (
     advance_lump_sums,
@@ -353,6 +354,9 @@ class Section20Assessment:
     combined_eur: Decimal
     allowance_eur: Decimal
     allowance_used_at_source_eur: Decimal
+    # Whether exemption orders used more than the whole allowance — the
+    # excess is taxed on assessment, and the report says so.
+    allowance_exceeded: bool
     allowance_applied_eur: Decimal
     taxable_eur: Decimal
     tax: TaxDue
@@ -393,6 +397,7 @@ def assess(
         combined_eur=combined,
         allowance_eur=allowance_eur,
         allowance_used_at_source_eur=allowance_used_at_source_eur,
+        allowance_exceeded=allowance_used_at_source_eur > allowance_eur,
         allowance_applied_eur=applied,
         taxable_eur=taxable,
         tax=TaxDue(
@@ -544,8 +549,9 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
     event or configured opening carryforward is netted and rolled under its
     own configured caps, so the target year opens with exactly what its
     predecessors left. The allowance and the rates are the target year's,
-    selected by the Admin's election; what a Freistellungsauftrag consumed at
-    source stays zero until ticket 43 states it. Securities disposals join as
+    selected by the Admin's election; what the year's Freistellungsaufträge
+    consumed at source is the allowance used at source entered across every
+    Platform (ADR-0031), never derived here. Securities disposals join as
     events through their producer (ticket 46,
     services/security_disposals) — each wearing its category and its fund's
     Teilfreistellung rate; a fund with no classification refuses there by
@@ -758,7 +764,9 @@ def year_report(engine: Engine, source: ReferenceRateSource, *, year: int) -> Se
             carried,
             year=year,
             allowance_eur=allowance,
-            allowance_used_at_source_eur=Decimal(0),
+            allowance_used_at_source_eur=platforms_repository.allowance_used_total(
+                engine, year=year
+            ),
             flat_rate=flat_rate,
             solidarity_surcharge_rate=surcharge_rate,
             church_tax_rate=church_rate,

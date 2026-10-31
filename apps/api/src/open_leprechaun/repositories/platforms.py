@@ -264,6 +264,16 @@ def list_allowance_used(engine: Engine) -> list[Row]:
         )
 
 
+def allowance_used_total(engine: Engine, *, year: int) -> Decimal:
+    """The year's allowance used at source summed across every Platform —
+    zero where none is entered."""
+    with engine.connect() as connection:
+        return connection.execute(
+            text("SELECT COALESCE(SUM(amount_eur), 0) FROM allowance_used WHERE year = :year"),
+            {"year": year},
+        ).scalar_one()
+
+
 def set_withholding_override(
     engine: Engine, account_id: int, *, behaviour: str | None
 ) -> Refusal | None:

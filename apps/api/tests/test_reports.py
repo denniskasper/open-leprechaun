@@ -361,3 +361,64 @@ def test_generating_refuses_a_year_whose_limit_is_unset(store, client):
 
 def test_an_unknown_report_is_not_found(db, client):
     assert client.get("/api/reports/12345").status_code == 404
+
+
+# --- The allowance used at source (issue 30) ---------------------------------
+
+
+def _dividend(db, *, amount, occurred_at=SOLD):
+    """A dividend into an exchange Account, so nothing is settled at source."""
+    account, eur = _account(db), _eur(db)
+    created = transactions.create_transaction(
+        db,
+        type="dividend",
+        occurred_at=occurred_at,
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=eur, role="in", quantity=Decimal(amount))],
+    )
+    assert isinstance(created, int)
+
+
+def _withholder(client, name, kind="broker"):
+    return client.post("/api/platforms", json={"name": name, "kind": kind}).json()["id"]
+
+
+def _use(client, platform_id, year, amount):
+    stored = client.put(
+        f"/api/platforms/{platform_id}/allowance-used/{year}", json={"amount_eur": amount}
+    )
+    assert stored.status_code == 204, stored.text
+
+
+def _assessment(client, *, year=2025):
+    report_id = client.post("/api/reports", json={"year": year}).json()["id"]
+    return client.get(f"/api/reports/{report_id}").json()["figures"]["section20"]["assessment"]
+
+
+def test_the_allowance_applied_is_what_the_year_s_used_amounts_left(db, client):
+    """The migration-seeded 2025 allowance of 1000 less 300 used at a broker
+    and 200 at a bank leaves 500 to set against 900 of dividends; the 400
+    entered for 2024 does not count."""
+    _dividend(db, amount="900")
+    broker = _withholder(client, "Scalable")
+    bank = _withholder(client, "Sparkasse", kind="bank")
+    _use(client, broker, 2025, "300")
+    _use(client, bank, 2025, "200")
+    _use(client, broker, 2024, "400")
+
+    assessment = _assessment(client)
+
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal("500")
+    assert Decimal(assessment["taxable_eur"]) == Decimal("400")
+    assert assessment["allowance_exceeded"] is False
+
+
+def test_with_no_used_amount_for_the_year_the_whole_allowance_applies(db, client):
+    _dividend(db, amount="1500")
+    _use(client, _withholder(client, "Scalable"), 2024, "400")
+
+    assessment = _assessment(client)
+
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal("1000")
+    assert Decimal(assessment["taxable_eur"]) == Decimal("500")
+    assert assessment["allowance_exceeded"] is False
