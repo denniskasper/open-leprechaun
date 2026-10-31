@@ -743,9 +743,9 @@ _FLAT_RATE_NOTE = (
 _AWAITING_NOTE = "The year awaits a valuation, so no tax is stated."
 
 _OVER_USED_NOTE = (
-    "The allowance is over-used: exemption orders used more of the Sparerpauschbetrag at"
-    " source than the allowance for the filing status, so none is deducted here and the"
-    " excess will be taxed on assessment."
+    "The allowance is over-used: the allowance used at source exceeds the"
+    " Sparerpauschbetrag for the filing status, so none is deducted here and the excess"
+    " will be taxed on assessment."
 )
 
 _CREDITABLE_NOTE = (
