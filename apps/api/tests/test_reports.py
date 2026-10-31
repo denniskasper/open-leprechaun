@@ -459,3 +459,34 @@ def test_a_used_total_within_the_allowance_adds_no_note(db, client):
     figures = client.get(f"/api/reports/{report_id}").json()["figures"]
     (kap,) = [section for section in figures["forms"]["sections"] if section["key"] == "kap"]
     assert kap["note"] is None
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(None, "300"), ("300", "350"), ("300", None)],
+    ids=["entering", "correcting", "clearing"],
+)
+def test_changing_a_used_amount_marks_the_final_report_resting_on_it_stale(
+    db, client, before, after
+):
+    """The used amounts feed the fingerprint: entering, correcting or
+    clearing one changes the allowance applied while no transaction has
+    moved — the final report says so, and its frozen figures stand."""
+    _round_trip(db)
+    broker = _withholder(client, "Scalable")
+    if before is not None:
+        _use(client, broker, 2025, before)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+    frozen = client.get(f"/api/reports/{report_id}").json()["figures"]
+
+    if after is None:
+        assert client.delete(f"/api/platforms/{broker}/allowance-used/2025").status_code == 204
+    else:
+        _use(client, broker, 2025, after)
+
+    report = client.get(f"/api/reports/{report_id}").json()
+    assert report["status"] == "final"
+    assert report["figures"] == frozen
+    assert report["stale"] is True
+    assert "allowance_used" in {entry["input_class"] for entry in report["changed_inputs"]}

@@ -690,6 +690,7 @@ def test_a_materialisation_records_a_fingerprint_per_input_class(db):
         "treaty_limits",
         "fund_redemption_values",
         "withholding_behaviour",
+        "allowance_used",
         "rates",
         "corporate_actions",
     }
