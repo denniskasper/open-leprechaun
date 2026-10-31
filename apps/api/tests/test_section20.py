@@ -509,6 +509,21 @@ def test_an_allowance_fully_consumed_at_source_leaves_nothing_to_claim():
 
     assert assessment.allowance_applied_eur == Decimal(0)
     assert assessment.taxable_eur == Decimal("1500")
+    assert assessment.allowance_exceeded is False
+
+
+def test_an_allowance_over_used_at_source_caps_the_deduction_and_says_so():
+    """Exemption orders used more than the whole allowance: the deduction is
+    floored at zero, the used figure stands as stated, and the assessment
+    says the allowance was exceeded."""
+    carried = _carried([_event("sonstige", "1500")], year=2025)
+
+    assessment = _assessed(carried, allowance="1000", used_at_source="1200")
+
+    assert assessment.allowance_used_at_source_eur == Decimal("1200")
+    assert assessment.allowance_applied_eur == Decimal(0)
+    assert assessment.taxable_eur == Decimal("1500")
+    assert assessment.allowance_exceeded is True
 
 
 def test_a_year_whose_losses_exceed_everything_available_owes_nothing_and_carries_all():

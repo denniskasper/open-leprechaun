@@ -188,6 +188,12 @@ INPUT_CLASSES: Mapping[str, str | None] = {
         + " AS line FROM account JOIN platform ON platform.id = account.platform_id"
         " WHERE COALESCE(account.withholding_override, platform.withholding) IS NOT NULL"
     ),
+    # The allowance used at source per Platform and year (issue 30): it
+    # decides how much Sparerpauschbetrag is left to apply, so entering,
+    # correcting or clearing one moves the year's taxable figure.
+    "allowance_used": (
+        f"SELECT {_line('platform_id', 'year', 'amount_eur')} AS line FROM allowance_used"
+    ),
     # The crypto closes an event rests on (ticket 41): the close of an
     # Instrument for a day one of its legs happened is what values that leg,
     # so its arrival turns an awaited figure into a stated one. Closes of

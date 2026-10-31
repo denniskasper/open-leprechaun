@@ -361,3 +361,137 @@ def test_generating_refuses_a_year_whose_limit_is_unset(store, client):
 
 def test_an_unknown_report_is_not_found(db, client):
     assert client.get("/api/reports/12345").status_code == 404
+
+
+# --- The allowance used at source (issue 30) ---------------------------------
+
+
+def _dividend(db, *, amount):
+    """A dividend into an exchange Account, so nothing is settled at source."""
+    account, eur = _account(db), _eur(db)
+    created = transactions.create_transaction(
+        db,
+        type="dividend",
+        occurred_at=SOLD,
+        note=None,
+        legs=[Leg(account_id=account, instrument_id=eur, role="in", quantity=Decimal(amount))],
+    )
+    assert isinstance(created, int)
+
+
+def _broker_or_bank(client, name, kind="broker"):
+    return client.post("/api/platforms", json={"name": name, "kind": kind}).json()["id"]
+
+
+def _enter_used(client, platform_id, year, amount):
+    stored = client.put(
+        f"/api/platforms/{platform_id}/allowance-used/{year}", json={"amount_eur": amount}
+    )
+    assert stored.status_code == 204, stored.text
+
+
+def _figures(client, *, year=2025):
+    report_id = client.post("/api/reports", json={"year": year}).json()["id"]
+    return client.get(f"/api/reports/{report_id}").json()["figures"]
+
+
+def _assessment(client, *, year=2025):
+    return _figures(client, year=year)["section20"]["assessment"]
+
+
+def _kap(figures):
+    (kap,) = [section for section in figures["forms"]["sections"] if section["key"] == "kap"]
+    return kap
+
+
+def test_the_allowance_applied_is_what_the_year_s_used_amounts_left(db, client):
+    """The migration-seeded 2025 allowance of 1000 less 300 used at a broker
+    and 200 at a bank leaves 500 to set against 900 of dividends; the 400
+    entered for 2024 does not count."""
+    _dividend(db, amount="900")
+    broker = _broker_or_bank(client, "Scalable")
+    bank = _broker_or_bank(client, "Sparkasse", kind="bank")
+    _enter_used(client, broker, 2025, "300")
+    _enter_used(client, bank, 2025, "200")
+    _enter_used(client, broker, 2024, "400")
+
+    assessment = _assessment(client)
+
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal("500")
+    assert Decimal(assessment["taxable_eur"]) == Decimal("400")
+    assert assessment["allowance_exceeded"] is False
+
+
+def test_with_no_used_amount_for_the_year_the_whole_allowance_applies(db, client):
+    _dividend(db, amount="1500")
+    _enter_used(client, _broker_or_bank(client, "Scalable"), 2024, "400")
+
+    assessment = _assessment(client)
+
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal("1000")
+    assert Decimal(assessment["taxable_eur"]) == Decimal("500")
+    assert assessment["allowance_exceeded"] is False
+
+
+def test_a_used_total_above_the_allowance_caps_the_deduction_and_says_so(db, client):
+    """700 at a broker and 600 at a bank are 1300 used of a 1000 allowance:
+    nothing more is deducted, the report says the excess is taxed on
+    assessment, and the figures stay recorded exactly as entered."""
+    _dividend(db, amount="900")
+    broker = _broker_or_bank(client, "Scalable")
+    bank = _broker_or_bank(client, "Sparkasse", kind="bank")
+    _enter_used(client, broker, 2025, "700")
+    _enter_used(client, bank, 2025, "600")
+
+    figures = _figures(client)
+
+    assessment = figures["section20"]["assessment"]
+    assert Decimal(assessment["allowance_applied_eur"]) == Decimal(0)
+    assert Decimal(assessment["taxable_eur"]) == Decimal("900")
+    assert assessment["allowance_exceeded"] is True
+    assert "over-used" in _kap(figures)["note"]
+    assert "taxed on assessment" in _kap(figures)["note"]
+    listed = client.get("/api/platforms").json()
+    used = {platform["id"]: platform["allowance_used"] for platform in listed}
+    assert used[broker] == [{"year": 2025, "amount_eur": "700.00"}]
+    assert used[bank] == [{"year": 2025, "amount_eur": "600.00"}]
+
+
+def test_a_used_total_within_the_allowance_adds_no_note(db, client):
+    _dividend(db, amount="900")
+    _enter_used(client, _broker_or_bank(client, "Scalable"), 2025, "1000")
+
+    figures = _figures(client)
+
+    assert _kap(figures)["note"] is None
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(None, "300"), ("300", "350"), ("300", None)],
+    ids=["entering", "correcting", "clearing"],
+)
+def test_changing_a_used_amount_marks_the_final_report_resting_on_it_stale(
+    db, client, before, after
+):
+    """The used amounts feed the fingerprint: entering, correcting or
+    clearing one changes the allowance applied while no transaction has
+    moved — the final report says so, and its frozen figures stand."""
+    _round_trip(db)
+    broker = _broker_or_bank(client, "Scalable")
+    if before is not None:
+        _enter_used(client, broker, 2025, before)
+    report_id = client.post("/api/reports", json={"year": 2025}).json()["id"]
+    assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
+    frozen = client.get(f"/api/reports/{report_id}").json()["figures"]
+
+    if after is None:
+        assert client.delete(f"/api/platforms/{broker}/allowance-used/2025").status_code == 204
+    else:
+        _enter_used(client, broker, 2025, after)
+
+    report = client.get(f"/api/reports/{report_id}").json()
+    assert report["status"] == "final"
+    assert report["figures"] == frozen
+    assert report["stale"] is True
+    assert "allowance_used" in {entry["input_class"] for entry in report["changed_inputs"]}
