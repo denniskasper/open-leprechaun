@@ -1,7 +1,8 @@
 """Depot, withholding and exemption order (ticket 43): a brokerage Account
 registered with the tax semantics its broker actually has — whether tax is
 withheld at source, and how much of the saver's allowance the broker's
-exemption order lets through untaxed.
+exemption order lets through untaxed. A German bank withholds and takes
+exemption orders the same way (issue 29), so a bank carries both too.
 
 The seams are the repository over real Postgres — the rules under test are
 the schema's own constraints — and the HTTP endpoints through the app.
@@ -51,21 +52,41 @@ def test_the_schema_refuses_a_withholding_outside_the_two_behaviours(db):
         )
 
 
-def test_the_schema_refuses_withholding_on_a_platform_that_is_not_a_broker(db):
-    """Withholding behaviour is a fact about a broker; a bank or an exchange
-    carries none, and the schema itself refuses to record one there."""
-    kraken = platforms.create_platform(db, name="Kraken", kind="exchange")
+@pytest.mark.parametrize("kind", ["exchange", "cold_storage", "software_wallet"])
+def test_the_schema_refuses_withholding_on_a_platform_that_cannot_withhold(db, kind):
+    """Withholding behaviour is a fact about a broker or a bank; an exchange
+    or a wallet carries none, and the schema itself refuses to record one
+    there."""
+    platform = platforms.create_platform(db, name="Elsewhere", kind=kind)
 
     with pytest.raises(IntegrityError), db.begin() as connection:
         connection.execute(
             text("UPDATE platform SET withholding = 'at_source' WHERE id = :id"),
-            {"id": kraken},
+            {"id": platform},
         )
 
 
+@pytest.mark.parametrize("kind", ["broker", "bank"])
+def test_the_schema_allows_withholding_and_an_exemption_order_on_a_broker_or_a_bank(db, kind):
+    platform = platforms.create_platform(db, name="Institution", kind=kind)
+
+    with db.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE platform SET withholding = 'at_source', exemption_order_eur = 1000"
+                " WHERE id = :id"
+            ),
+            {"id": platform},
+        )
+
+    (row,) = platforms.list_platforms(db)
+    assert row.withholding == "at_source"
+    assert row.exemption_order_eur == Decimal("1000")
+
+
 def test_the_schema_refuses_an_exemption_order_on_a_platform_that_does_not_withhold(db):
-    """A Freistellungsauftrag is lodged with a broker that withholds — on any
-    other Platform the amount would be an answer to no question."""
+    """A Freistellungsauftrag is lodged with a broker or bank that withholds —
+    on any other Platform the amount would be an answer to no question."""
     broker = _broker(db)
 
     with pytest.raises(IntegrityError), db.begin() as connection:
@@ -136,12 +157,29 @@ def test_an_absent_exemption_order_means_none(db):
     assert row.exemption_order_eur is None
 
 
-def test_only_a_broker_carries_withholding_behaviour(db):
+def test_a_bank_records_its_withholding_and_exemption_order(db):
+    """A German bank withholds at source and takes an exemption order the
+    same way a broker does — even one the ledger tracks no Account at."""
+    bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
+
+    assert (
+        platforms.set_withholding(
+            db, bank, behaviour="at_source", exemption_order_eur=Decimal("200")
+        )
+        is None
+    )
+
+    (row,) = platforms.list_platforms(db)
+    assert row.withholding == "at_source"
+    assert row.exemption_order_eur == Decimal("200")
+
+
+def test_only_a_broker_or_a_bank_carries_withholding_behaviour(db):
     kraken = platforms.create_platform(db, name="Kraken", kind="exchange")
 
     refused = platforms.set_withholding(db, kraken, behaviour="at_source")
 
-    assert refused is platforms.Refusal.not_a_broker
+    assert refused is platforms.Refusal.cannot_withhold
 
 
 def test_setting_withholding_on_a_platform_that_is_not_there_says_so(db):
@@ -168,13 +206,44 @@ def test_an_account_may_override_its_brokers_behaviour_and_clear_it_again(db):
     assert row.withholding_override is None
 
 
-def test_an_account_outside_a_broker_carries_no_override(db):
+def test_an_account_under_a_bank_may_override_its_banks_behaviour_and_clear_it_again(db):
+    bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
+    platforms.set_withholding(db, bank, behaviour="none")
+    giro = platforms.create_account(db, bank, name="Giro")
+
+    assert platforms.set_withholding_override(db, giro, behaviour="at_source") is None
+    (row,) = platforms.list_accounts(db)
+    assert row.withholding_override == "at_source"
+
+    assert platforms.set_withholding_override(db, giro, behaviour=None) is None
+    (row,) = platforms.list_accounts(db)
+    assert row.withholding_override is None
+
+
+def test_clearing_a_bank_accounts_override_is_fine_while_it_holds_positions(db):
+    """Only a broker's Depot must have its behaviour set before it holds a
+    position, so only there does a held position keep an override standing —
+    a bank's Account holds cash whatever its behaviour."""
+    bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
+    giro = platforms.create_account(db, bank, name="Giro")
+    platforms.set_withholding_override(db, giro, behaviour="at_source")
+    created = transactions.create_transaction(
+        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(giro, _eur(db))
+    )
+    assert isinstance(created, int)
+
+    assert platforms.set_withholding_override(db, giro, behaviour=None) is None
+    (row,) = platforms.list_accounts(db)
+    assert row.withholding_override is None
+
+
+def test_an_account_where_nothing_withholds_carries_no_override(db):
     kraken = platforms.create_platform(db, name="Kraken", kind="exchange")
     main = platforms.create_account(db, kraken, name="Main")
 
     refused = platforms.set_withholding_override(db, main, behaviour="none")
 
-    assert refused is platforms.Refusal.not_under_a_broker
+    assert refused is platforms.Refusal.cannot_withhold
 
 
 def test_clearing_an_override_that_alone_answers_for_held_positions_is_refused(db):
@@ -295,6 +364,20 @@ def test_an_account_outside_a_broker_needs_no_withholding_behaviour(db):
 
     created = transactions.create_transaction(
         db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(main, eur)
+    )
+
+    assert isinstance(created, int)
+
+
+def test_an_account_under_a_bank_holds_positions_with_no_withholding_behaviour_set(db):
+    """The rule that a Depot holds nothing before its behaviour is set is a
+    broker's alone (issue 29): a bank that may now withhold still holds cash
+    in an Account nothing has declared anything about."""
+    bank = platforms.create_platform(db, name="Sparkasse", kind="bank")
+    giro = platforms.create_account(db, bank, name="Giro")
+
+    created = transactions.create_transaction(
+        db, type="transfer_in", occurred_at=NOON, note=None, legs=_cash_in(giro, _eur(db))
     )
 
     assert isinstance(created, int)
@@ -424,12 +507,33 @@ def test_the_api_refuses_an_exemption_order_as_a_json_number(client, db):
     assert response.status_code == 422
 
 
-def test_the_api_answers_conflict_for_withholding_outside_a_broker(client, db):
+def test_the_api_records_a_banks_withholding_and_exemption_order_with_no_accounts(client, db):
+    """A savings bank the ledger does not otherwise track is entered as a
+    bank Platform with no Accounts, holding its exemption order (issue 29)."""
+    bank = client.post("/api/platforms", json={"name": "Sparkasse", "kind": "bank"}).json()["id"]
+
+    recorded = client.put(
+        f"/api/platforms/{bank}/withholding",
+        json={"behaviour": "at_source", "exemption_order_eur": "200"},
+    )
+    assert recorded.status_code == 204
+
+    (platform,) = client.get("/api/platforms").json()
+    assert platform["kind"] == "bank"
+    assert platform["withholding"] == "at_source"
+    assert platform["exemption_order_eur"] == "200"
+    assert platform["accounts"] == []
+
+
+def test_the_api_answers_conflict_for_withholding_where_nothing_withholds(client, db):
     kraken = client.post("/api/platforms", json={"name": "Kraken", "kind": "exchange"}).json()["id"]
 
     response = client.put(f"/api/platforms/{kraken}/withholding", json={"behaviour": "at_source"})
 
     assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Only a broker or bank Platform carries withholding behaviour."
+    )
 
 
 def test_the_api_answers_not_found_for_withholding_on_no_platform(client, db):
@@ -467,13 +571,33 @@ def test_the_api_answers_conflict_for_clearing_an_override_a_held_depot_rests_on
     assert "override" in response.json()["detail"].lower()
 
 
-def test_the_api_answers_conflict_for_an_override_outside_a_broker(client, db):
+def test_the_api_records_and_clears_an_override_under_a_bank(client, db):
+    bank = client.post("/api/platforms", json={"name": "Sparkasse", "kind": "bank"}).json()["id"]
+    giro = client.post(f"/api/platforms/{bank}/accounts", json={"name": "Giro"}).json()["id"]
+
+    recorded = client.put(
+        f"/api/accounts/{giro}/withholding-override", json={"behaviour": "at_source"}
+    )
+    assert recorded.status_code == 204
+    (platform,) = client.get("/api/platforms").json()
+    assert platform["accounts"][0]["withholding_override"] == "at_source"
+
+    cleared = client.put(f"/api/accounts/{giro}/withholding-override", json={"behaviour": None})
+    assert cleared.status_code == 204
+    (platform,) = client.get("/api/platforms").json()
+    assert platform["accounts"][0]["withholding_override"] is None
+
+
+def test_the_api_answers_conflict_for_an_override_where_nothing_withholds(client, db):
     kraken = client.post("/api/platforms", json={"name": "Kraken", "kind": "exchange"}).json()["id"]
     main = client.post(f"/api/platforms/{kraken}/accounts", json={"name": "Main"}).json()["id"]
 
     response = client.put(f"/api/accounts/{main}/withholding-override", json={"behaviour": "none"})
 
     assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Only an Account under a broker or bank carries an override."
+    )
 
 
 def test_the_api_answers_not_found_for_an_override_on_no_account(client, db):

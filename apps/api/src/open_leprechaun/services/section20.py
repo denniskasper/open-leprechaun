@@ -510,15 +510,15 @@ class Section20Year:
     excluded: tuple[ExcludedEvent, ...]
     awaiting_valuation: tuple[str, ...]
     # The year's dividends, distributions and interest as recorded (ticket
-    # 47): gross, both withholdings and net, each saying whether its Depot
-    # settled it at source.
+    # 47): gross, both withholdings and net, each saying whether its Depot or
+    # bank Account settled it at source.
     receipts: tuple[IncomeReceipt, ...] = ()
     # What was taken at source, and the Quellensteuer's creditability — None
     # while the year awaits a valuation, like every figure beside it.
     withholding: WithholdingStatement | None = None
-    # The receipts' gross split by the Depot's withholding behaviour: what a
-    # withholding broker already settled (§43 Abs. 5 EStG), and what must
-    # still be declared (§32d Abs. 3 EStG).
+    # The receipts' gross split by the Account's withholding behaviour: what
+    # a withholding broker or bank already settled (§43 Abs. 5 EStG), and what
+    # must still be declared (§32d Abs. 3 EStG).
     settled_at_source_eur: Decimal | None = None
     to_declare_eur: Decimal | None = None
     # The year's securities disposals as their producer stated them (ticket

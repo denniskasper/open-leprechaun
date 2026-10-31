@@ -63,8 +63,9 @@ class IncomeReceipt:
     """One §20-typed in-leg with what was taken out of it before it arrived,
     every figure in EUR at the event date's rate — None while a valuation
     awaits, never a guess. `gross_eur` is the net plus everything withheld;
-    `settled_at_source` says whether the Depot that received it withholds
-    German tax (ticket 43) or leaves the income to be declared."""
+    `settled_at_source` says whether the Depot or bank Account that received
+    it withholds German tax (ticket 43, issue 29) or leaves the income to be
+    declared."""
 
     leg_id: int
     type: str

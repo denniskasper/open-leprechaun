@@ -20,10 +20,11 @@ exists.
 Any place that holds value, distinguished by its `kind`: `exchange`, `cold_storage`,
 `software_wallet`, `broker`, `bank`.
 
-A broker Platform carries the **withholding** behaviour that decides whether income arrives
-already taxed at source. It lives here, on the Platform, because it is a fact about the
+A broker or bank Platform carries the **withholding** behaviour that decides whether income
+arrives already taxed at source. It lives here, on the Platform, because it is a fact about the
 institution rather than about any one holding — with a per-**Account** override for the case where
-one brand operates through several entities with different tax status.
+one brand operates through several entities with different tax status. Only a broker's **Depot**
+must have its behaviour set before it holds a position; a bank's Account holds cash with none set.
 
 A Platform may be removed only while it holds no **Account** and no **Connection**. One that has
 either stays: removing a Platform never takes anything else with it.
@@ -601,7 +602,8 @@ _Avoid_: applying it as a **Freigrenze**. It is a deduction, not an all-or-nothi
 
 An exemption order lodged with a German broker or bank, telling it to let income through untaxed
 until an allocated slice of the **Sparerpauschbetrag** is used up. The amount lodged is recorded
-per withholding **Platform**, for information only; absent means none.
+per withholding **Platform**, for information only; absent means none. A bank the ledger does not
+otherwise track is entered as a `bank` Platform with no Accounts to hold its order.
 
 What the order actually consumed is the **allowance used at source**: per `broker` or `bank`
 Platform and per Tax Year, entered exactly as the institution's annual tax certificate states it
@@ -681,9 +683,10 @@ limit; the difference is the reclaimable part.
 
 ### Kapitalertragsteuer at source
 
-Tax a German broker withholds and remits on the Admin's behalf. It distinguishes a withholding
-**Depot**, where income is largely settled already, from a foreign one, where everything must be
-declared. The report shows amounts settled at source separately from amounts still to declare.
+Tax a German broker or bank withholds and remits on the Admin's behalf. It distinguishes a
+withholding **Depot** or bank **Account**, where income is largely settled already, from a foreign
+one, where everything must be declared. The report shows amounts settled at source separately from
+amounts still to declare.
 
 ### Form line
 

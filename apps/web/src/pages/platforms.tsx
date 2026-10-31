@@ -72,23 +72,43 @@ export function accountCount(kind: PlatformKind, held: number): string {
   return `${held} ${noun}${held === 1 ? "" : "s"}`;
 }
 
-/** The two behaviours a broker can have, in the Admin's words. */
+/**
+ * Whether this kind withholds at source and takes an exemption order: a
+ * German broker does, and a German bank the same way (issue 29).
+ */
+export function canWithhold(kind: PlatformKind): boolean {
+  return kind === "broker" || kind === "bank";
+}
+
+/**
+ * What a Platform that can withhold says while its behaviour is unset, and
+ * whether that calls for caution. Only a broker's Depots are barred from
+ * holding positions until it is set; a bank's income simply falls on the side
+ * still to declare, an answer rather than a gap.
+ */
+export function unsetWithholding(kind: PlatformKind): { sentence: string; caution: boolean } {
+  return kind === "broker"
+    ? {
+        sentence: "Withholding not set — its Depots cannot hold positions until it is.",
+        caution: true,
+      }
+    : { sentence: "Withholding not set — income here counts as still to declare.", caution: false };
+}
+
+/** The two behaviours a broker or bank can have, in the Admin's words. */
 export const WITHHOLDING_LABEL: Record<Withholding, string> = {
   at_source: "Withholds at source",
   none: "No withholding at source",
 };
 
 /**
- * What actually applies to one Depot: the Account's own override first, the
- * Platform's word second — null while nothing has been declared, which is
- * the state in which the Depot may hold no position.
+ * What actually applies to one Account under a broker or bank: its own
+ * override first, the Platform's word second — null while nothing has been
+ * declared, which is the state in which a broker's Depot may hold no position.
  */
 export function effectiveWithholding(platform: Platform, account: Account): Withholding | null {
   return account.withholding_override ?? platform.withholding;
 }
-
-/** The kinds a Freistellungsauftrag can stand at, and so use allowance through. */
-const ALLOWANCE_KINDS: readonly PlatformKind[] = ["broker", "bank"];
 
 /**
  * The year an added figure most likely belongs to: the last one whose
@@ -379,8 +399,12 @@ function PlatformRow({ platform }: { platform: Platform }) {
         </p>
       )}
 
-      {platform.kind === "broker" && <WithholdingLine platform={platform} />}
-      {ALLOWANCE_KINDS.includes(platform.kind) && <AllowanceUsedList platform={platform} />}
+      {canWithhold(platform.kind) && (
+        <>
+          <WithholdingLine platform={platform} />
+          <AllowanceUsedList platform={platform} />
+        </>
+      )}
       {platform.kind === "broker" && <ServedByLine platform={platform} />}
 
       {platform.accounts.length > 0 && (
@@ -526,6 +550,8 @@ function ServedByLine({ platform }: { platform: Platform }) {
 
 function WithholdingLine({ platform }: { platform: Platform }) {
   const [editing, setEditing] = useState(false);
+  const institution = KIND_VOCABULARY[platform.kind].singular.toLowerCase();
+  const unset = unsetWithholding(platform.kind);
 
   return (
     <div className="mt-1.5">
@@ -538,15 +564,15 @@ function WithholdingLine({ platform }: { platform: Platform }) {
             {platform.exemption_order_eur !== null && (
               <span
                 className="font-mono text-xs tabular-nums text-muted-foreground"
-                title="The exemption order (Freistellungsauftrag) lodged with this broker — for information only. What it used each year is what reduces the allowance."
+                title={`The exemption order (Freistellungsauftrag) lodged with this ${institution} — for information only. What it used each year is what reduces the allowance.`}
               >
                 {formatMoneyExact(platform.exemption_order_eur, "EUR")} order lodged
               </span>
             )}
           </>
         ) : (
-          <span className="text-caution">
-            Withholding not set — its Depots cannot hold positions until it is.
+          <span className={unset.caution ? "text-caution" : "text-muted-foreground"}>
+            {unset.sentence}
           </span>
         )}
         <Button
@@ -558,12 +584,27 @@ function WithholdingLine({ platform }: { platform: Platform }) {
           {platform.withholding ? "Edit withholding" : "Set withholding"}
         </Button>
       </div>
-      {editing && <WithholdingForm platform={platform} onDone={() => setEditing(false)} />}
+      {editing && (
+        <WithholdingForm
+          platform={platform}
+          institution={institution}
+          onDone={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
 
-function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () => void }) {
+function WithholdingForm({
+  platform,
+  institution,
+  onDone,
+}: {
+  platform: Platform;
+  /** "broker" or "bank" — what the order was lodged with, in running prose. */
+  institution: string;
+  onDone: () => void;
+}) {
   const [behaviour, setBehaviour] = useState<Withholding>(platform.withholding ?? "at_source");
   const [order, setOrder] = useState(platform.exemption_order_eur ?? "");
   const behaviourId = useId();
@@ -636,8 +677,8 @@ function WithholdingForm({ platform, onDone }: { platform: Platform; onDone: () 
       </div>
       {behaviour === "at_source" && (
         <p id={`${orderId}-hint`} className="mt-2 text-xs text-muted-foreground">
-          The Freistellungsauftrag lodged with this broker, for information only — leave empty
-          for none.
+          The Freistellungsauftrag lodged with this {institution}, for information only — leave
+          empty for none.
         </p>
       )}
       {record.isError && (
@@ -888,7 +929,7 @@ function AccountLine({ account, platform }: { account: Account; platform: Platfo
         </span>
       )}
       <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
-        {platform.kind === "broker" && <OverrideSelect account={account} />}
+        {canWithhold(platform.kind) && <OverrideSelect account={account} platform={platform} />}
         <Button
           variant="ghost"
           size="sm"
@@ -992,7 +1033,8 @@ function EditAccountForm({
   );
 }
 
-function OverrideSelect({ account }: { account: Account }) {
+function OverrideSelect({ account, platform }: { account: Account; platform: Platform }) {
+  const vocabulary = KIND_VOCABULARY[platform.kind];
   const queryClient = useQueryClient();
 
   const record = useMutation({
@@ -1014,10 +1056,10 @@ function OverrideSelect({ account }: { account: Account }) {
           record.mutate(event.target.value === "" ? null : (event.target.value as Withholding))
         }
         aria-label={`Withholding override for ${account.name}`}
-        title="This one Depot's exception — for a brand operating through several entities with different tax status."
+        title={`This one ${vocabulary.account}'s exception — for a brand operating through several entities with different tax status.`}
       >
         <option value="" className="bg-background text-foreground">
-          Broker&apos;s withholding
+          {vocabulary.singular}&apos;s withholding
         </option>
         {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
           <option key={value} value={value} className="bg-background text-foreground">

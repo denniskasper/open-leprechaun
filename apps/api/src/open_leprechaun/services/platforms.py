@@ -42,9 +42,10 @@ class PlatformOverview:
     id: int
     name: str
     kind: str
-    # How income at this broker is treated at source (ticket 43): 'at_source',
-    # 'none', or None while nothing has been declared. Always None outside
-    # kind 'broker'; the exemption order may only stand with 'at_source'.
+    # How income at this broker or bank is treated at source (ticket 43):
+    # 'at_source', 'none', or None while nothing has been declared. Always
+    # None outside kinds 'broker' and 'bank'; the exemption order may only
+    # stand with 'at_source'.
     withholding: str | None
     exemption_order_eur: Decimal | None
     accounts: tuple[Account, ...]

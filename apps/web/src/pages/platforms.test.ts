@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Connection } from "@/api/connections";
-import type { Account, Platform } from "@/api/platforms";
+import type { Account, Platform, PlatformKind } from "@/api/platforms";
 import {
   accountCount,
+  canWithhold,
   effectiveWithholding,
   groupByKind,
   KIND_VOCABULARY,
   servedBy,
   SERVED_BY_WORDS,
   suggestedYear,
+  unsetWithholding,
   WITHHOLDING_LABEL,
 } from "./platforms";
 
@@ -168,6 +170,30 @@ describe("WITHHOLDING_LABEL", () => {
   it("names both behaviours without the word Depot leaking into other kinds", () => {
     expect(WITHHOLDING_LABEL.at_source).toBe("Withholds at source");
     expect(WITHHOLDING_LABEL.none).toBe("No withholding at source");
+  });
+});
+
+describe("canWithhold", () => {
+  it("lets a broker and a bank withhold, and no other kind", () => {
+    const kinds = Object.keys(KIND_VOCABULARY) as PlatformKind[];
+
+    expect(kinds.filter(canWithhold)).toEqual(["broker", "bank"]);
+  });
+});
+
+describe("unsetWithholding", () => {
+  it("warns that a broker's Depots hold nothing until the behaviour is set", () => {
+    expect(unsetWithholding("broker")).toEqual({
+      sentence: "Withholding not set — its Depots cannot hold positions until it is.",
+      caution: true,
+    });
+  });
+
+  it("tells a bank, without caution, that its income counts as still to declare", () => {
+    expect(unsetWithholding("bank")).toEqual({
+      sentence: "Withholding not set — income here counts as still to declare.",
+      caution: false,
+    });
   });
 });
 

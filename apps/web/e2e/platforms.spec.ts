@@ -188,3 +188,41 @@ test("a broker's allowance used at source is entered, listed and cleared", async
 
   expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
 });
+
+// A bank's withholding (issue 29), end to end: a savings bank the ledger
+// tracks no Account at is registered as a bank, then given its behaviour and
+// the exemption order lodged with it through the same settings a broker has.
+// One Platform under a name unique to the run, removed again.
+test("a bank with no Accounts withholds and carries an exemption order", async ({
+  page,
+  request,
+}) => {
+  const name = `E2E Savings bank ${Date.now()}`;
+  const registered = await request.post("/api/platforms", { data: { name, kind: "bank" } });
+  expect(registered.status()).toBe(201);
+  const { id } = await registered.json();
+
+  await page.goto("/settings/platforms");
+  const row = page.getByRole("article", { name, exact: true });
+  await expect(
+    row.getByText("Withholding not set — income here counts as still to declare."),
+  ).toBeVisible();
+
+  await row.getByRole("button", { name: "Set withholding" }).click();
+  const form = row.getByRole("form", { name: `Set withholding for ${name}` });
+  await form.getByLabel("Behaviour").selectOption("at_source");
+  await expect(
+    form.getByText(
+      "The Freistellungsauftrag lodged with this bank, for information only — leave empty for none.",
+    ),
+  ).toBeVisible();
+  await form.getByLabel("Order lodged (EUR)").fill("200");
+  await form.getByRole("button", { name: "Record" }).click();
+
+  await expect(form).toHaveCount(0);
+  await expect(row.getByText("Withholds at source")).toBeVisible();
+  await expect(row.getByText(/200.*order lodged/)).toBeVisible();
+  await expect(row.getByRole("button", { name: "Edit withholding" })).toBeVisible();
+
+  expect((await request.delete(`/api/platforms/${id}`)).status()).toBe(204);
+});

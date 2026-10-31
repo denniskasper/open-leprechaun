@@ -69,7 +69,19 @@ def _statutes(store, *, year=2031):
 
 
 def _depot(db, *, withholding, platform_name="Broker", name="Depot"):
-    platform_id = platforms.create_platform(db, name=platform_name, kind="broker")
+    return _withholding_account(
+        db, kind="broker", withholding=withholding, platform_name=platform_name, name=name
+    )
+
+
+def _bank_account(db, *, withholding, platform_name):
+    return _withholding_account(
+        db, kind="bank", withholding=withholding, platform_name=platform_name, name="Giro"
+    )
+
+
+def _withholding_account(db, *, kind, withholding, platform_name, name):
+    platform_id = platforms.create_platform(db, name=platform_name, kind=kind)
     assert platforms.set_withholding(db, platform_id, behaviour=withholding) is None
     created = platforms.create_account(db, platform_id, name=name)
     assert isinstance(created, int)
@@ -410,6 +422,31 @@ def test_income_settled_at_source_is_distinguished_from_income_still_to_declare(
     assert report.settled_at_source_eur == Decimal("100.000")
     assert report.to_declare_eur == Decimal("42.50")
     assert [receipt.settled_at_source for receipt in report.receipts] == [True, False, False]
+
+
+def test_income_at_a_withholding_bank_counts_as_settled_at_source(store):
+    """A German bank withholds the same way a broker does (issue 29): income
+    at an Account under a bank that withholds was settled before it arrived,
+    and a bank that withholds nothing leaves its income to declare."""
+    _statutes(store)
+    eur = _eur(store)
+    withholding = _bank_account(store, withholding="at_source", platform_name="Hausbank")
+    gross = _bank_account(store, withholding="none", platform_name="Direktbank")
+    _receive(
+        store,
+        withholding,
+        eur,
+        net="73.625",
+        kapitalertragsteuer="25",
+        solidarity_surcharge="1.375",
+    )
+    _receive(store, gross, eur, net="2.50", type="interest")
+
+    report = section20.year_report(store, FakeReferenceRateSource(), year=2031)
+
+    assert report.settled_at_source_eur == Decimal("100.000")
+    assert report.to_declare_eur == Decimal("2.50")
+    assert [receipt.settled_at_source for receipt in report.receipts] == [True, False]
 
 
 def test_a_receipt_records_gross_both_withholdings_and_net(store):
