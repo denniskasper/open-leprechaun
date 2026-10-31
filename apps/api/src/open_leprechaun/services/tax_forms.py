@@ -115,7 +115,7 @@ def _private_sale_fields(
     return fields
 
 
-def _kap_fields(*, inlaendische: str, auslaendische: str, kap_bet: str) -> dict[str, Field]:
+def _kap_fields(*, inlaendische: str, auslaendische: str, kap_bet_zeilen: str) -> dict[str, Field]:
     """The Anlage KAP fields that sit on the same lines in 2024 and 2025 —
     each read from both years' forms, not assumed across. Only the printed
     exclusions on Zeilen 18 and 19 and the Anlage KAP-BET lines Zeile 17
@@ -130,7 +130,7 @@ def _kap_fields(*, inlaendische: str, auslaendische: str, kap_bet: str) -> dict[
         "kap.sparer_pauschbetrag.nicht_erklaerte": Field(
             ("17",),
             "Bei Eintragungen in den Zeilen 7 bis 15, 18 bis 27, 30, 33, 52 und 54 der Anlage"
-            f" KAP, in den Zeilen {kap_bet} der Anlage KAP-BET sowie in der Anlage KAP-INV:"
+            f" KAP, in den Zeilen {kap_bet_zeilen} der Anlage KAP-BET sowie in der Anlage KAP-INV:"
             " In Anspruch genommener Sparer-Pauschbetrag, der auf die in der Anlage KAP nicht"
             " erklärten Kapitalerträge entfällt (ggf. „0“)",
         ),
@@ -269,7 +269,7 @@ LAYOUTS: dict[int, dict[str, Field]] = {
             inlaendische="Inländische Kapitalerträge (ohne Beträge laut den Zeilen 24 bis 26a)",
             auslaendische="Ausländische Kapitalerträge (ohne Beträge laut den Zeilen 24, 25,"
             " 26a und 52)",
-            kap_bet="8 bis 30, 33 und 34",
+            kap_bet_zeilen="8 bis 30, 33 und 34",
         ),
         **_KAP_TERMINGESCHAEFTE_FIELDS,
         **_KAP_INV_FIELDS,
@@ -292,7 +292,7 @@ LAYOUTS: dict[int, dict[str, Field]] = {
         **_kap_fields(
             inlaendische="Inländische Kapitalerträge (ohne Beträge laut den Zeilen 26 und 26a)",
             auslaendische="Ausländische Kapitalerträge (ohne Beträge laut den Zeilen 26a und 52)",
-            kap_bet="8 bis 24, 27 und 28",
+            kap_bet_zeilen="8 bis 24, 27 und 28",
         ),
         **_KAP_INV_FIELDS,
     },

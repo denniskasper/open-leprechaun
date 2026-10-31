@@ -377,7 +377,7 @@ def _amounts(section):
     return {line["key"]: Decimal(line["amount_eur"]) for line in section["lines"]}
 
 
-NOTHING_USED_AT_SOURCE = {
+_NOTHING_USED_AT_SOURCE = {
     "kap.sparer_pauschbetrag.erklaerte": Decimal(0),
     "kap.sparer_pauschbetrag.nicht_erklaerte": Decimal(0),
 }
@@ -421,7 +421,7 @@ def test_sales_fill_the_included_gain_and_loss_lines(db, client):
     kap = _section(_forms(client, year=2025), "kap")
 
     assert _amounts(kap) == {
-        **NOTHING_USED_AT_SOURCE,
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("140"),
         "kap.aktien_gewinne": Decimal("500"),
         "kap.verluste_ohne_aktien": Decimal("100"),
@@ -462,7 +462,7 @@ def test_the_2024_form_keeps_termingeschaefte_on_lines_of_their_own(db, client):
     kap = _section(_forms(client, year=2024), "kap")
 
     assert _amounts(kap) == {
-        **NOTHING_USED_AT_SOURCE,
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("500"),
         "kap.termingeschaefte_gewinne": Decimal("500"),
         "kap.termingeschaefte_verluste": Decimal("200"),
@@ -481,7 +481,7 @@ def test_the_2025_form_folds_termingeschaefte_into_the_general_lines(db, client)
     kap = _section(_forms(client, year=2025), "kap")
 
     assert _amounts(kap) == {
-        **NOTHING_USED_AT_SOURCE,
+        **_NOTHING_USED_AT_SOURCE,
         "kap.kapitalertraege": Decimal("300"),
         "kap.verluste_ohne_aktien": Decimal("200"),
     }
@@ -531,7 +531,7 @@ def test_amounts_withheld_at_source_stand_apart_from_amounts_to_declare(db, clie
         "kap.steuer.auslaendische_anrechenbar": "to_declare",
     }
     assert _amounts(kap) == {
-        **NOTHING_USED_AT_SOURCE,
+        **_NOTHING_USED_AT_SOURCE,
         "kap.abzug.kapitalertraege": Decimal("100"),
         "kap.kapitalertraege": Decimal("85"),
         "kap.steuer.kapitalertragsteuer": Decimal("25"),
@@ -635,7 +635,7 @@ def test_capital_income_awaiting_a_valuation_states_no_line_and_says_why(db, cli
     assert "awaits a valuation" in _section(forms, "kapinv")["note"]
 
 
-# --- Anlage KAP: the Sparer-Pauschbetrag used at source (Zeilen 16, 17) -----
+# --- Anlage KAP: the allowance used at source (Zeilen 16, 17) --------------
 
 _ZEILE_16_LABEL = (
     "In Anspruch genommener Sparer-Pauschbetrag, der auf die in den Zeilen 7 bis 15, 30"
@@ -661,7 +661,7 @@ def _enter_used(client, platform_id, year, amount):
     assert stored.status_code == 204, stored.text
 
 
-def _withholding_platform(client, name, kind="broker"):
+def _broker_or_bank(client, name, kind="broker"):
     return client.post("/api/platforms", json={"name": name, "kind": kind}).json()["id"]
 
 
@@ -674,8 +674,8 @@ def test_zeile_17_states_the_year_s_used_total_and_zeile_16_states_zero(db, clie
     for the year before does not count. Each line carries its own year's
     printed label."""
     _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(year))
-    broker = _withholding_platform(client, "German broker")
-    bank = _withholding_platform(client, "Savings bank", kind="bank")
+    broker = _broker_or_bank(client, "German broker")
+    bank = _broker_or_bank(client, "Savings bank", kind="bank")
     _enter_used(client, broker, year, "120")
     _enter_used(client, bank, year, "80")
     _enter_used(client, broker, year - 1, "50")
@@ -701,12 +701,12 @@ def test_both_allowance_lines_are_stated_when_no_used_amount_is_recorded(db, cli
 
     kap = _section(_forms(client, year=year), "kap")
 
-    for key, line in (
+    for key, zeile in (
         ("kap.sparer_pauschbetrag.erklaerte", "16"),
         ("kap.sparer_pauschbetrag.nicht_erklaerte", "17"),
     ):
         stated = _line(kap, key)
-        assert stated["form_lines"] == [line]
+        assert stated["form_lines"] == [zeile]
         assert stated["mapping"] == "unambiguous"
         assert Decimal(stated["amount_eur"]) == Decimal(0)
 
@@ -716,7 +716,7 @@ def test_a_year_with_no_recorded_form_states_the_allowance_lines_unmapped(db, cl
     figures, under the nearest mapped year's labels and with no line
     number."""
     _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(2026))
-    _enter_used(client, _withholding_platform(client, "German broker"), 2026, "75")
+    _enter_used(client, _broker_or_bank(client, "German broker"), 2026, "75")
 
     kap = _section(_forms(client, year=2026), "kap")
 
@@ -746,7 +746,7 @@ def test_the_allowance_lines_are_frozen_with_the_report(db, client):
     """A correction after generation leaves the report's Zeile 17 as it was
     generated; a report generated afterwards states the corrected total."""
     _receive(db, _depot(db), _eur(db), net="40", occurred_at=_at(2025))
-    broker = _withholding_platform(client, "German broker")
+    broker = _broker_or_bank(client, "German broker")
     _enter_used(client, broker, 2025, "120")
     report_id = _report_id(client, year=2025)
     assert client.post(f"/api/reports/{report_id}/finalise").status_code == 204
