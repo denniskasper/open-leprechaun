@@ -320,7 +320,7 @@ function KindSelect({
       onChange={(event) => onChange(event.target.value as PlatformKind)}
     >
       {KIND_ORDER.map((kind) => (
-        <option key={kind} value={kind} className="bg-background text-foreground">
+        <option key={kind} value={kind}>
           {KIND_VOCABULARY[kind].singular}
         </option>
       ))}
@@ -655,7 +655,7 @@ function WithholdingForm({
             onChange={(event) => setBehaviour(event.target.value as Withholding)}
           >
             {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
-              <option key={value} value={value} className="bg-background text-foreground">
+              <option key={value} value={value}>
                 {WITHHOLDING_LABEL[value]}
               </option>
             ))}
@@ -1068,11 +1068,11 @@ function OverrideSelect({ account, platform }: { account: Account; platform: Pla
         aria-label={`Withholding override for ${account.name}`}
         title={`This one ${vocabulary.account}'s exception — for a brand operating through several entities with different tax status.`}
       >
-        <option value="" className="bg-background text-foreground">
+        <option value="">
           {vocabulary.singular}&apos;s withholding
         </option>
         {(Object.keys(WITHHOLDING_LABEL) as Withholding[]).map((value) => (
-          <option key={value} value={value} className="bg-background text-foreground">
+          <option key={value} value={value}>
             Override: {WITHHOLDING_LABEL[value]}
           </option>
         ))}
@@ -1189,11 +1189,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
                 aria-describedby={field.hint ? `${id}-${field.key}-hint` : undefined}
               >
                 {field.options.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                    className="bg-background text-foreground"
-                  >
+                  <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}

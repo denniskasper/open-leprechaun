@@ -562,11 +562,11 @@ function KindLine({
           disabled={pair.isPending}
           onChange={(event) => pair.mutate(Number(event.target.value))}
         >
-          <option value="" disabled className="bg-background text-foreground">
+          <option value="" disabled>
             Pair an Account…
           </option>
           {accounts.map((account) => (
-            <option key={account.id} value={account.id} className="bg-background text-foreground">
+            <option key={account.id} value={account.id}>
               {account.name}
             </option>
           ))}
@@ -881,7 +881,6 @@ function AddConnectionForm({
               <option
                 key={platform.id}
                 value={platform.id}
-                className="bg-background text-foreground"
               >
                 {platform.name}
               </option>
@@ -902,7 +901,6 @@ function AddConnectionForm({
               <option
                 key={entry.venue}
                 value={entry.venue}
-                className="bg-background text-foreground"
               >
                 {entry.name}
               </option>

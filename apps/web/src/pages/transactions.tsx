@@ -585,7 +585,7 @@ function BulkToolbar({
               onChange={(event) => setAccountId(event.target.value)}
               className={SELECT_SHELL}
             >
-              <option value="" disabled className="bg-background text-foreground">
+              <option value="" disabled>
                 Select…
               </option>
               {platforms
@@ -596,7 +596,6 @@ function BulkToolbar({
                       <option
                         key={account.id}
                         value={account.id}
-                        className="bg-background text-foreground"
                       >
                         {account.name}
                       </option>
@@ -1080,7 +1079,7 @@ function TransactionForm({
               onChange={(event) => declare({ payerId: event.target.value })}
               className={SELECT_SHELL}
             >
-              <option value="" className="bg-background text-foreground">
+              <option value="">
                 —
               </option>
               {instruments
@@ -1089,7 +1088,6 @@ function TransactionForm({
                   <option
                     key={instrument.id}
                     value={instrument.id}
-                    className="bg-background text-foreground"
                   >
                     {instrument.symbol} · {instrument.name}
                   </option>
@@ -1247,7 +1245,7 @@ function TypeSelect({
       {groups.map((group) => (
         <optgroup key={group} label={group}>
           {TYPE_ORDER.filter((type) => TYPE_VOCABULARY[type].group === group).map((type) => (
-            <option key={type} value={type} className="bg-background text-foreground">
+            <option key={type} value={type}>
               {TYPE_VOCABULARY[type].label}
             </option>
           ))}
@@ -1305,7 +1303,7 @@ function LegEditor({
           className={SELECT_SHELL}
         >
           {(Object.keys(ROLE_WORDS) as LegRole[]).map((role) => (
-            <option key={role} value={role} className="bg-background text-foreground">
+            <option key={role} value={role}>
               {ROLE_WORDS[role]}
             </option>
           ))}
@@ -1322,7 +1320,7 @@ function LegEditor({
           onChange={(event) => onChange({ accountId: event.target.value })}
           className={SELECT_SHELL}
         >
-          <option value="" disabled className="bg-background text-foreground">
+          <option value="" disabled>
             Select…
           </option>
           {platforms
@@ -1333,7 +1331,6 @@ function LegEditor({
                   <option
                     key={account.id}
                     value={account.id}
-                    className="bg-background text-foreground"
                   >
                     {account.name}
                   </option>
@@ -1353,14 +1350,13 @@ function LegEditor({
           onChange={(event) => onChange({ instrumentId: event.target.value })}
           className={SELECT_SHELL}
         >
-          <option value="" disabled className="bg-background text-foreground">
+          <option value="" disabled>
             Select…
           </option>
           {instruments.map((instrument) => (
             <option
               key={instrument.id}
               value={instrument.id}
-              className="bg-background text-foreground"
             >
               {instrument.symbol} — {instrument.name}
             </option>
@@ -1399,11 +1395,11 @@ function LegEditor({
             className={SELECT_SHELL}
             title="The fee's tax treatment follows the leg it was charged against."
           >
-            <option value="" className="bg-background text-foreground">
+            <option value="">
               Nothing — a bare cost
             </option>
             {siblings.map(({ sibling, at }) => (
-              <option key={sibling.key} value={at} className="bg-background text-foreground">
+              <option key={sibling.key} value={at}>
                 Leg {at + 1} —{" "}
                 {instrumentById.get(Number(sibling.instrumentId))?.symbol ?? ROLE_WORDS[sibling.role]}
               </option>
