@@ -1,5 +1,5 @@
 {
-  "_provenance": "Authored from the schemas of Trading 212's published OpenAPI document (docs.trading212.com, Public API v0) — AccountSummary, Position, HistoricalOrder, HistoryDividendItem, HistoryTransactionItem. The document prints no example responses and no account was available to record from, so every value is invented and every field name and enum value is the document's own.",
+  "_provenance": "Authored from the schemas of Trading 212's published OpenAPI document (docs.trading212.com, Public API v0) — AccountSummary, Position, HistoricalOrder, HistoryDividendItem, HistoryTransactionItem. The document prints no example responses and no account was available to record from, so every value is invented and every field name and enum value is the document's own. The open orders under `pending` follow the Order schema of /api/v0/equity/orders, likewise invented.",
   "summary": {
     "id": 10000001,
     "currency": "EUR",
@@ -44,6 +44,29 @@
         "unrealizedProfitLoss": 1.9,
         "fxImpact": 0.2
       }
+    }
+  ],
+  "pending": [
+    {
+      "id": 50000000001, "strategy": "QUANTITY", "type": "LIMIT", "ticker": "AAPL_US_EQ",
+      "instrument": {"ticker": "AAPL_US_EQ", "name": "Apple", "isin": "US0378331005", "currency": "USD"},
+      "quantity": 3, "filledQuantity": 1, "limitPrice": 170.5, "side": "BUY",
+      "status": "PARTIALLY_FILLED", "currency": "EUR", "extendedHours": false,
+      "initiatedFrom": "WEB", "timeInForce": "GOOD_TILL_CANCEL", "createdAt": "2024-06-01T09:15:00.000Z"
+    },
+    {
+      "id": 50000000002, "strategy": "QUANTITY", "type": "STOP", "ticker": "VODl_EQ",
+      "instrument": {"ticker": "VODl_EQ", "name": "Vodafone Group", "isin": "GB00BH4HKS39", "currency": "GBX"},
+      "quantity": -40, "filledQuantity": 0, "stopPrice": 65.2, "side": "SELL", "status": "NEW",
+      "currency": "EUR", "extendedHours": false, "initiatedFrom": "IOS", "timeInForce": "DAY",
+      "createdAt": "2024-06-01T10:00:00.000Z"
+    },
+    {
+      "id": 50000000003, "strategy": "VALUE", "type": "MARKET", "ticker": "SAPd_EQ",
+      "instrument": {"ticker": "SAPd_EQ", "name": "SAP", "isin": "DE0007164600", "currency": "EUR"},
+      "value": 50, "filledValue": 0, "side": "BUY", "status": "CONFIRMED", "currency": "EUR",
+      "extendedHours": false, "initiatedFrom": "ANDROID", "timeInForce": "DAY",
+      "createdAt": "2024-06-01T11:00:00.000Z"
     }
   ],
   "orders": [

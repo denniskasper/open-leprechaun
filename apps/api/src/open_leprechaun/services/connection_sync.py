@@ -22,14 +22,21 @@ hands over adapters, and everything after that is generic.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import Engine, Row
 
-from open_leprechaun.ports.broker import BrokerAdapter, BrokerHarvest, CoveredPeriod
+from open_leprechaun.ports.broker import (
+    BrokerAdapter,
+    BrokerHarvest,
+    CoveredPeriod,
+    StatesPendingOrders,
+)
 from open_leprechaun.ports.exchange import AdapterError, Credentials, ExchangeAdapter, Harvest
 from open_leprechaun.repositories import connections as repository
 from open_leprechaun.repositories import instruments as instruments_repository
+from open_leprechaun.repositories import pending_orders as pending_orders_repository
 from open_leprechaun.services import broker_sync, connections, futures, imports
 from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.imports import CommitRefused, ImportLeg, ImportRow
@@ -94,6 +101,38 @@ def failure_sentence(failed: Exception) -> str:
     return (
         f"The adapter failed unexpectedly ({type(failed).__name__}); the"
         " message is withheld in case it carries secret material."
+    )
+
+
+def observe_pending_orders(
+    engine: Engine,
+    account_id: int,
+    adapter: object,
+    credentials: Credentials,
+) -> None:
+    """Ask a broker kind what it holds open for the Account and record the
+    answer in place of the last one — or the sentence it failed with, so a key
+    without the scope reads as that rather than as no orders. Never raises:
+    the open orders are a note beside the ledger, and nothing that lands
+    waits on them. A kind whose venue states none is passed by."""
+    if not isinstance(adapter, StatesPendingOrders):
+        return
+    try:
+        stated = adapter.pending_orders(credentials)
+    # Broad on purpose, as everywhere a kind is asked (ADR-0004).
+    except Exception as failed:
+        pending_orders_repository.replace(
+            engine, account_id, as_of=datetime.now(UTC), error=failure_sentence(failed)
+        )
+        return
+    pending_orders_repository.replace(
+        engine,
+        account_id,
+        as_of=stated.as_of,
+        error=None,
+        orders=stated.orders,
+        reserved_cash=stated.reserved_cash,
+        reserved_currency=stated.reserved_currency,
     )
 
 
@@ -251,6 +290,7 @@ def _sync_kind(
         imported_outcome, error = _commit(
             engine, connection, adapter.kind, account_id, broker_sync.import_rows(harvest), prices
         )
+        observe_pending_orders(engine, account_id, adapter, credentials)
         return KindSync(
             adapter_kind=adapter.kind,
             error=error,

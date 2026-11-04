@@ -40,7 +40,7 @@ from open_leprechaun.repositories import imports as imports_repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import lots as lots_repository
 from open_leprechaun.services import connections, lots
-from open_leprechaun.services.connection_sync import failure_sentence
+from open_leprechaun.services.connection_sync import failure_sentence, observe_pending_orders
 from open_leprechaun.settings import Settings
 
 Adapters = Mapping[str, Sequence[ExchangeAdapter | BrokerAdapter]]
@@ -179,6 +179,8 @@ def _reconcile_kind(
     # another succeeding (ADR-0004).
     except Exception as failed:
         return refused(failure_sentence(failed), account_id)
+    # While the venue is being asked what it holds, ask what it holds open.
+    observe_pending_orders(engine, account_id, adapter, credentials)
 
     with lots.snapshot(engine) as snapshot:
         held = lots.derive_on(snapshot).held
