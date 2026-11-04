@@ -5,15 +5,17 @@ imported unknown identifier opened. Listings (ticket 45) join here: resolve
 an identifier to the markets the provider knows, enter one by hand where no
 provider does, and choose which Listing is the price source."""
 
+from decimal import Decimal
 from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, StringConstraints, model_validator
+from pydantic import BaseModel, PlainSerializer, StringConstraints, model_validator
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.market_data import SecurityResolutionDep
 from open_leprechaun.ports.crypto_prices import ProviderOutageError, RateLimitedError
+from open_leprechaun.ports.security_resolution import best_first
 from open_leprechaun.repositories import instruments
 from open_leprechaun.security_search import SecuritySearchDep
 from open_leprechaun.services import securities
@@ -198,9 +200,16 @@ def classify_fund(
         raise HTTPException(status_code=404, detail="No such Instrument.")
 
 
+# Fixed-point in JSON, like every quantity this API answers.
+Fixed = Annotated[Decimal, PlainSerializer(lambda value: format(value, "f"), return_type=str)]
+
+
 class ResolvedListingResponse(BaseModel):
     venue: str
     quote_currency: str
+    # Units of the security traded there over the last four weeks, fixed
+    # point; null where the provider states none.
+    traded_four_weeks: Fixed | None
 
 
 class CreateListingRequest(BaseModel):
@@ -213,7 +222,8 @@ class CreateListingRequest(BaseModel):
 
 @router.get(
     "/securities/listings/resolve",
-    summary="The Listings the provider knows for an identifier — empty where it knows none",
+    summary="The Listings the provider knows for an identifier, best to price by first — empty"
+    " where it knows none",
     response_model=list[ResolvedListingResponse],
 )
 def resolve_listings(
@@ -228,8 +238,12 @@ def resolve_listings(
     except ProviderOutageError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     return [
-        ResolvedListingResponse(venue=listing.venue, quote_currency=listing.quote_currency)
-        for listing in resolved
+        ResolvedListingResponse(
+            venue=listing.venue,
+            quote_currency=listing.quote_currency,
+            traded_four_weeks=listing.traded_four_weeks,
+        )
+        for listing in best_first(resolved)
     ]
 
 

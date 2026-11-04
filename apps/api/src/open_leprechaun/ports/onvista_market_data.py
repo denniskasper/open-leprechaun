@@ -52,14 +52,20 @@ class OnvistaMarketDataProvider:
         if found is None:
             return []
         _, snapshot = found
-        resolved = []
+        resolved: dict[tuple[str, str], ResolvedListing] = {}
         for entry in _markets(snapshot):
-            listing = ResolvedListing(
-                venue=entry["market"]["name"], quote_currency=entry["isoCurrency"]
+            key = (entry["market"]["name"], entry["isoCurrency"])
+            stated = entry.get("volume4Weeks")
+            traded = None if stated is None else Decimal(str(stated))
+            known = resolved.get(key)
+            # One market may answer under several notations; the busiest
+            # speaks for it.
+            if known is not None and (traded is None or (known.traded_four_weeks or 0) >= traded):
+                continue
+            resolved[key] = ResolvedListing(
+                venue=key[0], quote_currency=key[1], traded_four_weeks=traded
             )
-            if listing not in resolved:
-                resolved.append(listing)
-        return resolved
+        return list(resolved.values())
 
     def quotes(self, listings: Sequence[PriceableListing]) -> list[ListingQuote]:
         quotes = []

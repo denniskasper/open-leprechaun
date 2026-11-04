@@ -111,6 +111,10 @@ export async function reviewSecurity(instrumentId: number, review: Review): Prom
 export const resolvedListingSchema = z.object({
   venue: z.string(),
   quote_currency: z.string(),
+  // Units of the security traded there over the last four weeks, fixed
+  // point; null where the provider states none. The API answers markets
+  // best to price by first.
+  traded_four_weeks: z.string().nullable(),
 });
 
 export type ResolvedListing = z.infer<typeof resolvedListingSchema>;
