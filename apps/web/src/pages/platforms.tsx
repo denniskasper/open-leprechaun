@@ -36,6 +36,7 @@ import { SettingsGroup, SettingsPanel } from "@/components/patterns/settings-pan
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { DISPLAY_CURRENCIES } from "@/lib/display-currency";
 import { formatEur, formatMoneyExact } from "@/lib/format";
 
 interface Vocabulary {
@@ -293,6 +294,15 @@ function RegisterPlatformForm({ onDone }: { onDone: () => void }) {
     </form>
   );
 }
+
+/**
+ * What a Depot's base currency may be: a currency the euro reference rates
+ * cover, so a code can never be mistyped. Left unstated unless chosen.
+ */
+export const BASE_CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "", label: "Not stated" },
+  ...DISPLAY_CURRENCIES.map((currency) => ({ value: currency, label: currency })),
+];
 
 function KindSelect({
   id,
@@ -1088,7 +1098,7 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
         chain: chain.trim() || null,
         external_reference: reference.trim() || null,
         access_software: software.trim() || null,
-        base_currency: baseCurrency.trim() || null,
+        base_currency: baseCurrency || null,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["platforms"] });
@@ -1110,6 +1120,8 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
     focusFirst?: boolean;
     placeholder?: string;
     hint?: string;
+    /** A closed set of choices, rendered as a select instead of free text. */
+    options?: readonly { value: string; label: string }[];
   }[] = [
     {
       key: "name",
@@ -1148,8 +1160,8 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
             key: "base-currency",
             label: "Base currency",
             value: baseCurrency,
-            onChange: (value: string) => setBaseCurrency(value.toUpperCase()),
-            placeholder: "EUR",
+            onChange: setBaseCurrency,
+            options: BASE_CURRENCY_OPTIONS,
             hint: "The currency this Depot keeps its cash reporting in.",
           },
         ]
@@ -1168,15 +1180,35 @@ function AddAccountForm({ platform, onDone }: { platform: Platform; onDone: () =
             <label htmlFor={`${id}-${field.key}`} className="microlabel block text-muted-foreground">
               {field.label}
             </label>
-            <Input
-              id={`${id}-${field.key}`}
-              required={field.required}
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              placeholder={field.placeholder}
-              autoFocus={field.focusFirst}
-              aria-describedby={field.hint ? `${id}-${field.key}-hint` : undefined}
-            />
+            {field.options ? (
+              <NativeSelect
+                id={`${id}-${field.key}`}
+                className="w-full"
+                value={field.value}
+                onChange={(event) => field.onChange(event.target.value)}
+                aria-describedby={field.hint ? `${id}-${field.key}-hint` : undefined}
+              >
+                {field.options.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    className="bg-background text-foreground"
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : (
+              <Input
+                id={`${id}-${field.key}`}
+                required={field.required}
+                value={field.value}
+                onChange={(event) => field.onChange(event.target.value)}
+                placeholder={field.placeholder}
+                autoFocus={field.focusFirst}
+                aria-describedby={field.hint ? `${id}-${field.key}-hint` : undefined}
+              />
+            )}
             {field.hint && (
               <p id={`${id}-${field.key}-hint`} className="text-xs text-muted-foreground">
                 {field.hint}

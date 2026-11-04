@@ -3,6 +3,7 @@ import type { Connection } from "@/api/connections";
 import type { Account, Platform, PlatformKind } from "@/api/platforms";
 import {
   accountCount,
+  BASE_CURRENCY_OPTIONS,
   canWithhold,
   effectiveWithholding,
   groupByKind,
@@ -218,5 +219,17 @@ describe("suggestedYear", () => {
 
   it("ignores a gap's neighbours that lie ahead of it", () => {
     expect(suggestedYear([{ year: 2024, amount_eur: "10.00" }], autumn)).toBe(2025);
+  });
+});
+
+describe("BASE_CURRENCY_OPTIONS", () => {
+  it("offers leaving it unstated first, then EUR", () => {
+    expect(BASE_CURRENCY_OPTIONS.slice(0, 2).map((option) => option.value)).toEqual(["", "EUR"]);
+  });
+
+  it("offers only codes the API accepts", () => {
+    for (const { value } of BASE_CURRENCY_OPTIONS.slice(1)) {
+      expect(value).toMatch(/^[A-Z]{3}$/);
+    }
   });
 });
