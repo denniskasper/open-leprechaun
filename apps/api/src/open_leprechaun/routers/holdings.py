@@ -8,7 +8,7 @@ from pydantic import AwareDatetime, BaseModel, PlainSerializer
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
 from open_leprechaun.rates import ReferenceRateSourceDep
-from open_leprechaun.services import holdings
+from open_leprechaun.services import holdings, pending_orders
 from open_leprechaun.services.holdings import Position, RateUnavailableError
 
 router = APIRouter(tags=["holdings"])
@@ -51,8 +51,42 @@ class PositionResponse(BaseModel):
         return cls(**vars(position))
 
 
+class PendingOrderResponse(BaseModel):
+    external_id: str
+    created_at: AwareDatetime
+    # The security as the broker named it; Holdings matches it to a Position
+    # by ISIN and Account.
+    isin: str
+    symbol: str
+    name: str
+    side: Literal["buy", "sell"]
+    order_type: Literal["market", "limit", "stop", "stop_limit"]
+    # The currency the quantity's prices, or a value order's value, are in.
+    currency: str
+    # What is still to fill: a quantity order states `quantity`, an order by
+    # value `value` instead.
+    quantity: Fixed | None
+    value: Fixed | None
+    limit_price: Fixed | None
+    stop_price: Fixed | None
+
+
+class PendingOrdersResponse(BaseModel):
+    """What one Depot's broker last said it holds open — an observation as of
+    `as_of`, never part of the ledger. Beside an `error`, why it could not be
+    read; the orders are then empty, not none."""
+
+    account_id: int
+    as_of: AwareDatetime
+    error: str | None
+    reserved_cash: Fixed | None
+    reserved_currency: str | None
+    orders: list[PendingOrderResponse]
+
+
 class HoldingsResponse(BaseModel):
     positions: list[PositionResponse]
+    pending_orders: list[PendingOrdersResponse]
 
 
 class DisplayRateResponse(BaseModel):
@@ -70,7 +104,14 @@ class DisplayRateResponse(BaseModel):
 )
 def list_holdings(admin: AdminDep, engine: EngineDep) -> HoldingsResponse:
     return HoldingsResponse(
-        positions=[PositionResponse.of(position) for position in holdings.portfolio(engine)]
+        positions=[PositionResponse.of(position) for position in holdings.portfolio(engine)],
+        pending_orders=[
+            PendingOrdersResponse(
+                **{name: value for name, value in vars(observation).items() if name != "orders"},
+                orders=[PendingOrderResponse(**vars(order)) for order in observation.orders],
+            )
+            for observation in pending_orders.observed(engine)
+        ],
     )
 
 

@@ -32,9 +32,11 @@ from open_leprechaun.ports.broker import (
     NormalizedDividend,
     NormalizedFee,
     NormalizedOriginalAmount,
+    NormalizedPendingOrder,
     NormalizedPosition,
     NormalizedSecurity,
     NormalizedSecurityTrade,
+    PendingOrders,
 )
 from open_leprechaun.ports.trading_212 import Trading212Adapter
 from open_leprechaun.ports.venues import VENUES
@@ -56,6 +58,7 @@ VODAFONE = NormalizedSecurity(isin="GB00BH4HKS39", symbol="VODl", name="Vodafone
 _PATHS = {
     "/api/v0/equity/account/summary": "summary",
     "/api/v0/equity/positions": "positions",
+    "/api/v0/equity/orders": "pending",
     "/api/v0/equity/history/orders": "orders",
     "/api/v0/equity/history/dividends": "dividends",
     "/api/v0/equity/history/transactions": "transactions",
@@ -81,7 +84,7 @@ def venue(payloads: dict | None = None, *, refuse: dict | None = None):
         if name in refuse:
             return httpx.Response(refuse[name])
         payload = payloads[name]
-        if name in ("summary", "positions"):
+        if name in ("summary", "positions", "pending"):
             return httpx.Response(200, json=payload)
         asked = f"{request.url.path}?{request.url.query.decode()}"
         for index, page in enumerate(payload[:-1]):
@@ -154,6 +157,21 @@ def test_a_test_names_every_read_scope_the_key_lacks():
     assert "history:orders" not in str(refused.value)
 
 
+def test_a_test_passes_without_orders_read_and_says_open_orders_go_unread():
+    adapter, _ = venue(refuse={"pending": 403})
+
+    detail = adapter.test(CREDENTIALS)
+
+    assert "orders:read" in detail
+    assert "not read" in detail
+
+
+def test_a_test_says_open_orders_are_read_when_the_key_grants_it():
+    adapter, _ = venue()
+
+    assert "Open orders are read too." in adapter.test(CREDENTIALS)
+
+
 def test_a_refused_key_becomes_an_adapter_error():
     adapter, _ = venue(refuse={"summary": 401})
 
@@ -168,6 +186,83 @@ def test_no_secret_material_ever_reaches_an_error_sentence():
         adapter.pull(CREDENTIALS)
 
     assert SECRET not in str(failed.value) and KEY not in str(failed.value)
+
+
+# --- Pending orders ---
+
+
+def test_open_orders_are_stated_as_what_is_still_to_fill():
+    adapter, _ = venue()
+
+    stated = adapter.pending_orders(CREDENTIALS)
+
+    assert stated == PendingOrders(
+        as_of=NOW,
+        orders=(
+            # Partly filled: what remains of it. The price is in the
+            # security's quote currency, whatever the order's own says.
+            NormalizedPendingOrder(
+                external_id="order-50000000001",
+                created_at=datetime(2024, 6, 1, 9, 15, tzinfo=UTC),
+                security=APPLE,
+                side="buy",
+                order_type="limit",
+                currency="USD",
+                quantity=Decimal("2"),
+                limit_price=Decimal("170.5"),
+            ),
+            # A sale is stated by its side, never by a negative quantity, and
+            # a London price in pounds rather than pence.
+            NormalizedPendingOrder(
+                external_id="order-50000000002",
+                created_at=datetime(2024, 6, 1, 10, 0, tzinfo=UTC),
+                security=VODAFONE,
+                side="sell",
+                order_type="stop",
+                currency="GBP",
+                quantity=Decimal("40"),
+                stop_price=Decimal("0.652"),
+            ),
+            # Placed by value: a value, no quantity.
+            NormalizedPendingOrder(
+                external_id="order-50000000003",
+                created_at=datetime(2024, 6, 1, 11, 0, tzinfo=UTC),
+                security=SAP,
+                side="buy",
+                order_type="market",
+                currency="EUR",
+                value=Decimal("50"),
+            ),
+        ),
+        reserved_cash=Decimal("25.0"),
+        reserved_currency="EUR",
+    )
+
+
+def test_an_order_with_nothing_left_to_fill_is_no_open_order():
+    payloads = recorded()
+    payloads["pending"][0]["filledQuantity"] = 3
+    adapter, _ = venue(payloads)
+
+    stated = adapter.pending_orders(CREDENTIALS)
+
+    assert "order-50000000001" not in {order.external_id for order in stated.orders}
+
+
+def test_an_undocumented_order_type_is_refused_rather_than_guessed():
+    payloads = recorded()
+    payloads["pending"][0]["type"] = "TRAILING_STOP"
+    adapter, _ = venue(payloads)
+
+    with pytest.raises(AdapterError, match="TRAILING_STOP"):
+        adapter.pending_orders(CREDENTIALS)
+
+
+def test_open_orders_without_orders_read_name_the_scope():
+    adapter, _ = venue(refuse={"pending": 403})
+
+    with pytest.raises(AdapterError, match="orders:read"):
+        adapter.pending_orders(CREDENTIALS)
 
 
 # --- Trades ---
@@ -554,6 +649,8 @@ def test_trading_212_ships_as_one_adapter_plus_a_registry_entry():
         assert scope in entry.required_scope
     assert "history:transactions" in entry.required_scope
     assert "orders:execute" in entry.required_scope
+    # Optional, and said to be: only Holdings' open-order notes need it.
+    assert "orders:read if Holdings" in entry.required_scope
 
 
 def test_the_recorded_payloads_are_json_clean():

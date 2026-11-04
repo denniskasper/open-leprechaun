@@ -102,8 +102,9 @@ VENUES: dict[str, Venue] = {
             name="Trading 212",
             required_scope=(
                 "Generate the API key with exactly these scopes ticked: account, portfolio,"
-                " history:orders, history:dividends and history:transactions. Leave"
-                " orders:execute, orders:read, pies:read, pies:write and metadata unticked."
+                " history:orders, history:dividends and history:transactions — and"
+                " orders:read if Holdings should note your open orders. Leave"
+                " orders:execute, pies:read, pies:write and metadata unticked."
                 " The secret is the API secret shown once beside the key."
             ),
             requires_secret=True,

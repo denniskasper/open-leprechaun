@@ -42,7 +42,45 @@ export const positionSchema = z.object({
   rate_date: z.iso.date().nullable(),
 });
 
-export const holdingsSchema = z.object({ positions: z.array(positionSchema) });
+/**
+ * One order a broker holds open (a Pending Order) — an instruction, not an
+ * event, so never part of a Position's figures. Named as the broker named
+ * it: Holdings matches it to a Position by Account and ISIN. A quantity
+ * order states what is still to fill, its prices per unit in `currency`; an
+ * order by value states `value` in `currency` instead.
+ */
+export const pendingOrderSchema = z.object({
+  external_id: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+  isin: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  side: z.enum(["buy", "sell"]),
+  order_type: z.enum(["market", "limit", "stop", "stop_limit"]),
+  currency: z.string(),
+  quantity: signedDecimal.nullable(),
+  value: signedDecimal.nullable(),
+  limit_price: signedDecimal.nullable(),
+  stop_price: signedDecimal.nullable(),
+});
+
+/**
+ * What one Depot's broker last said it holds open, as of `as_of` — recorded
+ * at a sync or a reconciliation. Beside an `error`, why it could not be read.
+ */
+export const pendingOrdersSchema = z.object({
+  account_id: z.number(),
+  as_of: z.iso.datetime({ offset: true }),
+  error: z.string().nullable(),
+  reserved_cash: signedDecimal.nullable(),
+  reserved_currency: z.string().nullable(),
+  orders: z.array(pendingOrderSchema),
+});
+
+export const holdingsSchema = z.object({
+  positions: z.array(positionSchema),
+  pending_orders: z.array(pendingOrdersSchema),
+});
 
 /**
  * The latest published reference rate for a DisplayCurrency — units per one
@@ -56,6 +94,8 @@ export const displayRateSchema = z.object({
 
 export type Position = z.infer<typeof positionSchema>;
 export type Holdings = z.infer<typeof holdingsSchema>;
+export type PendingOrder = z.infer<typeof pendingOrderSchema>;
+export type PendingOrders = z.infer<typeof pendingOrdersSchema>;
 export type DisplayRate = z.infer<typeof displayRateSchema>;
 
 export async function fetchHoldings(): Promise<Holdings> {

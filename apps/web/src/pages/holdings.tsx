@@ -7,6 +7,8 @@ import {
   type DisplayRate,
   fetchDisplayRate,
   fetchHoldings,
+  type PendingOrder,
+  type PendingOrders,
   type Position,
 } from "@/api/holdings";
 import { PageHeader } from "@/components/page-header";
@@ -26,7 +28,10 @@ import {
   formatDate,
   formatMoney,
   formatMoneyExact,
+  formatMoneyRounded,
+  formatPrice,
   formatQuantity,
+  formatRoundedQuantity,
   formatTimestamp,
 } from "@/lib/format";
 
@@ -37,6 +42,83 @@ export type GroupMode = "asset_class" | "platform" | "custody";
  * software wallet is held by the Admin themself; an exchange, broker or bank
  * holds on the Admin's behalf.
  */
+/** "1 pending order", "2 pending orders". */
+function pendingOrders(count: number): string {
+  return `${count} pending ${count === 1 ? "order" : "orders"}`;
+}
+
+/**
+ * One open order in words: what it would do and on what terms — "buy 3.25
+ * at a limit of 182.25 USD". A price stays in the currency the order states
+ * it in; nothing here converts it.
+ */
+export function describePendingOrder(order: PendingOrder, locale?: string): string {
+  const price = (stated: string | null) =>
+    stated === null ? "an unstated price" : `${formatPrice(stated, locale)} ${order.currency}`;
+  const size =
+    order.quantity !== null
+      ? formatRoundedQuantity(order.quantity, undefined, locale)
+      : `${formatMoneyRounded(order.value!, order.currency, locale)} worth`;
+  const terms = {
+    market: "at market",
+    limit: `at a limit of ${price(order.limit_price)}`,
+    stop: `on a stop at ${price(order.stop_price)}`,
+    stop_limit: `on a stop at ${price(order.stop_price)}, limit ${price(order.limit_price)}`,
+  }[order.order_type];
+  return `${order.side} ${size} ${terms}`;
+}
+
+/**
+ * The notes a broker's open orders put beside one Position: on a security,
+ * each order for it; on the Depot's cash, how much of it the broker holds back
+ * for them — or, where the orders could not be read, why. Never a figure the
+ * Position counts: the cash reserved is still the Depot's.
+ */
+export function pendingNotes(
+  position: Position,
+  observed: PendingOrders[],
+  locale?: string,
+): { tone: "note" | "caution"; text: string; title: string }[] {
+  const observation = observed.find((entry) => entry.account_id === position.account_id);
+  if (!observation) return [];
+  const asOf = `as of ${formatTimestamp(Date.parse(observation.as_of), locale)}`;
+  if (position.family === "security") {
+    return observation.orders
+      .filter((order) => order.isin === position.isin)
+      .map((order) => ({
+        tone: "note" as const,
+        text: `pending: ${describePendingOrder(order, locale)}`,
+        title: `The broker holds this order open, ${asOf}. An instruction, not a trade — it reaches the ledger only once it fills.`,
+      }));
+  }
+  if (position.family !== "cash") return [];
+  if (observation.error !== null) {
+    return [
+      {
+        tone: "caution",
+        text: "pending orders not read",
+        title: `${observation.error} (${asOf})`,
+      },
+    ];
+  }
+  const count = observation.orders.length;
+  if (
+    count === 0 ||
+    observation.reserved_cash === null ||
+    observation.reserved_currency !== position.symbol ||
+    /^0(\.0+)?$/.test(observation.reserved_cash)
+  ) {
+    return [];
+  }
+  return [
+    {
+      tone: "note",
+      text: `${formatMoneyRounded(observation.reserved_cash, position.symbol, locale)} reserved for ${pendingOrders(count)}`,
+      title: `The broker holds this much of the cash back for open orders, ${asOf}. It is still the Depot's, and counts in full.`,
+    },
+  ];
+}
+
 export function custodyOf(kind: Position["platform_kind"]): "self_custody" | "third_party" {
   return kind === "cold_storage" || kind === "software_wallet" ? "self_custody" : "third_party";
 }
@@ -411,6 +493,7 @@ export function HoldingsPage() {
           <TotalsStrip positions={data.positions} currency={shown} rate={rate} />
           <HoldingsTable
             positions={data.positions}
+            pending={data.pending_orders}
             groupMode={groupMode}
             currency={shown}
             rate={rate}
@@ -489,11 +572,13 @@ function TotalsStrip({
 
 function HoldingsTable({
   positions,
+  pending,
   groupMode,
   currency,
   rate,
 }: {
   positions: Position[];
+  pending: PendingOrders[];
   groupMode: GroupMode;
   currency: DisplayCurrency;
   rate: DisplayRate | null;
@@ -529,6 +614,7 @@ function HoldingsTable({
             <PositionRow
               key={`${position.account_id}:${position.instrument_id}`}
               position={position}
+              notes={pendingNotes(position, pending)}
               currency={currency}
               rate={rate}
               index={row++}
@@ -542,11 +628,13 @@ function HoldingsTable({
 
 function PositionRow({
   position,
+  notes,
   currency,
   rate,
   index,
 }: {
   position: Position;
+  notes: ReturnType<typeof pendingNotes>;
   currency: DisplayCurrency;
   rate: DisplayRate | null;
   index: number;
@@ -573,6 +661,15 @@ function PositionRow({
         <span className="block text-muted-foreground">
           {position.name} · {FAMILY_LABEL[position.family]} {position.type}
         </span>
+        {notes.map((note) => (
+          <span
+            key={note.text}
+            className={`block text-xs ${note.tone === "caution" ? "text-caution" : "text-muted-foreground"}`}
+            title={note.title}
+          >
+            {note.text}
+          </span>
+        ))}
       </Cell>
       <Cell figure>
         <Amount

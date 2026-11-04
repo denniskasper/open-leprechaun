@@ -625,3 +625,137 @@ def test_another_connections_kind_still_may_not_write_into_a_claimed_depot(clien
     assert result["ok"] is False
     assert "trading_212:securities" in result["error"]
     assert len(client.get("/api/transactions").json()) == 1
+
+
+# --- Pending orders: noted beside the ledger, never in it ---
+
+
+class OrdersBroker(FakeBroker):
+    """A broker kind whose venue also states its open orders — or, given a
+    failure, refuses to, as a key without the scope does."""
+
+    def __init__(self, *, pending=None, refuses=None, **kwargs):
+        super().__init__(**kwargs)
+        self.pending = pending
+        self.refuses = refuses
+
+    def pending_orders(self, credentials):
+        if self.refuses is not None:
+            raise self.refuses
+        return self.pending
+
+
+def a_limit_buy(**overrides) -> port.NormalizedPendingOrder:
+    fields = dict(
+        external_id="order-1",
+        created_at=PULLED_AT,
+        security=APPLE,
+        side="buy",
+        order_type="limit",
+        currency="USD",
+        quantity=Decimal("2"),
+        limit_price=Decimal("170.5"),
+    )
+    fields.update(overrides)
+    return port.NormalizedPendingOrder(**fields)
+
+
+def test_a_sync_notes_the_open_orders_beside_the_ledger_and_writes_none(client, adapters):
+    connection_id, account_id = depot(client)
+    adapters["trading_212"] = (
+        OrdersBroker(
+            harvest=harvest(cash_movements=(a_deposit(),)),
+            pending=port.PendingOrders(
+                as_of=PULLED_AT,
+                orders=(a_limit_buy(),),
+                reserved_cash=Decimal("314.25"),
+                reserved_currency="EUR",
+            ),
+        ),
+    )
+
+    result = sync(client, connection_id)
+
+    assert result["ok"] is True
+    # The order is an instruction, not an event: only the deposit landed.
+    assert len(client.get("/api/transactions").json()) == 1
+    (observed,) = client.get("/api/holdings").json()["pending_orders"]
+    assert observed == {
+        "account_id": account_id,
+        "as_of": "2031-06-02T12:00:00Z",
+        "error": None,
+        "reserved_cash": "314.250000000000000000",
+        "reserved_currency": "EUR",
+        "orders": [
+            {
+                "external_id": "order-1",
+                "created_at": "2031-06-02T12:00:00Z",
+                "isin": "US0378331005",
+                "symbol": "AAPL",
+                "name": "Apple",
+                "side": "buy",
+                "order_type": "limit",
+                "currency": "USD",
+                "quantity": "2.000000000000000000",
+                "value": None,
+                "limit_price": "170.500000000000000000",
+                "stop_price": None,
+            }
+        ],
+    }
+
+
+def test_a_key_that_cannot_read_open_orders_still_syncs_and_says_why(client, adapters):
+    connection_id, _ = depot(client)
+    adapters["trading_212"] = (
+        OrdersBroker(
+            harvest=harvest(cash_movements=(a_deposit(),)),
+            refuses=port.AdapterError("The key lacks the orders:read scope."),
+        ),
+    )
+
+    result = sync(client, connection_id)
+
+    assert result["ok"] is True
+    (observed,) = client.get("/api/holdings").json()["pending_orders"]
+    assert observed["error"] == "The key lacks the orders:read scope."
+    assert observed["orders"] == []
+
+
+def test_each_answer_replaces_the_last(client, adapters):
+    """An order that filled since is no longer open — it arrives as a trade,
+    and the note beside the ledger goes."""
+    connection_id, _ = depot(client)
+    broker = OrdersBroker(pending=port.PendingOrders(as_of=PULLED_AT, orders=(a_limit_buy(),)))
+    adapters["trading_212"] = (broker,)
+    sync(client, connection_id)
+
+    broker.pending = port.PendingOrders(as_of=PULLED_AT)
+    sync(client, connection_id)
+
+    (observed,) = client.get("/api/holdings").json()["pending_orders"]
+    assert observed["orders"] == []
+
+
+def test_reconciling_notes_the_open_orders_too(client, adapters):
+    connection_id, _ = depot(client)
+    adapters["trading_212"] = (
+        OrdersBroker(
+            positions=(position("EUR", "0"),),
+            pending=port.PendingOrders(as_of=PULLED_AT, orders=(a_limit_buy(),)),
+        ),
+    )
+
+    client.post(f"/api/connections/{connection_id}/reconcile")
+
+    (observed,) = client.get("/api/holdings").json()["pending_orders"]
+    assert [order["external_id"] for order in observed["orders"]] == ["order-1"]
+
+
+def test_a_kind_whose_venue_states_no_orders_notes_nothing(client, adapters):
+    connection_id, _ = depot(client)
+    adapters["trading_212"] = (FakeBroker(harvest=harvest(cash_movements=(a_deposit(),))),)
+
+    sync(client, connection_id)
+
+    assert client.get("/api/holdings").json()["pending_orders"] == []
