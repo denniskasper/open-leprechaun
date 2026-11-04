@@ -191,6 +191,15 @@
     border-radius: var(--radius-sm);
   }
 
+  /* The platform draws a select's popup list itself, and without this it
+     keeps a light background behind the theme's own text. Set here, once,
+     so no option on any select can come out unreadable. */
+  option,
+  optgroup {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
   ::selection {
     background-color: var(--color-primary);
     color: var(--color-primary-foreground);

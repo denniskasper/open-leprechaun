@@ -10,17 +10,42 @@ reuse the crypto price port's vocabulary: a rate limit is its own named
 condition, distinct from an outage.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Protocol
+
+# Every tax figure is stated in it, so a close quoted in it needs no
+# conversion by the reference rate.
+_NUMERAIRE = "EUR"
 
 
 @dataclass(frozen=True)
 class ResolvedListing:
     """One market the provider knows the security to trade on, shaped for
-    creating a Listing: venue and quote currency."""
+    creating a Listing: venue and quote currency — and how much of the
+    security traded there over the last four weeks, in units of it, where
+    the provider states that. Comparable across one security's markets only."""
 
     venue: str
     quote_currency: str
+    traded_four_weeks: Decimal | None = None
+
+
+def best_first(listings: Iterable[ResolvedListing]) -> list[ResolvedListing]:
+    """The markets in the order they are worth choosing to price by: quoted in
+    the numéraire first, since its closes need no conversion; then the most
+    traded, since a daily close rests on its trades; a market with no stated
+    volume after every one that has some. The provider's own order breaks
+    ties."""
+    return sorted(
+        listings,
+        key=lambda listing: (
+            listing.quote_currency != _NUMERAIRE,
+            listing.traded_four_weeks is None,
+            -(listing.traded_four_weeks or 0),
+        ),
+    )
 
 
 class SecurityResolutionProvider(Protocol):

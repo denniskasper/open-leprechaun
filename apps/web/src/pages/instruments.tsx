@@ -39,7 +39,7 @@ import { Cell, DetailRow, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatMoneyExact, formatTimestamp } from "@/lib/format";
+import { formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
 import { AddInstrumentPanel, requestedKind } from "./add-instrument";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
@@ -232,6 +232,25 @@ export function unheldListings(resolved: ResolvedListing[], held: Listing[]): Re
   const key = (venue: string, currency: string) => `${venue.toLowerCase()} ${currency}`;
   const known = new Set(held.map((listing) => key(listing.venue, listing.quote_currency)));
   return resolved.filter((listing) => !known.has(key(listing.venue, listing.quote_currency)));
+}
+
+/**
+ * Why the first market on offer is the one to price by, or null where nothing
+ * sets it apart. The API answers the markets best first — EUR before any
+ * other currency, then the most traded over four weeks — so only the head of
+ * the list can carry a reason, and only if the provider stated a volume.
+ */
+export function recommendation(offered: ResolvedListing[]): string | null {
+  const best = offered[0];
+  if (!best || best.traded_four_weeks === null) return null;
+  return best.quote_currency === "EUR"
+    ? "The most traded EUR market over the last four weeks: its daily closes rest on the most trades, and need no conversion."
+    : "No EUR market is on offer, so this is the most traded market over the last four weeks; its closes are converted by the ECB reference rate.";
+}
+
+/** A four-week volume in whole units, for reading. */
+export function tradedWords(traded: string, locale?: string): string {
+  return `${formatQuantity(traded.split(".")[0]!, locale)} traded in 4 weeks`;
 }
 
 /** "a", "a and b", "a, b and c". */
@@ -987,6 +1006,9 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
     );
   };
   const unheld = unheldListings(resolve.data ?? [], instrument.listings);
+  // Only the overall best earns the mark: once it is held, the next one down
+  // is merely what is left.
+  const recommended = unheld[0] === resolve.data?.[0] ? recommendation(unheld) : null;
 
   return (
     <div className="space-y-4" aria-label={`Listings of ${instrument.symbol}`}>
@@ -1089,7 +1111,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
       )}
       {unheld.length > 0 && (
         <ul className="divide-y divide-border border-t border-border">
-          {unheld.map((listing) => (
+          {unheld.map((listing, index) => (
             <li
               key={`${listing.venue} ${listing.quote_currency}`}
               className="flex items-center gap-4 py-2"
@@ -1105,6 +1127,16 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
               >
                 Add
               </Button>
+              {index === 0 && recommended && (
+                <span className="microlabel text-signal" title={recommended}>
+                  recommended
+                </span>
+              )}
+              {listing.traded_four_weeks !== null && (
+                <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                  {tradedWords(listing.traded_four_weeks)}
+                </span>
+              )}
             </li>
           ))}
         </ul>

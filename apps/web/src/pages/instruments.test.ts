@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Instrument } from "@/api/instruments";
 import type { PricedInstrument } from "@/api/prices";
-import type { Candidate } from "@/api/securities";
+import type { Candidate, ResolvedListing } from "@/api/securities";
 import {
   classificationCell,
   conditionLine,
@@ -10,6 +10,8 @@ import {
   sharedSymbols,
   staleExplanation,
   stanceWarning,
+  recommendation,
+  tradedWords,
   unheldListings,
   whatGoesWith,
 } from "./instruments";
@@ -258,6 +260,10 @@ describe("staleExplanation", () => {
 });
 
 
+function market(venue: string, currency: string, traded: string | null = null): ResolvedListing {
+  return { venue, quote_currency: currency, traded_four_weeks: traded };
+}
+
 describe("unheldListings", () => {
   const held = [
     { id: 1, venue: "Xetra", quote_currency: "EUR", price_source: true },
@@ -266,25 +272,49 @@ describe("unheldListings", () => {
 
   it("offers only the markets not already held, compared as venue and currency together", () => {
     const resolved = [
-      { venue: "Xetra", quote_currency: "EUR" },
-      { venue: "London Stock Exchange", quote_currency: "GBP" },
-      { venue: "gettex", quote_currency: "EUR" },
+      market("Xetra", "EUR"),
+      market("London Stock Exchange", "GBP"),
+      market("gettex", "EUR"),
     ];
 
     expect(unheldListings(resolved, held)).toEqual([
-      { venue: "London Stock Exchange", quote_currency: "GBP" },
-      { venue: "gettex", quote_currency: "EUR" },
+      market("London Stock Exchange", "GBP"),
+      market("gettex", "EUR"),
     ]);
   });
 
   it("offers nothing when every resolved market is held", () => {
-    expect(unheldListings([{ venue: "Xetra", quote_currency: "EUR" }], held)).toEqual([]);
+    expect(unheldListings([market("Xetra", "EUR")], held)).toEqual([]);
   });
 
   it("treats a venue casing difference as held, matching the provider's own rule", () => {
     const holder = [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }];
 
-    expect(unheldListings([{ venue: "Xetra", quote_currency: "EUR" }], holder)).toEqual([]);
+    expect(unheldListings([market("Xetra", "EUR")], holder)).toEqual([]);
+  });
+});
+
+describe("recommendation", () => {
+  it("names the head of a EUR-led list the one to price by", () => {
+    expect(recommendation([market("Xetra", "EUR", "7220471"), market("gettex", "EUR", "882352")]))
+      .toMatch(/^The most traded EUR market/);
+  });
+
+  it("says no EUR market is on offer when the head is quoted in another currency", () => {
+    expect(recommendation([market("Nasdaq OTC", "USD", "114487")])).toMatch(
+      /^No EUR market is on offer/,
+    );
+  });
+
+  it("recommends nothing the provider stated no volume for, or an empty list", () => {
+    expect(recommendation([market("Hamburg", "EUR")])).toBeNull();
+    expect(recommendation([])).toBeNull();
+  });
+});
+
+describe("tradedWords", () => {
+  it("reads a four-week volume in whole units", () => {
+    expect(tradedWords("936131441.065168", "en-US")).toBe("936,131,441 traded in 4 weeks");
   });
 });
 

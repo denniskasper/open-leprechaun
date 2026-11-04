@@ -28,6 +28,7 @@ import {
   type ReconciliationLine,
   type Venue,
 } from "@/api/connections";
+import { fetchPendingOrders, type PendingOrders } from "@/api/holdings";
 import { fetchPlatforms, type Account, type Platform } from "@/api/platforms";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
@@ -37,10 +38,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { DECIMAL_PATTERN } from "@/api/transactions";
-import { formatNumber, formatQuantity, formatSignedQuantity, formatTimestamp } from "@/lib/format";
+import {
+  formatMoneyRounded,
+  formatNumber,
+  formatQuantity,
+  formatSignedQuantity,
+  formatTimestamp,
+} from "@/lib/format";
 import { awaitingPriceWords, priceConditionWords } from "@/pages/imports";
 import { openingBalanceSearch } from "@/pages/transactions";
 import { addInstrumentHref } from "@/pages/add-instrument";
+import { describePendingOrder } from "@/pages/holdings";
 
 /**
  * The standing rule, stated wherever a credential is entered: every scope in
@@ -362,6 +370,9 @@ function ConnectionRow({
         ),
       );
       void queryClient.invalidateQueries({ queryKey: ["connections"] });
+      // A sync asked the broker what it holds open, too.
+      void queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["holdings"] });
     };
   }
 
@@ -386,8 +397,13 @@ function ConnectionRow({
   const reconcile = useMutation({
     mutationFn: () => reconcileConnection(connection.id, tolerance.trim() || null),
     // Nothing in the ledger changed — but the credential was used, and the
-    // row states when it last was.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["connections"] }),
+    // row states when it last was; and the broker was asked what it holds
+    // open.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["connections"] });
+      void queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["holdings"] });
+    },
   });
 
   const busy = test.isPending || sync.isPending || reconcile.isPending;
@@ -562,11 +578,11 @@ function KindLine({
           disabled={pair.isPending}
           onChange={(event) => pair.mutate(Number(event.target.value))}
         >
-          <option value="" disabled className="bg-background text-foreground">
+          <option value="" disabled>
             Pair an Account…
           </option>
           {accounts.map((account) => (
-            <option key={account.id} value={account.id} className="bg-background text-foreground">
+            <option key={account.id} value={account.id}>
               {account.name}
             </option>
           ))}
@@ -616,6 +632,7 @@ function KindLine({
           on the Instruments page, then sync again.
         </p>
       )}
+      {pairing && <PendingOrdersLine accountId={pairing.account_id} />}
       {outcome && outcome.passedOver.length > 0 && (
         <ul className="basis-full space-y-0.5 pl-4 text-caution" aria-label="Passed over">
           {outcome.passedOver.map((sentence, index) => (
@@ -624,6 +641,61 @@ function KindLine({
         </ul>
       )}
     </li>
+  );
+}
+
+/**
+ * What a paired Account's broker last said it holds open, in words: a heading
+ * with when it was read, then each order by the security it is for, then the
+ * cash held back for them — or why they could not be read. Null for an
+ * Account nothing has asked, which is every Account of a venue that states no
+ * orders.
+ */
+export function pendingOrdersSummary(
+  observation: PendingOrders | undefined,
+  locale?: string,
+): { tone: "note" | "caution"; heading: string; lines: string[] } | null {
+  if (!observation) return null;
+  const read = formatTimestamp(Date.parse(observation.as_of), locale);
+  if (observation.error !== null) {
+    return {
+      tone: "caution",
+      heading: `Open orders not read (${read})`,
+      lines: [observation.error],
+    };
+  }
+  if (observation.orders.length === 0) {
+    return { tone: "note", heading: `No open orders (read ${read})`, lines: [] };
+  }
+  const lines = observation.orders.map(
+    (order) => `${order.symbol}: ${describePendingOrder(order, locale)}`,
+  );
+  if (observation.reserved_cash !== null && observation.reserved_currency !== null) {
+    lines.push(
+      `${formatMoneyRounded(observation.reserved_cash, observation.reserved_currency, locale)} of the cash held back for them`,
+    );
+  }
+  return { tone: "note", heading: `Open orders (read ${read})`, lines };
+}
+
+function PendingOrdersLine({ accountId }: { accountId: number }) {
+  const { data } = useQuery({ queryKey: ["pending-orders"], queryFn: fetchPendingOrders });
+  const summary = pendingOrdersSummary(data?.find((entry) => entry.account_id === accountId));
+  if (!summary) return null;
+  return (
+    <div
+      className={`basis-full pl-4 ${summary.tone === "caution" ? "text-caution" : "text-muted-foreground"}`}
+      title="What the broker holds open, as of when it was last asked — at a sync or a reconciliation. Instructions, not trades: an order reaches the ledger only once it fills."
+    >
+      <p>{summary.heading}</p>
+      {summary.lines.length > 0 && (
+        <ul aria-label="Open orders" className="space-y-0.5 pl-4">
+          {summary.lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -881,7 +953,6 @@ function AddConnectionForm({
               <option
                 key={platform.id}
                 value={platform.id}
-                className="bg-background text-foreground"
               >
                 {platform.name}
               </option>
@@ -902,7 +973,6 @@ function AddConnectionForm({
               <option
                 key={entry.venue}
                 value={entry.venue}
-                className="bg-background text-foreground"
               >
                 {entry.name}
               </option>

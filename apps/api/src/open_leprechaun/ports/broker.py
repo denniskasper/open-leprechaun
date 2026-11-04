@@ -20,12 +20,15 @@ provenance (ADR-0004).
 A Normalized Position is stated apart from every record that lands: it has
 one consumer, Reconciliation, and is never a substitute for a transaction —
 a snapshot can say that something is held, not what it cost or when it came.
+A Pending Order is stated apart for the same reason: it is what the broker
+has open right now, an instruction that has not happened, so it is shown and
+never lands.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 # The records and promises both account-authenticating ports share: one
 # credential shape, one failure, and the two records that mean the same thing
@@ -216,3 +219,46 @@ __all__ = [
     "NormalizedSecurityTrade",
     "PassedOver",
 ]
+
+
+@dataclass(frozen=True)
+class NormalizedPendingOrder:
+    """One order the broker holds open — placed, not yet filled, cancelled or
+    expired. An instruction, not an event: nothing has moved, so it is never
+    a transaction and never touches a lot.
+
+    A quantity order states `quantity` still to fill, its prices per unit in
+    `currency`, the currency the security is quoted in. An order placed by
+    value states `value` instead, in the `currency` it was placed in. A price
+    is None where the order type has none — a market order has neither."""
+
+    external_id: str
+    created_at: datetime
+    security: NormalizedSecurity
+    side: Literal["buy", "sell"]
+    order_type: Literal["market", "limit", "stop", "stop_limit"]
+    currency: str
+    quantity: Decimal | None = None
+    value: Decimal | None = None
+    limit_price: Decimal | None = None
+    stop_price: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class PendingOrders:
+    """What the broker has open at `as_of`, and the cash it holds back for
+    those orders, in the Depot's currency — None where it does not say."""
+
+    as_of: datetime
+    orders: tuple[NormalizedPendingOrder, ...] = ()
+    reserved_cash: Decimal | None = None
+    reserved_currency: str | None = None
+
+
+@runtime_checkable
+class StatesPendingOrders(Protocol):
+    """The capability of a broker kind whose venue states its open orders —
+    declared by having the method, so a kind that cannot simply lacks it.
+    Raises AdapterError and nothing else on failure."""
+
+    def pending_orders(self, credentials: Credentials) -> PendingOrders: ...

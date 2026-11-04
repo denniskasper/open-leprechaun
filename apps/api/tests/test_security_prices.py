@@ -482,8 +482,39 @@ def test_the_api_resolves_an_identifier_to_candidate_listings(market_client):
 
     assert response.status_code == 200
     assert response.json() == [
-        {"venue": "Xetra", "quote_currency": "EUR"},
-        {"venue": "London Stock Exchange", "quote_currency": "USD"},
+        {"venue": "Xetra", "quote_currency": "EUR", "traded_four_weeks": None},
+        {"venue": "London Stock Exchange", "quote_currency": "USD", "traded_four_weeks": None},
+    ]
+
+
+def test_the_api_answers_the_markets_best_to_price_by_first(market_client):
+    """EUR first, since its closes need no conversion; within a currency the
+    most traded over four weeks; a market stating no volume after those that
+    do — whatever order the provider answered in."""
+    from open_leprechaun.ports.security_resolution import ResolvedListing
+
+    market_client.state_of["resolution"] = FakeResolution(
+        {
+            "IE00B4L5Y983": [
+                ResolvedListing("London Stock Exchange", "USD", Decimal("3985541")),
+                ResolvedListing("Hamburg", "EUR"),
+                ResolvedListing("gettex", "EUR", Decimal("882352")),
+                ResolvedListing("Xetra", "EUR", Decimal("7220471")),
+                ResolvedListing("Swiss Exchange", "CHF"),
+            ]
+        }
+    )
+
+    response = market_client.get(
+        "/api/securities/listings/resolve", params={"identifier": "IE00B4L5Y983"}
+    )
+
+    assert [(row["venue"], row["traded_four_weeks"]) for row in response.json()] == [
+        ("Xetra", "7220471"),
+        ("gettex", "882352"),
+        ("Hamburg", None),
+        ("London Stock Exchange", "3985541"),
+        ("Swiss Exchange", None),
     ]
 
 
@@ -685,10 +716,10 @@ ONVISTA_SNAPSHOT = """{
             "market": {"name": "gettex", "idNotation": 253929827}},
   "quoteList": {"list": [
     {"isoCurrency": "EUR", "last": 128.75,
-     "datetimeLast": "2026-08-11T15:31:00.000+00:00",
+     "datetimeLast": "2026-08-11T15:31:00.000+00:00", "volume4Weeks": 7220471.0,
      "market": {"name": "Xetra", "idNotation": 108344843}},
     {"isoCurrency": "EUR", "last": 128.7,
-     "datetimeLast": "2026-08-11T15:30:00.000+00:00",
+     "datetimeLast": "2026-08-11T15:30:00.000+00:00", "volume4Weeks": 882352.0,
      "market": {"name": "gettex", "idNotation": 253929827}},
     {"isoCurrency": "USD", "last": 148.47,
      "datetimeLast": "2026-08-11T15:29:00.000+00:00",
@@ -740,8 +771,8 @@ def test_onvista_resolves_an_identifier_to_its_markets_deduplicated():
     resolved = _onvista(_market_handler).listings("IE00B4L5Y983")
 
     assert resolved == [
-        ResolvedListing(venue="Xetra", quote_currency="EUR"),
-        ResolvedListing(venue="gettex", quote_currency="EUR"),
+        ResolvedListing(venue="Xetra", quote_currency="EUR", traded_four_weeks=Decimal("7220471")),
+        ResolvedListing(venue="gettex", quote_currency="EUR", traded_four_weeks=Decimal("882352")),
         ResolvedListing(venue="London Stock Exchange", quote_currency="USD"),
     ]
 

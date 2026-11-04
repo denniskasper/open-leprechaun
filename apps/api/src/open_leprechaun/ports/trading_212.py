@@ -42,16 +42,19 @@ from open_leprechaun.ports.broker import (
     NormalizedDividend,
     NormalizedFee,
     NormalizedOriginalAmount,
+    NormalizedPendingOrder,
     NormalizedPosition,
     NormalizedSecurity,
     NormalizedSecurityTrade,
     PassedOver,
+    PendingOrders,
 )
 
 BASE_URL = "https://live.trading212.com"
 
 _SUMMARY_PATH = "/api/v0/equity/account/summary"
 _POSITIONS_PATH = "/api/v0/equity/positions"
+_PENDING_PATH = "/api/v0/equity/orders"
 _HISTORY_PREFIX = "/api/v0/equity/history/"
 _ORDERS_PATH = f"{_HISTORY_PREFIX}orders"
 _DIVIDENDS_PATH = f"{_HISTORY_PREFIX}dividends"
@@ -64,6 +67,8 @@ _SCOPES = {
     _ORDERS_PATH: "history:orders",
     _DIVIDENDS_PATH: "history:dividends",
     _TRANSACTIONS_PATH: "history:transactions",
+    # Optional: without it the Depot's open orders go unread, nothing else.
+    _PENDING_PATH: "orders:read",
 }
 
 # The venue pages a Depot's whole history — there is no cap to declare
@@ -79,6 +84,15 @@ _MAX_PAGES = 1000
 _MAX_WAIT_SECONDS = 65
 
 _SIDES: dict[str, Literal["buy", "sell"]] = {"BUY": "buy", "SELL": "sell"}
+_ORDER_TYPES: dict[str, Literal["market", "limit", "stop", "stop_limit"]] = {
+    "MARKET": "market",
+    "LIMIT": "limit",
+    "STOP": "stop",
+    "STOP_LIMIT": "stop_limit",
+}
+# Statuses an order can still answer with once it is over; the venue lists
+# active orders only, so these are passed by should one ever slip in.
+_CLOSED = frozenset({"FILLED", "CANCELLED", "REJECTED", "REPLACED"})
 # Sub-units the venue prices in, as (the whole currency, sub-units per unit).
 _MINOR_UNITS = {"GBX": ("GBP", 100)}
 _CONVERSION_FEE = "CURRENCY_CONVERSION_FEE"
@@ -168,9 +182,17 @@ class Trading212Adapter:
         currency = summary.get("currency") if isinstance(summary, dict) else None
         if not currency:
             raise AdapterError("Trading 212 answered an account summary that names no currency.")
+        try:
+            self._get(credentials, _PENDING_PATH)
+            orders = " Open orders are read too."
+        except _ScopeMissingError:
+            orders = (
+                " Open orders are not read — the key lacks orders:read, which only"
+                " Holdings' pending-order notes need."
+            )
         return (
-            f"Authenticated — the Depot settles in {currency}. Trading 212 cannot state"
-            " a key's own scopes, so that it grants no trading scope is yours to check."
+            f"Authenticated — the Depot settles in {currency}.{orders} Trading 212 cannot"
+            " state a key's own scopes, so that it grants no trading scope is yours to check."
         )
 
     def pull(self, credentials: Credentials) -> BrokerHarvest:
@@ -215,6 +237,81 @@ class Trading212Adapter:
                 "Trading 212 answered a position the adapter could not read — a field"
                 f" it documents was missing or malformed ({type(failed).__name__})."
             ) from failed
+
+    def pending_orders(self, credentials: Credentials) -> PendingOrders:
+        try:
+            as_of = self._now()
+            listed = self._get(credentials, _PENDING_PATH)
+            summary = self._get(credentials, _SUMMARY_PATH)
+            reserved = summary["cash"].get("reservedForOrders")
+            return PendingOrders(
+                as_of=as_of,
+                orders=tuple(
+                    order
+                    for raw in listed
+                    if str(raw.get("status")) not in _CLOSED
+                    and (order := self._pending(raw)) is not None
+                ),
+                reserved_cash=None if reserved is None else _decimal(reserved),
+                reserved_currency=str(summary["currency"]),
+            )
+        except (KeyError, ValueError, TypeError, ArithmeticError, AttributeError) as failed:
+            raise AdapterError(
+                "Trading 212 answered an open order the adapter could not read — a field"
+                f" it documents was missing or malformed ({type(failed).__name__})."
+            ) from failed
+
+    @staticmethod
+    def _pending(raw: dict) -> NormalizedPendingOrder | None:
+        """One open order, stated as what is still to happen: a partly filled
+        order is what remains of it, and one with nothing left is none."""
+        order_type = _ORDER_TYPES.get(str(raw.get("type")))
+        side = _SIDES.get(str(raw.get("side")).upper())
+        if order_type is None or side is None:
+            raise AdapterError(
+                f"Open order {raw.get('id')} states a type {raw.get('type')!r} and side"
+                f" {raw.get('side')!r} the venue does not document — refused rather than"
+                " guessed."
+            )
+        instrument = raw["instrument"]
+        # A price is per unit of the security, so in the currency it is quoted
+        # in; the order's own `currency` may be the Depot's, and only an order
+        # placed by value is stated in it.
+        stated_in = str(instrument["currency"])
+        quantity = value = None
+        if raw.get("strategy") == "VALUE":
+            stated_in = str(raw.get("currency") or stated_in)
+            value, _ = _whole_units(
+                abs(_decimal(raw["value"])) - abs(_decimal(raw.get("filledValue") or 0)),
+                stated_in,
+            )
+            if value <= 0:
+                return None
+            if stated_in != instrument["currency"]:
+                # Its prices would be in a currency it does not name.
+                raw = {**raw, "limitPrice": None, "stopPrice": None}
+        else:
+            filled = abs(_decimal(raw.get("filledQuantity") or 0))
+            quantity = abs(_decimal(raw["quantity"])) - filled
+            if quantity <= 0:
+                return None
+
+        def price(field: str) -> Decimal | None:
+            stated = raw.get(field)
+            return None if stated is None else _whole_units(_decimal(stated), stated_in)[0]
+
+        return NormalizedPendingOrder(
+            external_id=f"order-{raw['id']}",
+            created_at=_at(str(raw["createdAt"])),
+            security=_security(instrument),
+            side=side,
+            order_type=order_type,
+            currency=_whole_units(Decimal(0), stated_in)[1],
+            quantity=quantity,
+            value=value,
+            limit_price=price("limitPrice") if order_type in ("limit", "stop_limit") else None,
+            stop_price=price("stopPrice") if order_type in ("stop", "stop_limit") else None,
+        )
 
     def _harvest(self, credentials: Credentials) -> BrokerHarvest:
         covered_until = self._now()

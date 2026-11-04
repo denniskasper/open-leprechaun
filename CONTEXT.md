@@ -406,6 +406,20 @@ Connection, replaced by the next run.
 _Avoid_: "sync" for reconciling — a sync lands records, a reconciliation only compares.
 _Avoid_: adjusting, correcting or balancing entry — there is no transaction type that absorbs a gap.
 
+### Pending Order
+
+An order a broker holds open for a **Depot**: placed, not yet filled, cancelled or expired. An
+instruction, not an event — nothing has moved, so it is never a **Transaction**, never touches a
+**Tax Lot** and never enters a figure. It is noted beside the **Position** it concerns, and the
+cash the broker holds back for open orders is noted beside the Depot's cash, which still counts in
+full: reserved cash is the Depot's until an order fills.
+
+What a broker says it holds open is an observation, as of when it was asked — at a sync or a
+**Reconciliation** — and replaced by the next answer. An order that fills arrives as the Normalized
+Security Trade it became, and its note goes.
+
+_Avoid_: "open position" for a Pending Order — a position is what is held, an order what might be.
+
 ## Market data
 
 ### Price Chain

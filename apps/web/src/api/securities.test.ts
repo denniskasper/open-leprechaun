@@ -99,7 +99,7 @@ describe("classifyFund and reviewSecurity", () => {
 
 describe("resolveListings", () => {
   it("asks with the identifier URL-encoded and parses the markets", async () => {
-    const resolved = [{ venue: "Xetra", quote_currency: "EUR" }];
+    const resolved = [{ venue: "Xetra", quote_currency: "EUR", traded_four_weeks: "7220471" }];
     respondWith(200, resolved);
 
     await expect(resolveListings("IE00B4L5Y983")).resolves.toEqual(resolved);

@@ -611,7 +611,6 @@ function FundRedemptionValuesGroup() {
                 <option
                   key={known.instrument_id}
                   value={known.instrument_id}
-                  className="bg-background text-foreground"
                 >
                   {known.symbol}
                 </option>
@@ -697,7 +696,7 @@ function ElectionSelect<Choice extends string>({
       onChange={(event) => onChange(event.target.value as Choice)}
     >
       {(Object.entries(words) as [Choice, string][]).map(([choice, label]) => (
-        <option key={choice} value={choice} className="bg-background text-foreground">
+        <option key={choice} value={choice}>
           {label}
         </option>
       ))}
