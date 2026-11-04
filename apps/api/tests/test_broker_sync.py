@@ -737,6 +737,21 @@ def test_each_answer_replaces_the_last(client, adapters):
     assert observed["orders"] == []
 
 
+def test_the_open_orders_are_answered_on_their_own_too(client, adapters):
+    """Connections shows them without computing a portfolio to do it."""
+    connection_id, account_id = depot(client)
+    adapters["trading_212"] = (
+        OrdersBroker(pending=port.PendingOrders(as_of=PULLED_AT, orders=(a_limit_buy(),))),
+    )
+    sync(client, connection_id)
+
+    answered = client.get("/api/pending-orders")
+
+    assert answered.status_code == 200
+    assert answered.json() == client.get("/api/holdings").json()["pending_orders"]
+    assert answered.json()[0]["account_id"] == account_id
+
+
 def test_reconciling_notes_the_open_orders_too(client, adapters):
     connection_id, _ = depot(client)
     adapters["trading_212"] = (

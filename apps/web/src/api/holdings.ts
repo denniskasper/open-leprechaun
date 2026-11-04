@@ -106,6 +106,14 @@ export async function fetchHoldings(): Promise<Holdings> {
   return holdingsSchema.parse(await response.json());
 }
 
+export async function fetchPendingOrders(): Promise<PendingOrders[]> {
+  const response = await request("/api/pending-orders");
+  if (!response.ok) {
+    throw new Error(`The API answered ${response.status} instead of the pending orders.`);
+  }
+  return z.array(pendingOrdersSchema).parse(await response.json());
+}
+
 export async function fetchDisplayRate(currency: string): Promise<DisplayRate> {
   const response = await request(`${HOLDINGS_URL}/display-rate/${currency}`);
   if (!response.ok) {

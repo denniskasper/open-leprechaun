@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import AwareDatetime, BaseModel, PlainSerializer
+from sqlalchemy import Engine
 
 from open_leprechaun.auth import AdminDep
 from open_leprechaun.db import EngineDep
@@ -105,14 +106,28 @@ class DisplayRateResponse(BaseModel):
 def list_holdings(admin: AdminDep, engine: EngineDep) -> HoldingsResponse:
     return HoldingsResponse(
         positions=[PositionResponse.of(position) for position in holdings.portfolio(engine)],
-        pending_orders=[
-            PendingOrdersResponse(
-                **{name: value for name, value in vars(observation).items() if name != "orders"},
-                orders=[PendingOrderResponse(**vars(order)) for order in observation.orders],
-            )
-            for observation in pending_orders.observed(engine)
-        ],
+        pending_orders=_pending_orders(engine),
     )
+
+
+@router.get(
+    "/pending-orders",
+    summary="What each Depot's broker last said it holds open — observations beside the"
+    " ledger, never part of it",
+    response_model=list[PendingOrdersResponse],
+)
+def list_pending_orders(admin: AdminDep, engine: EngineDep) -> list[PendingOrdersResponse]:
+    return _pending_orders(engine)
+
+
+def _pending_orders(engine: Engine) -> list[PendingOrdersResponse]:
+    return [
+        PendingOrdersResponse(
+            **{name: value for name, value in vars(observation).items() if name != "orders"},
+            orders=[PendingOrderResponse(**vars(order)) for order in observation.orders],
+        )
+        for observation in pending_orders.observed(engine)
+    ]
 
 
 @router.get(

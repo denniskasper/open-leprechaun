@@ -7,8 +7,10 @@ import type {
   ReconciliationLine,
   Venue,
 } from "@/api/connections";
+import type { PendingOrders } from "@/api/holdings";
 import type { Platform } from "@/api/platforms";
 import {
+  pendingOrdersSummary,
   describeLastUse,
   describeLookback,
   describeReconciliation,
@@ -358,5 +360,63 @@ describe("openingBalanceHref", () => {
     expect(
       openingBalanceHref(line({ difference: "-0.9", resolutions: ["import_history"] }), 3),
     ).toBeNull();
+  });
+});
+
+describe("pendingOrdersSummary", () => {
+  const observation: PendingOrders = {
+    account_id: 1,
+    as_of: "2026-11-04T19:42:26Z",
+    error: null,
+    reserved_cash: "314.250000000000000000",
+    reserved_currency: "GBP",
+    orders: [
+      {
+        external_id: "order-1",
+        created_at: "2026-11-02T17:00:00Z",
+        isin: "US0378331005",
+        symbol: "AAPL",
+        name: "Apple",
+        side: "buy",
+        order_type: "limit",
+        currency: "USD",
+        quantity: "3.250000000000000000",
+        value: null,
+        limit_price: "182.250000000000000000",
+        stop_price: null,
+      },
+    ],
+  };
+
+  it("lists each open order by its security, then the cash held back for them", () => {
+    const summary = pendingOrdersSummary(observation, "en-US")!;
+
+    expect(summary.tone).toBe("note");
+    expect(summary.heading).toMatch(/^Open orders \(read /);
+    expect(summary.lines).toEqual([
+      "AAPL: buy 3.25 at a limit of 182.25 USD",
+      "£314.25 of the cash held back for them",
+    ]);
+  });
+
+  it("says so when nothing is open", () => {
+    const summary = pendingOrdersSummary({ ...observation, orders: [] }, "en-US")!;
+
+    expect(summary.heading).toMatch(/^No open orders \(read /);
+    expect(summary.lines).toEqual([]);
+  });
+
+  it("says why the orders could not be read", () => {
+    const summary = pendingOrdersSummary(
+      { ...observation, error: "The key lacks the orders:read scope.", orders: [] },
+      "en-US",
+    )!;
+
+    expect(summary.tone).toBe("caution");
+    expect(summary.lines).toEqual(["The key lacks the orders:read scope."]);
+  });
+
+  it("states nothing for an Account nothing has asked", () => {
+    expect(pendingOrdersSummary(undefined)).toBeNull();
   });
 });
