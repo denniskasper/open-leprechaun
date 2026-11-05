@@ -59,9 +59,7 @@ def inflow(db, account: int, instrument: int, quantity: str = "100") -> int:
 
 
 def settle_as_deployment_of(client: TestClient, newer: int, older: int):
-    return client.post(
-        f"/api/instruments/{newer}/deployment-of", json={"instrument_id": older}
-    )
+    return client.post(f"/api/instruments/{newer}/deployment-of", json={"instrument_id": older})
 
 
 def deployments_of(client: TestClient, instrument_id: int) -> list[dict]:
