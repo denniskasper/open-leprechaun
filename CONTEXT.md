@@ -137,6 +137,24 @@ A crypto Instrument with a contract is keyed on **chain and contract address**; 
 on its symbol, because for a native coin the symbol *is* the identity. A symbol is otherwise a
 display label and a resolution hint, never authoritative.
 
+A token its issuer mints natively on several chains is **one Instrument with a Deployment per
+chain** — one Wirtschaftsgut, however many chains carry it. Each **Deployment** (a chain and a
+contract address) is an identity of that Instrument, so moving it between chains, or holding it at
+an exchange that is on no chain at all, is never a disposal. An exchange **Account** holds the
+Instrument; a wallet Account holds it on its own chain's Deployment.
+
+Only the Admin attaches a Deployment, and only one the issuer mints itself — including a mint
+through the issuer's own burn-and-mint transfer. A bridged or wrapped token is a claim on someone
+else and stays its own Instrument, so a swap into or out of one is a disposal. The ledger never
+merges by symbol or name: an unknown contract lands as its own Instrument, `unacknowledged`, and
+may be settled as a Deployment of another only while it holds no lots of its own.
+
+A native coin needs no Deployment: its symbol already names it on every chain it pays gas on, and
+the chain it records is its home, a label.
+
+_Avoid_: one Instrument per chain for a natively multi-chain token. An exchange balance then has to
+sit on some chain it is not on, and a send on another chain becomes a swap that never happened.
+
 Securities key on **ISIN**, with an identifier history so that a lot acquired under a superseded
 identifier survives a merger or redomiciliation. WKN and ticker are lookup aliases only.
 
@@ -384,6 +402,15 @@ An **Address Indexer**'s Normalized Transfer names what moved by the chain's own
 coin, or a token's contract — never by a bare symbol, which is what lets an Instrument the ledger
 has never seen arrive `unacknowledged` instead of refusing the read. A network fee the address paid
 for a transaction that moved nothing else is its own record, a **Normalized Network Fee**.
+
+A **Normalized Transfer** carries the network facts its venue states — the chain it moved on, its
+transaction hash, the counterparty address — as recorded facts about the transfer. They never
+decide identity on their own. The port turns its venue's network label into the ledger's chain,
+and a label it does not know is no chain stated, never a guess. A stated chain only breaks a tie:
+when a symbol answers to several Instruments, it narrows them to those with a Deployment on that
+chain, and still exactly one must remain. A chain on which the resolved Instrument has no
+Deployment is recorded and flagged, never refused. A re-read that meets a record it already holds
+fills network facts the record lacks and never overwrites one.
 
 ### Reconciliation
 
