@@ -7,6 +7,9 @@ export const META_URL = "/api/meta";
 export const metaSchema = z.object({
   environment: z.enum(["development", "production"]),
   version: z.string(),
+  // The machine a development instance runs on; null in production. An API
+  // from before the field states none, which reads as unnamed, not invalid.
+  host: z.string().nullable().default(null),
 });
 
 export type Meta = z.infer<typeof metaSchema>;

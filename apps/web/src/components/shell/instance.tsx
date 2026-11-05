@@ -27,15 +27,48 @@ export function badgeLabel(instance: Meta | undefined): string | null {
   return "dev";
 }
 
-/** The environment badge: shown outside production, absent within it. */
-export function EnvironmentBadge() {
-  const label = badgeLabel(useInstance());
+/**
+ * Which machine the badge names: the box a development instance runs on, so
+ * a dev server on one box is never mistaken for another's. Production names
+ * none, whatever arrives.
+ */
+export function hostLabel(instance: Meta | undefined): string | null {
+  if (!instance || instance.environment === "production") {
+    return null;
+  }
+  return instance.host;
+}
+
+/**
+ * The environment badge: shown outside production, absent within it — with
+ * the machine named beside it. `stacked` sets the machine under the badge,
+ * for the sidebar's narrow column beside the stacked wordmark.
+ */
+export function EnvironmentBadge({ stacked = false }: { stacked?: boolean }) {
+  const instance = useInstance();
+  const label = badgeLabel(instance);
   if (!label) {
     return null;
   }
+  const host = hostLabel(instance);
   return (
-    <span className="microlabel rounded-sm border border-caution/50 px-1.5 py-0.5 text-caution">
-      {label}
+    <span
+      className={cn(
+        "flex min-w-0",
+        stacked ? "flex-col items-end gap-1" : "items-center gap-2",
+      )}
+    >
+      <span className="microlabel shrink-0 rounded-sm border border-caution/50 px-1.5 py-0.5 text-caution">
+        {label}
+      </span>
+      {host && (
+        <span
+          className="max-w-28 truncate font-mono text-2xs text-caution"
+          title={`The dev server on ${host}`}
+        >
+          {host}
+        </span>
+      )}
     </span>
   );
 }

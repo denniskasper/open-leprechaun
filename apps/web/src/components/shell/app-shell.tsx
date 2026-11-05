@@ -38,7 +38,7 @@ export function AppShell() {
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border md:flex">
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-6">
             <Wordmark stacked />
-            <EnvironmentBadge />
+            <EnvironmentBadge stacked />
           </div>
           <NavSections className="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-3 py-4" />
           <div className="flex shrink-0 flex-wrap items-center border-t border-border py-1.5 pr-2 pl-6 [&>[role=alert]]:order-first [&>[role=alert]]:basis-full [&>[role=alert]]:py-1.5 [&>[role=alert]]:pr-4">

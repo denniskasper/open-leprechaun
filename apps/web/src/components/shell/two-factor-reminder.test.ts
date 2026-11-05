@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { remindsOfTwoFactor } from "./two-factor-reminder";
 
-const production = { environment: "production", version: "1.2.3" } as const;
-const development = { environment: "development", version: "abc1234" } as const;
+const production = { environment: "production", version: "1.2.3", host: null } as const;
+const development = { environment: "development", version: "abc1234", host: null } as const;
 
 describe("remindsOfTwoFactor", () => {
   it("reminds a production instance whose two-factor is off", () => {
