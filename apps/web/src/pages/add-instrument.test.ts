@@ -26,6 +26,7 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     distribution_policy: null,
     needs_review: false,
     listings: [],
+    deployments: [],
     dangerous: false,
     stances: [],
     ...overrides,

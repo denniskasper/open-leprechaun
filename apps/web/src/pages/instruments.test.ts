@@ -5,9 +5,11 @@ import type { Candidate, ResolvedListing } from "@/api/securities";
 import {
   classificationCell,
   conditionLine,
+  deploymentCandidates,
   editable,
   editedClassification,
   identityOf,
+  otherChains,
   securityPayload,
   sharedSymbols,
   staleExplanation,
@@ -34,6 +36,7 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     distribution_policy: null,
     needs_review: false,
     listings: [],
+    deployments: [],
     dangerous: false,
     stances: [],
     ...overrides,
@@ -439,5 +442,55 @@ describe("editedClassification", () => {
 
   it("states nothing for a type that is no fund's", () => {
     expect(editedClassification(provided, "share", "mischfonds", "")).toBeNull();
+  });
+});
+
+describe("otherChains", () => {
+  const home = {
+    chain: "ethereum",
+    contract_address: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+  };
+
+  it("names the chains a token is deployed on beyond its home one", () => {
+    expect(
+      otherChains(
+        instrument({
+          deployments: [
+            home,
+            { chain: "solana", contract_address: "SoLanaMint111" },
+            { chain: "base", contract_address: "0x" + "b0".repeat(20) },
+          ],
+        }),
+      ),
+    ).toEqual(["solana", "base"]);
+  });
+
+  it("names none for a token on one chain, or anything else", () => {
+    expect(otherChains(instrument({ deployments: [home] }))).toEqual([]);
+    expect(otherChains(security({}))).toEqual([]);
+  });
+});
+
+describe("deploymentCandidates", () => {
+  it("offers every other token, those wearing the same symbol first", () => {
+    const newer = instrument({ id: 9, symbol: "USDC", chain: "solana" });
+    const usdc = instrument({ id: 2, symbol: "USDC", name: "USD Coin" });
+    const aave = instrument({ id: 3, symbol: "AAVE", name: "Aave" });
+    const btc = instrument({
+      id: 4,
+      type: "native",
+      symbol: "BTC",
+      contract_address: null,
+    });
+
+    expect(
+      deploymentCandidates(newer, [
+        aave,
+        newer,
+        btc,
+        usdc,
+        security({ id: 5 }),
+      ]).map((candidate) => candidate.id),
+    ).toEqual([2, 3]);
   });
 });

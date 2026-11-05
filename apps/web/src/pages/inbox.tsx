@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, EyeOff, Inbox, ShieldAlert } from "lucide-react";
+import { Check, EyeOff, Inbox, Link2, ShieldAlert } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { classifyInstrument, fetchInbox, type Classification, type InboxItem } from "@/api/inbox";
+import { fetchInstruments, settleAsDeploymentOf } from "@/api/instruments";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { formatNumber, formatRoundedAssetAmount, formatTimestamp } from "@/lib/format";
-import { identityOf } from "@/pages/instruments";
+import { deploymentCandidates, identityOf } from "@/pages/instruments";
 
 /**
  * The unsolicited inflows a keep decision would settle, in one line — or the
@@ -60,7 +62,7 @@ export function InboxPage() {
 }
 
 function ArrivalCard({ item, index }: { item: InboxItem; index: number }) {
-  const [keeping, setKeeping] = useState(false);
+  const [settling, setSettling] = useState<"keep" | "deployment" | null>(null);
 
   return (
     <li
@@ -97,14 +99,32 @@ function ArrivalCard({ item, index }: { item: InboxItem; index: number }) {
         {describeArrivals(item)}
       </p>
 
-      {keeping ? (
-        <KeepForm item={item} onDone={() => setKeeping(false)} />
+      {settling === "keep" ? (
+        <KeepForm item={item} onDone={() => setSettling(null)} />
+      ) : settling === "deployment" ? (
+        <DeploymentOfForm item={item} onDone={() => setSettling(null)} />
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setKeeping(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSettling("keep")}
+          >
             <Check aria-hidden />
             Keep
           </Button>
+          {item.type === "token" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              title="This contract is a token the ledger already holds, minted by its issuer on this chain too."
+              onClick={() => setSettling("deployment")}
+            >
+              <Link2 aria-hidden />
+              Same as another token
+            </Button>
+          )}
           <IgnoreButton item={item} />
           <DangerousButton item={item} />
         </div>
@@ -252,5 +272,109 @@ function DangerousButton({ item }: { item: InboxItem }) {
       <ShieldAlert aria-hidden />
       {classify.isPending ? "Marking…" : armed ? "Confirm — dangerous everywhere" : "Dangerous"}
     </Button>
+  );
+}
+
+/**
+ * The answer that this unfamiliar contract is a token the ledger already
+ * holds, on another chain (ADR-0032). Its inflows then wait under that token,
+ * here, for a Keep or a confirmed self-transfer — nothing is settled yet.
+ */
+function DeploymentOfForm({
+  item,
+  onDone,
+}: {
+  item: InboxItem;
+  onDone: () => void;
+}) {
+  const id = useId();
+  const queryClient = useQueryClient();
+  const instruments = useQuery({
+    queryKey: ["instruments"],
+    queryFn: fetchInstruments,
+  });
+  const candidates = deploymentCandidates(
+    { id: item.instrument_id, symbol: item.symbol },
+    instruments.data ?? [],
+  );
+  const [chosen, setChosen] = useState<number | null>(null);
+  const target = chosen ?? candidates[0]?.id ?? null;
+  const settle = useMutation({
+    mutationFn: (older: number) =>
+      settleAsDeploymentOf(item.instrument_id, older),
+    onSuccess: () =>
+      Promise.all(
+        ["inbox", "instruments", "transactions"].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] }),
+        ),
+      ),
+  });
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (target !== null) settle.mutate(target);
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 rounded-md border border-border p-4"
+      aria-label={`Settle ${item.symbol} as a Deployment of another token`}
+    >
+      <p className="measure-prose text-sm text-muted-foreground">
+        Its contract becomes another chain of the token you pick, and these
+        inflows wait under that token at {item.account_name}. Only where the
+        issuer itself mints it on this chain — a bridged or wrapped version
+        stays its own Instrument.
+      </p>
+      {instruments.error ? (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          The tokens could not be loaded to choose from.
+        </p>
+      ) : instruments.data && candidates.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          No other token is in the ledger yet — add the one this is, then settle
+          it here.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-1.5">
+          <label
+            htmlFor={`${id}-token`}
+            className="microlabel block text-muted-foreground"
+          >
+            Token
+          </label>
+          <NativeSelect
+            id={`${id}-token`}
+            value={target ?? ""}
+            onChange={(event) => setChosen(Number(event.target.value))}
+            disabled={!instruments.data}
+          >
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.symbol} · {candidate.name} · {identityOf(candidate)}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      )}
+      {settle.isError && (
+        <p role="alert" className="mt-3 text-sm text-alarm">
+          {settle.error.message}
+        </p>
+      )}
+      <div className="mt-4 flex gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={settle.isPending || target === null}
+        >
+          {settle.isPending ? "Settling…" : "Settle as a Deployment"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

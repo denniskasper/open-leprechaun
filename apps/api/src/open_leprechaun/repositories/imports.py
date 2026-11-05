@@ -102,12 +102,13 @@ def find_instrument(
     isin: str | None = None,
 ) -> int | None:
     """Resolve an identity the way the ledger keys it (ADR-0010): chain and
-    contract for a token, symbol for a native coin or cash, ISIN — current or
-    superseded, via the identifier history — for a security."""
+    contract for a token — any of its Deployments (ADR-0032) — symbol for a
+    native coin or cash, ISIN — current or superseded, via the identifier
+    history — for a security."""
     queries = {
         "token": (
-            "SELECT id FROM instrument WHERE family = 'crypto' AND type = 'token'"
-            " AND chain = :chain AND lower(contract_address) = lower(:contract_address)"
+            "SELECT instrument_id FROM deployment"
+            " WHERE chain = :chain AND lower(contract_address) = lower(:contract_address)"
         ),
         "native": (
             "SELECT id FROM instrument WHERE family = 'crypto' AND type = 'native'"
