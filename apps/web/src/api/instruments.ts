@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { postJson, refusal, request } from "@/api/http";
-import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } from "./securities";
+import {
+  categorySourceSchema,
+  distributionPolicySchema,
+  fundCategorySchema,
+} from "./securities";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const INSTRUMENTS_URL = "/api/instruments";
@@ -11,6 +15,12 @@ export const listingSchema = z.object({
   quote_currency: z.string(),
   // Whether this Listing's market prices the Instrument (ticket 45).
   price_source: z.boolean(),
+});
+
+/** One chain's contract a token is; the home one comes first (ADR-0032). */
+export const deploymentSchema = z.object({
+  chain: z.string(),
+  contract_address: z.string(),
 });
 
 /** A per-Account decision — kept or ignored; dangerous is global (ADR-0012). */
@@ -36,18 +46,22 @@ export const instrumentSchema = z.object({
   distribution_policy: distributionPolicySchema.nullable(),
   needs_review: z.boolean(),
   listings: z.array(listingSchema),
+  deployments: z.array(deploymentSchema),
   dangerous: z.boolean(),
   stances: z.array(accountStanceSchema),
 });
 
 export type Listing = z.infer<typeof listingSchema>;
+export type Deployment = z.infer<typeof deploymentSchema>;
 export type AccountStance = z.infer<typeof accountStanceSchema>;
 export type Instrument = z.infer<typeof instrumentSchema>;
 
 export async function fetchInstruments(): Promise<Instrument[]> {
   const response = await request(INSTRUMENTS_URL);
   if (!response.ok) {
-    throw new Error(`The API answered ${response.status} instead of listing instruments.`);
+    throw new Error(
+      `The API answered ${response.status} instead of listing instruments.`,
+    );
   }
   return z.array(instrumentSchema).parse(await response.json());
 }
@@ -69,7 +83,9 @@ export type NewInstrument =
   | { kind: "native"; symbol: string; name: string; chain: string }
   | { kind: "cash"; symbol: string; name: string };
 
-export async function addInstrument(instrument: NewInstrument): Promise<number> {
+export async function addInstrument(
+  instrument: NewInstrument,
+): Promise<number> {
   const response = await postJson(INSTRUMENTS_URL, instrument);
   if (!response.ok) {
     throw await refusal(response, "The Instrument could not be added.");
@@ -82,8 +98,47 @@ export async function addInstrument(instrument: NewInstrument): Promise<number> 
  * to the Instrument — or for good, for the numéraire.
  */
 export async function removeInstrument(instrumentId: number): Promise<void> {
-  const response = await request(`${INSTRUMENTS_URL}/${instrumentId}`, { method: "DELETE" });
+  const response = await request(`${INSTRUMENTS_URL}/${instrumentId}`, {
+    method: "DELETE",
+  });
   if (!response.ok) {
     throw await refusal(response, "The Instrument could not be removed.");
+  }
+}
+
+/**
+ * Another chain's contract of the same token, one its issuer mints itself
+ * (ADR-0032). Refused in the API's words for a coin, or for a contract
+ * another Instrument already holds.
+ */
+export async function addDeployment(
+  instrumentId: number,
+  deployment: Deployment,
+): Promise<void> {
+  const response = await postJson(
+    `${INSTRUMENTS_URL}/${instrumentId}/deployments`,
+    deployment,
+  );
+  if (!response.ok) {
+    throw await refusal(response, "The Deployment could not be added.");
+  }
+}
+
+/**
+ * Settle a token the ledger met by an unfamiliar contract as a Deployment of
+ * another: its contract and its waiting inflows move there, and it is gone.
+ */
+export async function settleAsDeploymentOf(
+  newer: number,
+  older: number,
+): Promise<void> {
+  const response = await postJson(`${INSTRUMENTS_URL}/${newer}/deployment-of`, {
+    instrument_id: older,
+  });
+  if (!response.ok) {
+    throw await refusal(
+      response,
+      "The token could not be settled as a Deployment.",
+    );
   }
 }

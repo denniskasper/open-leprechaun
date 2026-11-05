@@ -5,9 +5,11 @@ import type { Candidate, ResolvedListing } from "@/api/securities";
 import {
   classificationCell,
   conditionLine,
+  deploymentCandidates,
   editable,
   editedClassification,
   identityOf,
+  otherChains,
   securityPayload,
   sharedSymbols,
   staleExplanation,
@@ -34,6 +36,7 @@ function instrument(overrides: Partial<Instrument>): Instrument {
     distribution_policy: null,
     needs_review: false,
     listings: [],
+    deployments: [],
     dangerous: false,
     stances: [],
     ...overrides,
@@ -60,7 +63,12 @@ describe("identityOf", () => {
   it("identifies a native coin by its chain, marked native", () => {
     expect(
       identityOf(
-        instrument({ type: "native", symbol: "BTC", chain: "bitcoin", contract_address: null }),
+        instrument({
+          type: "native",
+          symbol: "BTC",
+          chain: "bitcoin",
+          contract_address: null,
+        }),
       ),
     ).toBe("bitcoin · native");
   });
@@ -99,7 +107,12 @@ describe("sharedSymbols", () => {
     const rows = [
       instrument({ id: 1, symbol: "UNI" }),
       instrument({ id: 2, symbol: "UNI", chain: "bsc" }),
-      instrument({ id: 3, symbol: "BTC", type: "native", contract_address: null }),
+      instrument({
+        id: 3,
+        symbol: "BTC",
+        type: "native",
+        contract_address: null,
+      }),
     ];
 
     expect(sharedSymbols(rows)).toEqual(new Set(["UNI"]));
@@ -113,7 +126,11 @@ describe("sharedSymbols", () => {
 describe("stanceWarning", () => {
   it("wears no warning by default, and none when kept", () => {
     expect(stanceWarning(instrument({}))).toBeNull();
-    expect(stanceWarning(instrument({ stances: [{ account_id: 1, stance: "kept" }] }))).toBeNull();
+    expect(
+      stanceWarning(
+        instrument({ stances: [{ account_id: 1, stance: "kept" }] }),
+      ),
+    ).toBeNull();
   });
 
   it("warns while any Account ignores the Instrument", () => {
@@ -132,7 +149,10 @@ describe("stanceWarning", () => {
   it("lets a global dangerous verdict outrank everything", () => {
     expect(
       stanceWarning(
-        instrument({ dangerous: true, stances: [{ account_id: 1, stance: "kept" }] }),
+        instrument({
+          dangerous: true,
+          stances: [{ account_id: 1, stance: "kept" }],
+        }),
       ),
     ).toBe("dangerous");
   });
@@ -140,21 +160,31 @@ describe("stanceWarning", () => {
 
 describe("classificationCell", () => {
   it("does not apply outside the security family, nor to a share", () => {
-    expect(classificationCell(instrument({}))).toEqual({ kind: "not_applicable" });
-    expect(classificationCell(security({ type: "share" }))).toEqual({ kind: "not_applicable" });
+    expect(classificationCell(instrument({}))).toEqual({
+      kind: "not_applicable",
+    });
+    expect(classificationCell(security({ type: "share" }))).toEqual({
+      kind: "not_applicable",
+    });
   });
 
   it("asks for review before anything else — the type is not yet settled", () => {
-    expect(classificationCell(security({ type: "unknown", needs_review: true }))).toEqual({
+    expect(
+      classificationCell(security({ type: "unknown", needs_review: true })),
+    ).toEqual({
       kind: "review",
     });
     // A review outranks a classification question even on a typed fund.
-    expect(classificationCell(security({ needs_review: true }))).toEqual({ kind: "review" });
+    expect(classificationCell(security({ needs_review: true }))).toEqual({
+      kind: "review",
+    });
   });
 
   it("names an unclassified fund — the state that blocks finalisation", () => {
     expect(classificationCell(security({}))).toEqual({ kind: "unclassified" });
-    expect(classificationCell(security({ type: "fund" }))).toEqual({ kind: "unclassified" });
+    expect(classificationCell(security({ type: "fund" }))).toEqual({
+      kind: "unclassified",
+    });
   });
 
   it("answers a classified fund with its category, source and policy", () => {
@@ -208,10 +238,12 @@ describe("securityPayload", () => {
   });
 
   it("falls back to WKN then ISIN for the display symbol", () => {
-    expect(securityPayload({ ...candidate, ticker: null }).symbol).toBe("A0RPWH");
-    expect(securityPayload({ ...candidate, ticker: null, wkn: null }).symbol).toBe(
-      "IE00B4L5Y983",
+    expect(securityPayload({ ...candidate, ticker: null }).symbol).toBe(
+      "A0RPWH",
     );
+    expect(
+      securityPayload({ ...candidate, ticker: null, wkn: null }).symbol,
+    ).toBe("IE00B4L5Y983");
   });
 
   it("sends the listing only when venue and currency arrive together", () => {
@@ -222,7 +254,9 @@ describe("securityPayload", () => {
   });
 
   it("sends no classification when the provider stated none", () => {
-    expect(securityPayload({ ...candidate, fund_category: null }).classification).toBeNull();
+    expect(
+      securityPayload({ ...candidate, fund_category: null }).classification,
+    ).toBeNull();
   });
 });
 
@@ -261,15 +295,23 @@ describe("staleExplanation", () => {
   });
 });
 
-
-function market(venue: string, currency: string, traded: string | null = null): ResolvedListing {
+function market(
+  venue: string,
+  currency: string,
+  traded: string | null = null,
+): ResolvedListing {
   return { venue, quote_currency: currency, traded_four_weeks: traded };
 }
 
 describe("unheldListings", () => {
   const held = [
     { id: 1, venue: "Xetra", quote_currency: "EUR", price_source: true },
-    { id: 2, venue: "London Stock Exchange", quote_currency: "USD", price_source: false },
+    {
+      id: 2,
+      venue: "London Stock Exchange",
+      quote_currency: "USD",
+      price_source: false,
+    },
   ];
 
   it("offers only the markets not already held, compared as venue and currency together", () => {
@@ -290,7 +332,9 @@ describe("unheldListings", () => {
   });
 
   it("treats a venue casing difference as held, matching the provider's own rule", () => {
-    const holder = [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }];
+    const holder = [
+      { id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true },
+    ];
 
     expect(unheldListings([market("Xetra", "EUR")], holder)).toEqual([]);
   });
@@ -298,8 +342,12 @@ describe("unheldListings", () => {
 
 describe("recommendation", () => {
   it("names the head of a EUR-led list the one to price by", () => {
-    expect(recommendation([market("Xetra", "EUR", "7220471"), market("gettex", "EUR", "882352")]))
-      .toMatch(/^The most traded EUR market/);
+    expect(
+      recommendation([
+        market("Xetra", "EUR", "7220471"),
+        market("gettex", "EUR", "882352"),
+      ]),
+    ).toMatch(/^The most traded EUR market/);
   });
 
   it("says no EUR market is on offer when the head is quoted in another currency", () => {
@@ -316,7 +364,9 @@ describe("recommendation", () => {
 
 describe("tradedWords", () => {
   it("reads a four-week volume in whole units", () => {
-    expect(tradedWords("936131441.065168", "en-US")).toBe("936,131,441 traded in 4 weeks");
+    expect(tradedWords("936131441.065168", "en-US")).toBe(
+      "936,131,441 traded in 4 weeks",
+    );
   });
 });
 
@@ -326,33 +376,54 @@ describe("whatGoesWith", () => {
   });
 
   it("names a Stance, whether at an Account or everywhere", () => {
-    expect(whatGoesWith(instrument({ stances: [{ account_id: 7, stance: "kept" }] }), [])).toBe(
-      "Removing it also removes its Stance.",
-    );
+    expect(
+      whatGoesWith(
+        instrument({ stances: [{ account_id: 7, stance: "kept" }] }),
+        [],
+      ),
+    ).toBe("Removing it also removes its Stance.");
     expect(whatGoesWith(instrument({ dangerous: true }), [])).toBe(
       "Removing it also removes its Stance.",
     );
     expect(
       whatGoesWith(
-        instrument({ dangerous: true, stances: [{ account_id: 7, stance: "ignored" }] }),
+        instrument({
+          dangerous: true,
+          stances: [{ account_id: 7, stance: "ignored" }],
+        }),
         [],
       ),
     ).toBe("Removing it also removes its Stances.");
   });
 
   it("names each Listing by its venue and currency", () => {
-    const listing = { id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true };
+    const listing = {
+      id: 1,
+      venue: "XETRA",
+      quote_currency: "EUR",
+      price_source: true,
+    };
     expect(whatGoesWith(security({ listings: [listing] }), [])).toBe(
       "Removing it also removes its Listing on XETRA (EUR).",
     );
     expect(
       whatGoesWith(
         security({
-          listings: [listing, { id: 2, venue: "Tradegate", quote_currency: "EUR", price_source: false }],
+          listings: [
+            listing,
+            {
+              id: 2,
+              venue: "Tradegate",
+              quote_currency: "EUR",
+              price_source: false,
+            },
+          ],
         }),
         [],
       ),
-    ).toBe("Removing it also removes its Listings on XETRA (EUR) and Tradegate (EUR).");
+    ).toBe(
+      "Removing it also removes its Listings on XETRA (EUR) and Tradegate (EUR).",
+    );
   });
 
   it("names the years redemption values were entered for, in order", () => {
@@ -375,7 +446,14 @@ describe("whatGoesWith", () => {
       whatGoesWith(
         security({
           stances: [{ account_id: 7, stance: "kept" }],
-          listings: [{ id: 1, venue: "XETRA", quote_currency: "EUR", price_source: true }],
+          listings: [
+            {
+              id: 1,
+              venue: "XETRA",
+              quote_currency: "EUR",
+              price_source: true,
+            },
+          ],
         }),
         [2030],
       ),
@@ -392,8 +470,12 @@ describe("editable", () => {
   });
 
   it("leaves a flagged security to its review", () => {
-    expect(editable(security({ type: "unknown", needs_review: true }))).toBe(false);
-    expect(editable(security({ type: "share", needs_review: true }))).toBe(false);
+    expect(editable(security({ type: "unknown", needs_review: true }))).toBe(
+      false,
+    );
+    expect(editable(security({ type: "share", needs_review: true }))).toBe(
+      false,
+    );
   });
 
   it("has nothing to edit on a coin or a currency", () => {
@@ -411,11 +493,15 @@ describe("editedClassification", () => {
 
   it("states nothing when the selects still show what is stored", () => {
     // A rename must not restamp the provider's prefill as the Admin's.
-    expect(editedClassification(provided, "etf", "aktienfonds", "accumulating")).toBeNull();
+    expect(
+      editedClassification(provided, "etf", "aktienfonds", "accumulating"),
+    ).toBeNull();
   });
 
   it("states the category the Admin changed", () => {
-    expect(editedClassification(provided, "etf", "mischfonds", "accumulating")).toEqual({
+    expect(
+      editedClassification(provided, "etf", "mischfonds", "accumulating"),
+    ).toEqual({
       fund_category: "mischfonds",
       distribution_policy: "accumulating",
     });
@@ -431,13 +517,67 @@ describe("editedClassification", () => {
   it("states a category given to a share newly typed a fund", () => {
     const share = security({ type: "share" });
     expect(editedClassification(share, "fund", "", "")).toBeNull();
-    expect(editedClassification(share, "fund", "sonstige", "distributing")).toEqual({
+    expect(
+      editedClassification(share, "fund", "sonstige", "distributing"),
+    ).toEqual({
       fund_category: "sonstige",
       distribution_policy: "distributing",
     });
   });
 
   it("states nothing for a type that is no fund's", () => {
-    expect(editedClassification(provided, "share", "mischfonds", "")).toBeNull();
+    expect(
+      editedClassification(provided, "share", "mischfonds", ""),
+    ).toBeNull();
+  });
+});
+
+describe("otherChains", () => {
+  const home = {
+    chain: "ethereum",
+    contract_address: "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+  };
+
+  it("names the chains a token is deployed on beyond its home one", () => {
+    expect(
+      otherChains(
+        instrument({
+          deployments: [
+            home,
+            { chain: "solana", contract_address: "SoLanaMint111" },
+            { chain: "base", contract_address: "0x" + "b0".repeat(20) },
+          ],
+        }),
+      ),
+    ).toEqual(["solana", "base"]);
+  });
+
+  it("names none for a token on one chain, or anything else", () => {
+    expect(otherChains(instrument({ deployments: [home] }))).toEqual([]);
+    expect(otherChains(security({}))).toEqual([]);
+  });
+});
+
+describe("deploymentCandidates", () => {
+  it("offers every other token, those wearing the same symbol first", () => {
+    const newer = instrument({ id: 9, symbol: "USDC", chain: "solana" });
+    const usdc = instrument({ id: 2, symbol: "USDC", name: "USD Coin" });
+    const aave = instrument({ id: 3, symbol: "AAVE", name: "Aave" });
+    const btc = instrument({
+      id: 4,
+      type: "native",
+      symbol: "BTC",
+      contract_address: null,
+    });
+
+    expect(
+      deploymentCandidates(newer, [
+        aave,
+        newer,
+        btc,
+        usdc,
+        security({ id: 5 }),
+      ]).map((candidate) => candidate.id),
+    ).toEqual([2, 3]);
   });
 });
