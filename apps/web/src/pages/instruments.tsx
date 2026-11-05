@@ -119,9 +119,7 @@ function abbreviate(contractAddress: string): string {
  * (ADR-0012). Dangerous is global and outranks everything; ignored warns as
  * long as any Account ignores the Instrument. A kept holding needs no flag.
  */
-export function stanceWarning(
-  instrument: Instrument,
-): "dangerous" | "ignored" | null {
+export function stanceWarning(instrument: Instrument): "dangerous" | "ignored" | null {
   if (instrument.dangerous) {
     return "dangerous";
   }
@@ -191,10 +189,7 @@ export function classificationCell(instrument: Instrument): ClassificationCell {
   if (!FUND_TYPES.includes(instrument.type)) {
     return { kind: "not_applicable" };
   }
-  if (
-    instrument.fund_category === null ||
-    instrument.fund_category_source === null
-  ) {
+  if (instrument.fund_category === null || instrument.fund_category_source === null) {
     return { kind: "unclassified" };
   }
   return {
@@ -290,14 +285,9 @@ export function conditionLine(conditions: ProviderCondition[]): string | null {
  * What a stale price's label explains on demand: whose answer is being
  * served, and from when — so a stale figure is never mistaken for current.
  */
-export function staleExplanation(
-  entry: PricedInstrument,
-  locale?: string,
-): string {
+export function staleExplanation(entry: PricedInstrument, locale?: string): string {
   const age =
-    entry.as_of === null
-      ? "an unknown time"
-      : formatTimestamp(Date.parse(entry.as_of), locale);
+    entry.as_of === null ? "an unknown time" : formatTimestamp(Date.parse(entry.as_of), locale);
   return `Every provider failed just now — this is the last known price, from ${entry.source} at ${age}.`;
 }
 
@@ -308,18 +298,10 @@ export function staleExplanation(
  * provider's own rule (ADR-0021): a holder of "XETRA" must not be offered
  * "Xetra" as a near-duplicate.
  */
-export function unheldListings(
-  resolved: ResolvedListing[],
-  held: Listing[],
-): ResolvedListing[] {
-  const key = (venue: string, currency: string) =>
-    `${venue.toLowerCase()} ${currency}`;
-  const known = new Set(
-    held.map((listing) => key(listing.venue, listing.quote_currency)),
-  );
-  return resolved.filter(
-    (listing) => !known.has(key(listing.venue, listing.quote_currency)),
-  );
+export function unheldListings(resolved: ResolvedListing[], held: Listing[]): ResolvedListing[] {
+  const key = (venue: string, currency: string) => `${venue.toLowerCase()} ${currency}`;
+  const known = new Set(held.map((listing) => key(listing.venue, listing.quote_currency)));
+  return resolved.filter((listing) => !known.has(key(listing.venue, listing.quote_currency)));
 }
 
 /**
@@ -343,9 +325,7 @@ export function tradedWords(traded: string, locale?: string): string {
 
 /** "a", "a and b", "a, b and c". */
 function listed(parts: string[]): string {
-  return parts.length === 1
-    ? parts[0]!
-    : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+  return parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
 
 /**
@@ -368,9 +348,7 @@ export function whatGoesWith(
     const markets = instrument.listings.map(
       (listing) => `${listing.venue} (${listing.quote_currency})`,
     );
-    parts.push(
-      `its ${markets.length === 1 ? "Listing" : "Listings"} on ${listed(markets)}`,
-    );
+    parts.push(`its ${markets.length === 1 ? "Listing" : "Listings"} on ${listed(markets)}`);
   }
   if (redemptionYears === null) {
     parts.push("any redemption values entered for it");
@@ -378,9 +356,7 @@ export function whatGoesWith(
     const years = [...redemptionYears].sort((a, b) => a - b).map(String);
     parts.push(`its redemption values for ${listed(years)}`);
   }
-  return parts.length === 0
-    ? null
-    : `Removing it also removes ${listed(parts)}.`;
+  return parts.length === 0 ? null : `Removing it also removes ${listed(parts)}.`;
 }
 
 export function InstrumentsPage() {
@@ -391,10 +367,7 @@ export function InstrumentsPage() {
   // Prices arrive separately: the providers may be slow or down, and the
   // instrument list must not wait on them — a failed report leaves the table
   // standing with its price column honestly empty.
-  const prices = useQuery({
-    queryKey: ["crypto-prices"],
-    queryFn: fetchCryptoPrices,
-  });
+  const prices = useQuery({ queryKey: ["crypto-prices"], queryFn: fetchCryptoPrices });
   const securityPrices = useQuery({
     queryKey: ["security-prices"],
     queryFn: fetchSecurityPrices,
@@ -438,9 +411,7 @@ export function InstrumentsPage() {
         }
       />
 
-      {adding === "security" && (
-        <AddSecurityPanel onDone={() => setAdding(null)} />
-      )}
+      {adding === "security" && <AddSecurityPanel onDone={() => setAdding(null)} />}
       {adding === "coin" && (
         <AddInstrumentPanel
           instruments={data ?? []}
@@ -486,16 +457,12 @@ export function InstrumentsPage() {
           )}
           {conditions && (
             <p className="microlabel measure-prose text-caution">
-              price providers: {conditions} — stale prices below are last known,
-              with their age
+              price providers: {conditions} — stale prices below are last known, with their age
             </p>
           )}
           <InstrumentTable
             instruments={data}
-            prices={[
-              ...(prices.data?.prices ?? []),
-              ...(securityPrices.data?.prices ?? []),
-            ]}
+            prices={[...(prices.data?.prices ?? []), ...(securityPrices.data?.prices ?? [])]}
           />
         </div>
       ) : null}
@@ -526,11 +493,7 @@ function AddSecurityPanel({ onDone }: { onDone: () => void }) {
     >
       <div className="flex items-baseline justify-between gap-4">
         <p className="microlabel text-muted-foreground">New security</p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setManual((byHand) => !byHand)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => setManual((byHand) => !byHand)}>
           {manual ? "Back to search" : "No provider coverage? Create by hand"}
         </Button>
       </div>
@@ -551,10 +514,7 @@ function AddSecurityPanel({ onDone }: { onDone: () => void }) {
               className="font-mono"
               autoFocus
             />
-            <Button
-              type="submit"
-              disabled={search.isPending || query.trim().length < 2}
-            >
+            <Button type="submit" disabled={search.isPending || query.trim().length < 2}>
               <Search aria-hidden />
               Search
             </Button>
@@ -564,14 +524,12 @@ function AddSecurityPanel({ onDone }: { onDone: () => void }) {
           </p>
 
           {search.error != null && (
-            <p role="alert" className="mt-3 text-sm text-alarm">
-              {search.error.message}
-            </p>
+            <p role="alert" className="mt-3 text-sm text-alarm">{search.error.message}</p>
           )}
           {search.data && search.data.length === 0 && (
             <p className="mt-3 text-sm text-muted-foreground">
-              The provider knows nothing matching — create the security by hand
-              and it stays unpriced rather than valued at zero.
+              The provider knows nothing matching — create the security by hand and it stays
+              unpriced rather than valued at zero.
             </p>
           )}
           {search.data && search.data.length > 0 && (
@@ -591,8 +549,7 @@ function CandidateRow({ candidate }: { candidate: Candidate }) {
   const queryClient = useQueryClient();
   const add = useMutation({
     mutationFn: () => createSecurity(securityPayload(candidate)),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["instruments"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["instruments"] }),
   });
   const known = candidate.instrument_id !== null || add.isSuccess;
   const listing =
@@ -638,12 +595,7 @@ function CandidateRow({ candidate }: { candidate: Candidate }) {
       {known ? (
         <span className="microlabel text-muted-foreground">in the ledger</span>
       ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => add.mutate()}
-          disabled={add.isPending}
-        >
+        <Button variant="outline" size="sm" onClick={() => add.mutate()} disabled={add.isPending}>
           Add
         </Button>
       )}
@@ -679,8 +631,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
             ? {
                 fund_category: category as FundCategory,
                 fund_category_source: "admin",
-                distribution_policy:
-                  policy === "" ? null : (policy as DistributionPolicy),
+                distribution_policy: policy === "" ? null : (policy as DistributionPolicy),
               }
             : null,
       }),
@@ -700,10 +651,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
     <form onSubmit={submit} className="mt-4 space-y-4">
       <div className="grid gap-4 @lg:grid-cols-2">
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-isin`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-isin`} className="microlabel block text-muted-foreground">
             ISIN
           </label>
           <Input
@@ -715,10 +663,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-name`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-name`} className="microlabel block text-muted-foreground">
             Name
           </label>
           <Input
@@ -729,10 +674,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-ticker`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-ticker`} className="microlabel block text-muted-foreground">
             Ticker (optional)
           </label>
           <Input
@@ -743,10 +685,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-type`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-type`} className="microlabel block text-muted-foreground">
             Type
           </label>
           <NativeSelect
@@ -763,10 +702,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
           </NativeSelect>
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-venue`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-venue`} className="microlabel block text-muted-foreground">
             Listing venue (optional)
           </label>
           <Input
@@ -776,10 +712,7 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-currency`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-currency`} className="microlabel block text-muted-foreground">
             Listing currency (optional)
           </label>
           <Input
@@ -801,13 +734,11 @@ function ManualSecurityForm({ onDone }: { onDone: () => void }) {
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Without a provider nothing can vouch for a value — the security is
-        created unpriced, shown as an unknown value rather than zero.
+        Without a provider nothing can vouch for a value — the security is created unpriced,
+        shown as an unknown value rather than zero.
       </p>
       {listingHalf && (
-        <p className="text-sm text-caution">
-          A Listing names its venue and currency together.
-        </p>
+        <p className="text-sm text-caution">A Listing names its venue and currency together.</p>
       )}
       {create.error != null && (
         <p role="alert" className="text-sm text-alarm">
@@ -843,10 +774,7 @@ function InstrumentTable({
 }) {
   const shared = sharedSymbols(instruments);
   const priceOf = new Map(prices.map((entry) => [entry.instrument_id, entry]));
-  const [editing, setEditing] = useState<{
-    id: number;
-    editor: RowEditor;
-  } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; editor: RowEditor } | null>(null);
   const [managing, setManaging] = useState<number | null>(null);
 
   return (
@@ -875,9 +803,7 @@ function InstrumentTable({
               entry={priceOf.get(instrument.id)}
               index={index}
               editing={editing?.id === instrument.id ? editing.editor : null}
-              onEdit={(editor) =>
-                setEditing(editor ? { id: instrument.id, editor } : null)
-              }
+              onEdit={(editor) => setEditing(editor ? { id: instrument.id, editor } : null)}
               managing={managing === instrument.id}
               onManage={(open) => setManaging(open ? instrument.id : null)}
             />
@@ -910,10 +836,7 @@ function InstrumentRow({
   onManage: (open: boolean) => void;
 }) {
   const cell = classificationCell(instrument);
-  const removal = useRemoval(
-    () => removeInstrument(instrument.id),
-    ["instruments"],
-  );
+  const removal = useRemoval(() => removeInstrument(instrument.id), ["instruments"]);
   const goes = useWhatGoesWith(instrument, removal.confirming);
   // The row shows one thing at a time: a removal half asked for, or refused,
   // does not stand beside an editor opened after it — nor an open editor
@@ -1026,9 +949,7 @@ function InstrumentRow({
       {((removal.confirming && goes) || removal.refusal) && (
         <DetailRow columns={COLUMN_COUNT}>
           {removal.confirming && goes && (
-            <p className="measure-prose text-sm text-muted-foreground">
-              {goes}
-            </p>
+            <p className="measure-prose text-sm text-muted-foreground">{goes}</p>
           )}
           {removal.refusal && (
             <p role="alert" className="measure-prose text-sm text-alarm">
@@ -1048,11 +969,7 @@ function InstrumentRow({
       )}
       {editing === "details" && (
         <DetailRow columns={COLUMN_COUNT}>
-          <SettleForm
-            instrument={instrument}
-            mode="edit"
-            onDone={() => onEdit(null)}
-          />
+          <SettleForm instrument={instrument} mode="edit" onDone={() => onEdit(null)} />
         </DetailRow>
       )}
       {managing && instrument.family === "security" && (
@@ -1074,12 +991,8 @@ function InstrumentRow({
  * redemption values are looked up only then; until they answer the row says
  * nothing rather than leave a year out, and a failed lookup still warns.
  */
-function useWhatGoesWith(
-  instrument: Instrument,
-  confirming: boolean,
-): string | null {
-  const fund =
-    instrument.family === "security" && FUND_TYPES.includes(instrument.type);
+function useWhatGoesWith(instrument: Instrument, confirming: boolean): string | null {
+  const fund = instrument.family === "security" && FUND_TYPES.includes(instrument.type);
   const redemption = useQuery({
     queryKey: ["fund-redemption-values"],
     queryFn: fetchFundRedemptionValues,
@@ -1330,10 +1243,7 @@ function HeldListing({
   moving: boolean;
   onPrice: () => void;
 }) {
-  const removal = useRemoval(
-    () => removeListing(instrument.id, listing.id),
-    ["instruments"],
-  );
+  const removal = useRemoval(() => removeListing(instrument.id, listing.id), ["instruments"]);
   const name = `${listing.venue} ${listing.quote_currency}`;
   return (
     <li className="space-y-1">
@@ -1388,8 +1298,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
     mutationFn: () => resolveListings(instrument.isin ?? instrument.symbol),
   });
   const move = useMutation({
-    mutationFn: (listingId: number) =>
-      choosePriceSource(instrument.id, listingId),
+    mutationFn: (listingId: number) => choosePriceSource(instrument.id, listingId),
     onSuccess: refresh,
   });
   const add = useMutation({
@@ -1415,8 +1324,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
   const unheld = unheldListings(resolve.data ?? [], instrument.listings);
   // Only the overall best earns the mark: once it is held, the next one down
   // is merely what is left.
-  const recommended =
-    unheld[0] === resolve.data?.[0] ? recommendation(unheld) : null;
+  const recommended = unheld[0] === resolve.data?.[0] ? recommendation(unheld) : null;
 
   return (
     <div className="space-y-4" aria-label={`Listings of ${instrument.symbol}`}>
@@ -1441,10 +1349,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
 
       <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-venue`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-venue`} className="microlabel block text-muted-foreground">
             Venue
           </label>
           <Input
@@ -1455,10 +1360,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label
-            htmlFor={`${id}-currency`}
-            className="microlabel block text-muted-foreground"
-          >
+          <label htmlFor={`${id}-currency`} className="microlabel block text-muted-foreground">
             Currency
           </label>
           <Input
@@ -1471,9 +1373,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
         <Button
           type="submit"
           variant="outline"
-          disabled={
-            add.isPending || venue.trim() === "" || currency.trim() === ""
-          }
+          disabled={add.isPending || venue.trim() === "" || currency.trim() === ""}
         >
           <Plus aria-hidden />
           Add by hand
@@ -1502,8 +1402,7 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
 
       {resolve.data && resolve.data.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          The provider knows no markets for this identifier — enter the Listing
-          by hand.
+          The provider knows no markets for this identifier — enter the Listing by hand.
         </p>
       )}
       {resolve.data && resolve.data.length > 0 && unheld.length === 0 && (
@@ -1587,17 +1486,10 @@ function ClassificationSummary({
     );
   }
   return (
-    <button
-      type="button"
-      className="group text-left"
-      onClick={() => onEdit(true)}
-    >
+    <button type="button" className="group text-left" onClick={() => onEdit(true)}>
       {CATEGORY_LABEL[cell.category]}
       {cell.policy !== null && (
-        <span className="text-muted-foreground">
-          {" "}
-          · {POLICY_LABEL[cell.policy]}
-        </span>
+        <span className="text-muted-foreground"> · {POLICY_LABEL[cell.policy]}</span>
       )}
       <span
         className="microlabel ml-2 text-muted-foreground group-hover:text-foreground"
@@ -1656,28 +1548,18 @@ function SettleForm({
       : fund && category !== ""
         ? {
             fund_category: category as FundCategory,
-            distribution_policy:
-              policy === "" ? null : (policy as DistributionPolicy),
+            distribution_policy: policy === "" ? null : (policy as DistributionPolicy),
           }
         : null;
   const settle = useMutation({
     mutationFn: () => {
       if (identifies) {
-        const settled = {
-          type,
-          symbol: symbol.trim(),
-          name: name.trim(),
-          classification,
-        };
-        return review
-          ? reviewSecurity(instrument.id, settled)
-          : editSecurity(instrument.id, settled);
+        const settled = { type, symbol: symbol.trim(), name: name.trim(), classification };
+        return review ? reviewSecurity(instrument.id, settled) : editSecurity(instrument.id, settled);
       }
       if (classification === null) {
         // Unreachable while the button disables itself, and never a guess.
-        return Promise.reject(
-          new Error("Choose a Teilfreistellung category first."),
-        );
+        return Promise.reject(new Error("Choose a Teilfreistellung category first."));
       }
       return classifyFund(instrument.id, classification);
     },
@@ -1697,10 +1579,7 @@ function SettleForm({
       {identifies && (
         <>
           <div className="space-y-1.5">
-            <label
-              htmlFor={`${id}-type`}
-              className="microlabel block text-muted-foreground"
-            >
+            <label htmlFor={`${id}-type`} className="microlabel block text-muted-foreground">
               Type
             </label>
             <NativeSelect
@@ -1716,10 +1595,7 @@ function SettleForm({
             </NativeSelect>
           </div>
           <div className="space-y-1.5">
-            <label
-              htmlFor={`${id}-symbol`}
-              className="microlabel block text-muted-foreground"
-            >
+            <label htmlFor={`${id}-symbol`} className="microlabel block text-muted-foreground">
               Symbol
             </label>
             <Input
@@ -1731,10 +1607,7 @@ function SettleForm({
             />
           </div>
           <div className="space-y-1.5">
-            <label
-              htmlFor={`${id}-name`}
-              className="microlabel block text-muted-foreground"
-            >
+            <label htmlFor={`${id}-name`} className="microlabel block text-muted-foreground">
               Name
             </label>
             <Input
@@ -1761,8 +1634,8 @@ function SettleForm({
       )}
       {mode === "edit" && fund && category === "" && (
         <p className="measure-prose basis-full text-sm text-caution">
-          A fund without a Teilfreistellung category blocks finalising the tax
-          report — choose one now or classify it later.
+          A fund without a Teilfreistellung category blocks finalising the tax report — choose one
+          now or classify it later.
         </p>
       )}
       {settle.error != null && (
@@ -1772,9 +1645,7 @@ function SettleForm({
       )}
       <Button
         type="submit"
-        disabled={
-          settle.isPending || (mode === "classify" && classification === null)
-        }
+        disabled={settle.isPending || (mode === "classify" && classification === null)}
       >
         {SETTLE_LABEL[mode]}
       </Button>
@@ -1814,10 +1685,7 @@ function ClassificationSelects({
   return (
     <>
       <div className="space-y-1.5">
-        <label
-          htmlFor={`${id}-category`}
-          className="microlabel block text-muted-foreground"
-        >
+        <label htmlFor={`${id}-category`} className="microlabel block text-muted-foreground">
           Teilfreistellung
         </label>
         <NativeSelect
@@ -1835,10 +1703,7 @@ function ClassificationSelects({
         </NativeSelect>
       </div>
       <div className="space-y-1.5">
-        <label
-          htmlFor={`${id}-policy`}
-          className="microlabel block text-muted-foreground"
-        >
+        <label htmlFor={`${id}-policy`} className="microlabel block text-muted-foreground">
           Distribution policy
         </label>
         <NativeSelect
@@ -1879,14 +1744,9 @@ function PriceCell({ entry }: { entry: PricedInstrument | undefined }) {
   }
   return (
     <>
-      {entry.price_eur !== null && (
-        <Price value={entry.price_eur} currency="EUR" />
-      )}
+      {entry.price_eur !== null && <Price value={entry.price_eur} currency="EUR" />}
       {entry.status === "stale" && (
-        <span
-          className="microlabel ml-2 text-caution"
-          title={staleExplanation(entry)}
-        >
+        <span className="microlabel ml-2 text-caution" title={staleExplanation(entry)}>
           stale
         </span>
       )}

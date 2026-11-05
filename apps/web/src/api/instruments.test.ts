@@ -45,9 +45,7 @@ const fund = {
   fund_category_source: "provider",
   distribution_policy: "accumulating",
   needs_review: false,
-  listings: [
-    { id: 4, venue: "XETRA", quote_currency: "EUR", price_source: true },
-  ],
+  listings: [{ id: 4, venue: "XETRA", quote_currency: "EUR", price_source: true }],
   deployments: [],
   dangerous: false,
   stances: [{ account_id: 5, stance: "kept" }],
@@ -57,10 +55,7 @@ function respondWith(status: number, body: unknown): void {
   vi.stubGlobal(
     "fetch",
     // A 204 carries no body — the Response constructor itself refuses one.
-    vi.fn(
-      async () =>
-        new Response(status === 204 ? null : JSON.stringify(body), { status }),
-    ),
+    vi.fn(async () => new Response(status === 204 ? null : JSON.stringify(body), { status })),
   );
 }
 
@@ -104,9 +99,7 @@ describe("removeInstrument", () => {
 
     await removeInstrument(7);
 
-    expect(fetch).toHaveBeenCalledWith("/api/instruments/7", {
-      method: "DELETE",
-    });
+    expect(fetch).toHaveBeenCalledWith("/api/instruments/7", { method: "DELETE" });
   });
 
   it("surfaces the API's own reason for a refusal", async () => {

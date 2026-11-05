@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { postJson, refusal, request } from "@/api/http";
-import {
-  categorySourceSchema,
-  distributionPolicySchema,
-  fundCategorySchema,
-} from "./securities";
+import { categorySourceSchema, distributionPolicySchema, fundCategorySchema } from "./securities";
 
 /** Relative, because the dev server proxies /api to the API on the same origin. */
 export const INSTRUMENTS_URL = "/api/instruments";
@@ -59,9 +55,7 @@ export type Instrument = z.infer<typeof instrumentSchema>;
 export async function fetchInstruments(): Promise<Instrument[]> {
   const response = await request(INSTRUMENTS_URL);
   if (!response.ok) {
-    throw new Error(
-      `The API answered ${response.status} instead of listing instruments.`,
-    );
+    throw new Error(`The API answered ${response.status} instead of listing instruments.`);
   }
   return z.array(instrumentSchema).parse(await response.json());
 }
@@ -83,9 +77,7 @@ export type NewInstrument =
   | { kind: "native"; symbol: string; name: string; chain: string }
   | { kind: "cash"; symbol: string; name: string };
 
-export async function addInstrument(
-  instrument: NewInstrument,
-): Promise<number> {
+export async function addInstrument(instrument: NewInstrument): Promise<number> {
   const response = await postJson(INSTRUMENTS_URL, instrument);
   if (!response.ok) {
     throw await refusal(response, "The Instrument could not be added.");
@@ -98,9 +90,7 @@ export async function addInstrument(
  * to the Instrument — or for good, for the numéraire.
  */
 export async function removeInstrument(instrumentId: number): Promise<void> {
-  const response = await request(`${INSTRUMENTS_URL}/${instrumentId}`, {
-    method: "DELETE",
-  });
+  const response = await request(`${INSTRUMENTS_URL}/${instrumentId}`, { method: "DELETE" });
   if (!response.ok) {
     throw await refusal(response, "The Instrument could not be removed.");
   }

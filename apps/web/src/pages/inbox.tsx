@@ -1,23 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, EyeOff, Inbox, Link2, ShieldAlert } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
-import {
-  classifyInstrument,
-  fetchInbox,
-  type Classification,
-  type InboxItem,
-} from "@/api/inbox";
+import { classifyInstrument, fetchInbox, type Classification, type InboxItem } from "@/api/inbox";
 import { fetchInstruments, settleAsDeploymentOf } from "@/api/instruments";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import {
-  formatNumber,
-  formatRoundedAssetAmount,
-  formatTimestamp,
-} from "@/lib/format";
+import { formatNumber, formatRoundedAssetAmount, formatTimestamp } from "@/lib/format";
 import { deploymentCandidates, identityOf } from "@/pages/instruments";
 
 /**
@@ -37,10 +28,7 @@ export function describeArrivals(item: InboxItem, locale?: string): string {
 }
 
 export function InboxPage() {
-  const { data, error, refetch } = useQuery({
-    queryKey: ["inbox"],
-    queryFn: fetchInbox,
-  });
+  const { data, error, refetch } = useQuery({ queryKey: ["inbox"], queryFn: fetchInbox });
 
   return (
     <div className="space-y-10">
@@ -65,11 +53,7 @@ export function InboxPage() {
       ) : data ? (
         <ul className="measure-list space-y-4">
           {data.map((item, index) => (
-            <ArrivalCard
-              key={`${item.instrument_id}:${item.account_id}`}
-              item={item}
-              index={index}
-            />
+            <ArrivalCard key={`${item.instrument_id}:${item.account_id}`} item={item} index={index} />
           ))}
         </ul>
       ) : null}
@@ -193,10 +177,7 @@ function KeepForm({ item, onDone }: { item: InboxItem; onDone: () => void }) {
             Was this received for a counter-performance?
           </legend>
           <div className="mt-2 space-y-2">
-            <label
-              htmlFor={`${id}-no`}
-              className="flex items-baseline gap-2 text-sm"
-            >
+            <label htmlFor={`${id}-no`} className="flex items-baseline gap-2 text-sm">
               <input
                 id={`${id}-no`}
                 type="radio"
@@ -208,15 +189,11 @@ function KeepForm({ item, onDone }: { item: InboxItem; onDone: () => void }) {
               <span>
                 No — a windfall.{" "}
                 <span className="text-muted-foreground">
-                  Nothing was given for it, so it is no income and settles at
-                  zero basis.
+                  Nothing was given for it, so it is no income and settles at zero basis.
                 </span>
               </span>
             </label>
-            <label
-              htmlFor={`${id}-yes`}
-              className="flex items-baseline gap-2 text-sm"
-            >
+            <label htmlFor={`${id}-yes`} className="flex items-baseline gap-2 text-sm">
               <input
                 id={`${id}-yes`}
                 type="radio"
@@ -262,9 +239,7 @@ function IgnoreButton({ item }: { item: InboxItem }) {
       className="text-muted-foreground"
       disabled={classify.isPending}
       title="Ignored at this Account only: the position stays visible with a warning, mints no lot, and while ignored everywhere the Instrument can never acquire a price source."
-      onClick={() =>
-        classify.mutate({ stance: "ignored", account_id: item.account_id })
-      }
+      onClick={() => classify.mutate({ stance: "ignored", account_id: item.account_id })}
     >
       <EyeOff aria-hidden />
       {classify.isPending ? "Ignoring…" : "Ignore"}
@@ -295,11 +270,7 @@ function DangerousButton({ item }: { item: InboxItem }) {
       }}
     >
       <ShieldAlert aria-hidden />
-      {classify.isPending
-        ? "Marking…"
-        : armed
-          ? "Confirm — dangerous everywhere"
-          : "Dangerous"}
+      {classify.isPending ? "Marking…" : armed ? "Confirm — dangerous everywhere" : "Dangerous"}
     </Button>
   );
 }
