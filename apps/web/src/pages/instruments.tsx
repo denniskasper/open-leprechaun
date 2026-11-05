@@ -927,7 +927,13 @@ function ListingsSummary({
   }
   if (managing) {
     return (
-      <Button variant="ghost" size="sm" onClick={() => onManage(false)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-my-1 -ml-2 h-7 px-2"
+        aria-label={`Close the Listings of ${instrument.symbol}`}
+        onClick={() => onManage(false)}
+      >
         Close
       </Button>
     );
@@ -937,6 +943,7 @@ function ListingsSummary({
       <Button
         variant="outline"
         size="sm"
+        className="-my-1 h-7 px-2"
         onClick={() => onManage(true)}
         title="Without a Listing nothing can vouch for a price — the security stays unpriced, never zero."
       >
@@ -945,7 +952,14 @@ function ListingsSummary({
     );
   }
   return (
-    <button type="button" className="group text-left" onClick={() => onManage(true)}>
+    // A dotted underline marks the markets as the way into their editor.
+    <button
+      type="button"
+      className="text-left underline decoration-muted-foreground/40 decoration-dotted underline-offset-4 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      title="Add, remove or reprice this security's Listings"
+      aria-label={`Edit the Listings of ${instrument.symbol}`}
+      onClick={() => onManage(true)}
+    >
       {instrument.listings.map((listing, index) => (
         <span key={listing.id}>
           {index > 0 && ", "}
