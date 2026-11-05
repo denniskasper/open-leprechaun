@@ -279,6 +279,30 @@ def test_a_known_token_resolves_by_its_contract_whatever_it_is_called(client, in
     assert [leg["instrument_id"] for leg in recorded["legs"]] == [known]
 
 
+def test_a_token_resolves_by_any_of_its_deployments(client, indexers, db):
+    """A token minted natively on several chains is one Instrument
+    (ADR-0032): a transfer on a chain other than the one it was created on
+    lands on it through the Deployment the Admin attached, and mints no
+    second Instrument."""
+    known = instruments.create_crypto_token(
+        db, symbol="USDX", name="USDX Coin", chain="ethereum", contract_address="0x" + "a0" * 20
+    )
+    attached = client.post(
+        f"/api/instruments/{known}/deployments",
+        json={"chain": "fakechain", "contract_address": UNKNOWN_TOKEN.contract_address},
+    )
+    assert attached.status_code == 201, attached.text
+    indexers["fakechain"] = FakeIndexer(
+        answers=AddressHistory(transfers=(transfer(asset=UNKNOWN_TOKEN),))
+    )
+
+    committed = client.post("/api/address-imports", json=request(wallet_account(client)))
+
+    assert committed.json()["instruments_created"] == 0
+    (recorded,) = client.get("/api/transactions").json()
+    assert [leg["instrument_id"] for leg in recorded["legs"]] == [known]
+
+
 def test_a_second_address_may_not_write_into_the_same_account(client, indexers):
     """One authoritative source per Account: the address is part of the
     source, so another address previews but is refused at commit."""

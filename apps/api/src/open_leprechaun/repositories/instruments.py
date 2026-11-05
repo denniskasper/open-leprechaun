@@ -86,9 +86,72 @@ def create_crypto_token(
                 kind="contract_address",
                 value=canonical_contract_address(contract_address),
             )
+            _insert_deployment(
+                connection, instrument_id, chain=chain, contract_address=contract_address
+            )
             return instrument_id
     except IntegrityError:
         return None
+
+
+class DeploymentRefusal(Enum):
+    """Why a Deployment was not attached — each a different repair."""
+
+    no_such_instrument = "no_such_instrument"
+    not_a_token = "not_a_token"
+    already_held = "already_held"
+
+
+def add_deployment(
+    engine: Engine, instrument_id: int, *, chain: str, contract_address: str
+) -> DeploymentRefusal | None:
+    """Attach a chain's contract to a token as another of its identities
+    (ADR-0032). Only a token has Deployments: a native coin's symbol already
+    names it everywhere. The unique index is the arbiter of a contract
+    another Instrument — or this one — already holds. None means attached."""
+    try:
+        with engine.begin() as connection:
+            kind = connection.execute(
+                text("SELECT type FROM instrument WHERE id = :instrument_id FOR SHARE"),
+                {"instrument_id": instrument_id},
+            ).scalar_one_or_none()
+            if kind is None:
+                return DeploymentRefusal.no_such_instrument
+            if kind != "token":
+                return DeploymentRefusal.not_a_token
+            _insert_deployment(
+                connection, instrument_id, chain=chain, contract_address=contract_address
+            )
+    except IntegrityError:
+        return DeploymentRefusal.already_held
+    return None
+
+
+def holding_deployment(engine: Engine, *, chain: str, contract_address: str) -> Row | None:
+    """The Instrument a chain's contract is a Deployment of, if any."""
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                f"SELECT {_PREFIXED_COLUMNS} FROM instrument i"
+                " JOIN deployment d ON d.instrument_id = i.id"
+                " WHERE d.chain = :chain AND lower(d.contract_address) = lower(:contract_address)"
+            ),
+            {"chain": chain, "contract_address": contract_address},
+        ).one_or_none()
+
+
+def list_deployments(engine: Engine) -> list[Row]:
+    """Every Deployment, each Instrument's in the order they were attached —
+    the home one first."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT instrument_id, chain, contract_address FROM deployment"
+                    " ORDER BY instrument_id, id"
+                )
+            ).all()
+        )
 
 
 def create_native_coin(engine: Engine, *, symbol: str, name: str, chain: str) -> int | None:
@@ -405,6 +468,79 @@ _REFERRED_TO_BY = {
 }
 
 
+class FoldRefusal(Enum):
+    """Why one token did not settle as a Deployment of another."""
+
+    no_such_instrument = "no_such_instrument"
+    not_two_tokens = "not_two_tokens"
+    decided = "decided"
+
+
+# What makes a token's history more than unclassified inflows waiting — any
+# of it, and folding the token into another would rewrite something already
+# decided or booked.
+_DECIDED_ABOUT = (
+    "SELECT 1 FROM instrument_stance WHERE instrument_id = :newer",
+    "SELECT 1 FROM tax_lot WHERE instrument_id = :newer",
+    "SELECT 1 FROM staking_delegation WHERE instrument_id = :newer",
+    "SELECT 1 FROM transaction_leg l JOIN transaction t ON t.id = l.transaction_id"
+    " WHERE l.instrument_id = :newer AND (t.type <> 'transfer_in' OR l.role <> 'in')",
+    "SELECT 1 FROM transaction_leg l JOIN transfer_match m ON m.in_leg_id = l.id"
+    " WHERE l.instrument_id = :newer AND m.verdict = 'confirmed'",
+    *(
+        query.replace(":instrument_id", ":newer")
+        for use, query in _REFERRED_TO_BY.items()
+        if use != "transaction_leg"
+    ),
+)
+
+
+def fold_into(engine: Engine, newer: int, older: int) -> FoldRefusal | None:
+    """Settle the newer token as a Deployment of the older (ADR-0032): its
+    contracts become the older's Deployments, its inflows the older's, and the
+    newer row goes — what the Admin declared about it and its prices with it.
+
+    Only while nothing about the newer has been decided: every leg it has is
+    an unclassified inflow, which mints no lot, so moving them rewrites no
+    history. Both rows are locked, lower id first, before they are judged.
+    None means folded."""
+    with engine.begin() as connection:
+        kinds = dict(
+            connection.execute(
+                text(
+                    "SELECT id, type FROM instrument WHERE id IN (:newer, :older)"
+                    " ORDER BY id FOR UPDATE"
+                ),
+                {"newer": newer, "older": older},
+            ).all()
+        )
+        if newer not in kinds or older not in kinds:
+            return FoldRefusal.no_such_instrument
+        if newer == older or kinds[newer] != "token" or kinds[older] != "token":
+            return FoldRefusal.not_two_tokens
+        decided = connection.execute(
+            text("SELECT " + " OR ".join(f"EXISTS ({query})" for query in _DECIDED_ABOUT)),
+            {"newer": newer},
+        ).scalar_one()
+        if decided:
+            return FoldRefusal.decided
+        contracts = connection.execute(
+            text(
+                "UPDATE deployment SET instrument_id = :older WHERE instrument_id = :newer"
+                " RETURNING contract_address"
+            ),
+            {"newer": newer, "older": older},
+        ).scalars()
+        for contract in list(contracts):
+            _insert_identifier(connection, older, kind="contract_address", value=contract)
+        connection.execute(
+            text("UPDATE transaction_leg SET instrument_id = :older WHERE instrument_id = :newer"),
+            {"newer": newer, "older": older},
+        )
+        connection.execute(text("DELETE FROM instrument WHERE id = :newer"), {"newer": newer})
+    return None
+
+
 def delete_instrument(engine: Engine, instrument_id: int) -> InstrumentHolders | Refusal | None:
     """Remove an Instrument nothing in the ledger refers to. None means it is
     gone — and what the Admin declared about it, and its stored prices, went
@@ -698,4 +834,20 @@ def _insert_identifier(
             " DO UPDATE SET superseded_at = NULL"
         ),
         {"instrument_id": instrument_id, "kind": kind, "value": value},
+    )
+
+
+def _insert_deployment(
+    connection: Connection, instrument_id: int, *, chain: str, contract_address: str
+) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO deployment (instrument_id, chain, contract_address)"
+            " VALUES (:instrument_id, :chain, :contract_address)"
+        ),
+        {
+            "instrument_id": instrument_id,
+            "chain": chain,
+            "contract_address": canonical_contract_address(contract_address),
+        },
     )

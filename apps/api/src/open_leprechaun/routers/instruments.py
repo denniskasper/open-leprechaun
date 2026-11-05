@@ -21,8 +21,10 @@ from open_leprechaun.services.instruments import (
     InstrumentOverview,
     Refused,
     add_by_hand,
+    attach_deployment,
     overview,
     remove_instrument,
+    settle_as_deployment_of,
 )
 from open_leprechaun.services.stances import InboxItem, inbox, settled_inflow_type
 
@@ -41,6 +43,11 @@ class ListingResponse(BaseModel):
     quote_currency: str
     # Whether this Listing's market prices the Instrument (ticket 45).
     price_source: bool
+
+
+class DeploymentResponse(BaseModel):
+    chain: str
+    contract_address: str
 
 
 class AccountStanceResponse(BaseModel):
@@ -65,6 +72,8 @@ class InstrumentResponse(BaseModel):
     distribution_policy: str | None
     needs_review: bool
     listings: list[ListingResponse]
+    # A token's identities, one per chain, the home one first (ADR-0032).
+    deployments: list[DeploymentResponse]
     # An ignored or dangerous position stays visible with a clear warning
     # rather than being hidden — the stance ships with every overview row.
     dangerous: bool
@@ -94,6 +103,10 @@ class InstrumentResponse(BaseModel):
                     price_source=listing.price_source,
                 )
                 for listing in instrument.listings
+            ],
+            deployments=[
+                DeploymentResponse(chain=d.chain, contract_address=d.contract_address)
+                for d in instrument.deployments
             ],
             dangerous=instrument.dangerous,
             stances=[
@@ -273,6 +286,56 @@ def add_instrument(
             detail=f"{added.name} ({added.symbol}) already holds this identity.",
         )
     return AddedResponse(id=added)
+
+
+class AttachDeploymentRequest(BaseModel):
+    chain: Chain
+    contract_address: ContractAddress
+
+
+@router.post(
+    "/instruments/{instrument_id}/deployments",
+    status_code=201,
+    summary="Attach another chain's contract of the same token",
+)
+def add_deployment(
+    instrument_id: int, request: AttachDeploymentRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """Only a deployment the issuer mints itself belongs here (ADR-0032); a
+    bridged or wrapped token is its own Instrument."""
+    try:
+        refused = attach_deployment(
+            engine,
+            instrument_id,
+            chain=request.chain,
+            contract_address=request.contract_address,
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_INSTRUMENT) from None
+    if refused is not None:
+        raise HTTPException(status_code=409, detail=refused.reason)
+
+
+class DeploymentOfRequest(BaseModel):
+    # The token this one is a Deployment of.
+    instrument_id: int
+
+
+@router.post(
+    "/instruments/{instrument_id}/deployment-of",
+    summary="Settle an unacknowledged token as a Deployment of another",
+)
+def deployment_of(
+    instrument_id: int, request: DeploymentOfRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    """Its contract joins the other token and its waiting inflows move there;
+    this Instrument is then gone (ADR-0032)."""
+    try:
+        refused = settle_as_deployment_of(engine, instrument_id, request.instrument_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail=_NO_SUCH_INSTRUMENT) from None
+    if refused is not None:
+        raise HTTPException(status_code=409, detail=refused.reason)
 
 
 @router.delete(

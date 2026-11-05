@@ -45,11 +45,15 @@ to the same symbol.
 
 ## Consequences
 
-- A token Instrument's identity moves from the chain and contract on its row to a `deployment`
-  table — instrument, chain, contract — under the unique index the row carried, so one contract
-  still names one Instrument. Every token Instrument has at least one. The migration is purely
-  structural: each existing token row becomes an Instrument with one Deployment, and nothing is
-  merged.
+- A token's identities live in a `deployment` table — instrument, chain, contract — under a
+  unique index over chain and lowercased contract, so one contract still names one Instrument
+  across every chain; resolution goes through it. The row keeps the chain and contract it was
+  created with as its **home Deployment**: the label it is shown under and the contract prices
+  are asked for, so nothing that only reads a token changes. The migration is purely
+  structural: each existing token row gains its home Deployment, and nothing is merged.
+- Settling a token as a Deployment of another moves its contracts and its legs to the other and
+  removes it. That is allowed only while every leg it has is an unclassified inflow — which mints
+  no lot — and no Stance, price-relevant record or corporate action names it.
 - A native coin keeps keying on its symbol, so ETH paying gas on a rollup is the same Instrument
   as on Ethereum. Its chain is its home chain, a label; the wallet Account says where it is held.
 - Network facts are recorded on new transfers. A re-read that matches an existing record by its
