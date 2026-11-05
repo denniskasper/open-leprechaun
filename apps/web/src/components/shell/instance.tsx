@@ -41,10 +41,9 @@ export function hostLabel(instance: Meta | undefined): string | null {
 
 /**
  * The environment badge: shown outside production, absent within it — with
- * the machine named beside it. `stacked` sets the machine under the badge,
- * for the sidebar's narrow column beside the stacked wordmark.
+ * the machine it runs on named beside it.
  */
-export function EnvironmentBadge({ stacked = false }: { stacked?: boolean }) {
+export function EnvironmentBadge({ className }: { className?: string }) {
   const instance = useInstance();
   const label = badgeLabel(instance);
   if (!label) {
@@ -52,12 +51,7 @@ export function EnvironmentBadge({ stacked = false }: { stacked?: boolean }) {
   }
   const host = hostLabel(instance);
   return (
-    <span
-      className={cn(
-        "flex min-w-0",
-        stacked ? "flex-col items-end gap-1" : "items-center gap-2",
-      )}
-    >
+    <span className={cn("flex min-w-0 items-center gap-2", className)}>
       <span className="microlabel shrink-0 rounded-sm border border-caution/50 px-1.5 py-0.5 text-caution">
         {label}
       </span>
