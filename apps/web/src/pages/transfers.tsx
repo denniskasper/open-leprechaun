@@ -238,6 +238,15 @@ function CandidateCard({ candidate, index }: { candidate: Candidate; index: numb
         <SideBlock leg={incoming} label="Arrived" alignRight />
       </div>
 
+      {candidate.proven && (
+        <p className="mt-3 border-t border-border pt-3 text-sm">
+          <span className="microlabel mr-2 text-signal">same transaction</span>
+          <span className="text-muted-foreground">
+            Both sides name one chain transaction — this is the same parcel, not
+            a guess from amount and time.
+          </span>
+        </p>
+      )}
       {missing && (
         <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground">{missing}</p>
       )}

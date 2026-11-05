@@ -18,6 +18,8 @@ export const transferLegSchema = z.object({
   instrument_id: z.number(),
   instrument_symbol: z.string(),
   instrument_name: z.string(),
+  // The chain transaction's hash its source stated (ADR-0032).
+  tx_hash: z.string().nullable(),
 });
 
 export type TransferLeg = z.infer<typeof transferLegSchema>;
@@ -25,6 +27,8 @@ export type TransferLeg = z.infer<typeof transferLegSchema>;
 const candidateSchema = z.object({
   outgoing: transferLegSchema,
   incoming: transferLegSchema,
+  // Both sides name one chain transaction — proof, not a guess.
+  proven: z.boolean(),
 });
 
 export type Candidate = z.infer<typeof candidateSchema>;

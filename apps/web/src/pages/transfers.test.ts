@@ -15,6 +15,7 @@ function leg(overrides: Partial<TransferLeg> = {}): TransferLeg {
     instrument_id: 7,
     instrument_symbol: "BTC",
     instrument_name: "Bitcoin",
+    tx_hash: null,
     ...overrides,
   };
 }
