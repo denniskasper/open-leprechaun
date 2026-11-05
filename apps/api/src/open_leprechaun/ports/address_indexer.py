@@ -55,6 +55,10 @@ class NormalizedAddressTransfer:
     asset: ChainAsset
     quantity: Decimal
     fee_quantity: Decimal | None = None
+    # The chain transaction's own hash, and the address on the other side
+    # where the indexer can tell — recorded fact, never identity (ADR-0032).
+    tx_hash: str | None = None
+    counterparty_address: str | None = None
 
 
 @dataclass(frozen=True)

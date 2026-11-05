@@ -65,6 +65,12 @@ class NormalizedTransfer:
     symbol: str
     quantity: Decimal
     fee_quantity: Decimal | None = None
+    # What the venue states about the network, as recorded fact (ADR-0032):
+    # the ledger's chain (see ports.chains), the transaction hash, and the
+    # address on the other side. None where the venue does not say.
+    chain: str | None = None
+    tx_hash: str | None = None
+    counterparty_address: str | None = None
 
 
 @dataclass(frozen=True)

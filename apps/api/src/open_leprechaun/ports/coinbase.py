@@ -42,6 +42,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.serialization import load_der_private_key
 
+from open_leprechaun.ports.chains import chain_named
 from open_leprechaun.ports.exchange import (
     AdapterError,
     Credentials,
@@ -464,6 +465,7 @@ class CoinbaseSpotAdapter:
                 direction="in",
                 symbol=symbol,
                 quantity=amount,
+                **_network_facts(raw, counterparty="from"),
             )
         fee = self._network_fee(raw, symbol)
         # A send is debited gross: what reached the recipient plus what the
@@ -482,6 +484,7 @@ class CoinbaseSpotAdapter:
             symbol=symbol,
             quantity=quantity,
             fee_quantity=fee or None,
+            **_network_facts(raw, counterparty="to"),
         )
 
     @staticmethod
@@ -518,3 +521,18 @@ class CoinbaseSpotAdapter:
             # actually moved by, a withdrawal's sign dropped for the port.
             amount=abs(amount),
         )
+
+
+def _network_facts(raw: dict, *, counterparty: str) -> dict[str, str | None]:
+    """What a send or receive says about its network. A transfer between
+    Coinbase users never touched a chain — `off_blockchain` — and states
+    nothing; the other side counts only where it is an address."""
+    network = raw.get("network") or {}
+    if network.get("status") == "off_blockchain":
+        return {"chain": None, "tx_hash": None, "counterparty_address": None}
+    other = raw.get(counterparty) or {}
+    return {
+        "chain": chain_named(network.get("network_name") or network.get("name")),
+        "tx_hash": network.get("hash") or None,
+        "counterparty_address": other.get("address") or None,
+    }

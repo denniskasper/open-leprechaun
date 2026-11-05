@@ -36,6 +36,8 @@ class TransferLegResponse(BaseModel):
     instrument_id: int
     instrument_symbol: str
     instrument_name: str
+    # The chain transaction's hash its source stated (ADR-0032).
+    tx_hash: str | None
 
     @classmethod
     def of(cls, leg: TransferLeg) -> TransferLegResponse:
@@ -51,18 +53,22 @@ class TransferLegResponse(BaseModel):
             instrument_id=leg.instrument_id,
             instrument_symbol=leg.instrument_symbol,
             instrument_name=leg.instrument_name,
+            tx_hash=leg.tx_hash,
         )
 
 
 class CandidateResponse(BaseModel):
     outgoing: TransferLegResponse
     incoming: TransferLegResponse
+    # Both sides name one chain transaction — proof, not a guess (ADR-0032).
+    proven: bool
 
     @classmethod
     def of(cls, candidate: Candidate) -> CandidateResponse:
         return cls(
             outgoing=TransferLegResponse.of(candidate.outgoing),
             incoming=TransferLegResponse.of(candidate.incoming),
+            proven=candidate.proven,
         )
 
 

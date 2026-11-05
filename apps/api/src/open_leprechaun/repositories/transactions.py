@@ -57,6 +57,20 @@ class OriginalAmount:
     rate_date: date
 
 
+@dataclass(frozen=True)
+class NetworkFacts:
+    """What a venue or chain states about the network a transfer moved on
+    (ADR-0032) — recorded fact beside the Transaction, never identity. Each
+    is None where the source did not say."""
+
+    chain: str | None = None
+    tx_hash: str | None = None
+    counterparty_address: str | None = None
+
+    def stated(self) -> bool:
+        return any((self.chain, self.tx_hash, self.counterparty_address))
+
+
 class Refusal(Enum):
     """Why a write did not happen, in the caller's terms rather than SQL's."""
 
@@ -116,6 +130,7 @@ def insert_transaction(
     estimated_basis_eur: Decimal | None = None,
     capital_income: CapitalIncome | None = None,
     original_amount: OriginalAmount | None = None,
+    network: NetworkFacts | None = None,
 ) -> int:
     """The insert itself, on the caller's connection — for a caller that
     writes many events atomically, as an import commit does."""
@@ -136,6 +151,8 @@ def insert_transaction(
     ).scalar_one()
     _insert_legs(connection, transaction_id, legs)
     _insert_capital_income(connection, transaction_id, capital_income)
+    if network is not None and network.stated():
+        fill_network_facts(connection, transaction_id, network)
     if original_amount is not None:
         connection.execute(
             text(
@@ -336,6 +353,40 @@ def list_original_amounts(engine: Engine) -> list[Row]:
                 )
             ).all()
         )
+
+
+def list_network_facts(engine: Engine) -> list[Row]:
+    """Every Transaction's network facts, keyed by the Transaction."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT transaction_id, chain, tx_hash, counterparty_address FROM network_fact"
+                )
+            ).all()
+        )
+
+
+def fill_network_facts(connection: Connection, transaction_id: int, facts: NetworkFacts) -> None:
+    """Record what is stated where nothing is yet: a fact once recorded is
+    never overwritten, so a later read can only add what an earlier lacked."""
+    connection.execute(
+        text(
+            "INSERT INTO network_fact (transaction_id, chain, tx_hash, counterparty_address)"
+            " VALUES (:transaction_id, :chain, :tx_hash, :counterparty_address)"
+            " ON CONFLICT (transaction_id) DO UPDATE SET"
+            " chain = coalesce(network_fact.chain, excluded.chain),"
+            " tx_hash = coalesce(network_fact.tx_hash, excluded.tx_hash),"
+            " counterparty_address ="
+            "  coalesce(network_fact.counterparty_address, excluded.counterparty_address)"
+        ),
+        {
+            "transaction_id": transaction_id,
+            "chain": facts.chain,
+            "tx_hash": facts.tx_hash,
+            "counterparty_address": facts.counterparty_address,
+        },
+    )
 
 
 def list_legs(engine: Engine) -> list[Row]:

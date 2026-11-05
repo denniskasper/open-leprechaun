@@ -430,6 +430,30 @@ def test_a_spot_pull_normalizes_deposits_and_withdrawals_into_transfers():
     assert outgoing.fee_quantity == Decimal("0.007")
 
 
+def test_a_transfer_states_the_chain_its_hash_and_the_other_side():
+    """What OKX says about the network is kept as recorded fact (ADR-0032):
+    its chain label read into the ledger's chain, the transaction hash, and
+    the address on the other side — a deposit's sender where OKX names one,
+    a withdrawal's recipient."""
+    adapter, _ = venue(deposits=[A_DEPOSIT], withdrawals=[A_WITHDRAWAL])
+
+    incoming, outgoing = sorted(adapter.pull(CREDENTIALS).transfers, key=lambda t: t.direction)
+
+    assert (incoming.chain, incoming.tx_hash) == ("tron", "fee235b3e812857d36bb0426917f0df1802")
+    assert incoming.counterparty_address is None
+    assert (outgoing.chain, outgoing.tx_hash) == ("ethereum", "0x35cb360a174d")
+    assert outgoing.counterparty_address == "0xa30d1fab7CF18C7B6C579"
+
+
+def test_a_chain_label_the_port_does_not_know_states_no_chain():
+    adapter, _ = venue(deposits=[{**A_DEPOSIT, "chain": "USDT-Somewhere New"}])
+
+    (incoming,) = adapter.pull(CREDENTIALS).transfers
+
+    assert incoming.chain is None
+    assert incoming.tx_hash == "fee235b3e812857d36bb0426917f0df1802"
+
+
 def test_a_transfer_still_in_flight_stays_out_until_it_settles():
     """Anything but the venue's success state is not yet a movement — it
     arrives on a later sync once the venue calls it settled."""

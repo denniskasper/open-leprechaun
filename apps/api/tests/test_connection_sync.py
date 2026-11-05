@@ -955,3 +955,101 @@ def test_unattributable_funding_names_the_asset_it_was_paid_in(client, adapters,
     (payment,) = client.get("/api/futures").json()["unattributable_funding"]
 
     assert (payment["amount"], payment["settlement_symbol"]) == ("-0.25", "USDT")
+
+
+# --- Network facts (ADR-0032) ------------------------------------------------
+
+
+def usdc_arrival(**facts) -> port.Harvest:
+    return port.Harvest(
+        transfers=(
+            port.NormalizedTransfer(
+                external_id="dep-1",
+                occurred_at=AN_INSTANT,
+                direction="in",
+                symbol="USDT",
+                quantity=Decimal("100"),
+                **facts,
+            ),
+        )
+    )
+
+
+def synced_with(client, adapters, harvest):
+    platform_id = okx(client)
+    account_id = account(client, platform_id)
+    connection_id = connect(client, platform_id)
+    client.put(f"/api/connections/{connection_id}/pairings/spot", json={"account_id": account_id})
+    adapters["okx"] = (FakeAdapter("spot", harvest=harvest),)
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+    assert result["ok"] is True, result
+    return connection_id
+
+
+def test_a_transfer_lands_with_the_network_facts_the_venue_stated(client, adapters, db):
+    usdt(db)
+    synced_with(
+        client,
+        adapters,
+        usdc_arrival(chain="solana", tx_hash="5rTxHash", counterparty_address="SenderAddr3ss"),
+    )
+
+    (transfer,) = client.get("/api/transactions").json()
+
+    assert transfer["network"] == {
+        "chain": "solana",
+        "tx_hash": "5rTxHash",
+        "counterparty_address": "SenderAddr3ss",
+    }
+
+
+def test_a_transfer_the_venue_said_nothing_about_has_no_network_facts(client, adapters, db):
+    usdt(db)
+    synced_with(client, adapters, usdc_arrival())
+
+    (transfer,) = client.get("/api/transactions").json()
+
+    assert transfer["network"] is None
+
+
+def test_a_re_sync_fills_network_facts_a_record_lacks_and_never_overwrites_one(
+    client, adapters, db
+):
+    """A record landed before its venue's facts were read gains them on the
+    next sync; a fact once recorded stays as it was."""
+    usdt(db)
+    connection_id = synced_with(client, adapters, usdc_arrival(chain="solana"))
+
+    adapters["okx"] = (
+        FakeAdapter(
+            "spot",
+            harvest=usdc_arrival(chain="ethereum", tx_hash="5rTxHash", counterparty_address="From"),
+        ),
+    )
+    (result,) = client.post(f"/api/connections/{connection_id}/sync").json()
+
+    assert result["imported"]["duplicates"] == 1
+    (transfer,) = client.get("/api/transactions").json()
+    assert transfer["network"] == {
+        "chain": "solana",
+        "tx_hash": "5rTxHash",
+        "counterparty_address": "From",
+    }
+
+
+def test_a_stated_chain_chooses_between_tokens_wearing_one_symbol(client, adapters, db):
+    """The symbol answers to two tokens; the chain the venue states narrows
+    them to the one deployed there (ADR-0032)."""
+    usdt(db)
+    on_tron = instruments.create_crypto_token(
+        db,
+        symbol="USDT",
+        name="Tether on Tron",
+        chain="tron",
+        contract_address="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    )
+    synced_with(client, adapters, usdc_arrival(chain="tron"))
+
+    (transfer,) = client.get("/api/transactions").json()
+
+    assert [leg["instrument_id"] for leg in transfer["legs"]] == [on_tron]

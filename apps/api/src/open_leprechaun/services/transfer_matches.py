@@ -52,6 +52,15 @@ class TransferSide(Protocol):
     @property
     def occurred_at(self) -> datetime: ...
 
+    @property
+    def tx_hash(self) -> str | None: ...
+
+
+def same_transaction(outgoing: TransferSide, incoming: TransferSide) -> bool:
+    """Whether both sides name one chain transaction — proof that they are
+    one movement, not a guess from amount and time (ADR-0032)."""
+    return outgoing.tx_hash is not None and outgoing.tx_hash == incoming.tx_hash
+
 
 def is_candidate(outgoing: TransferSide, incoming: TransferSide) -> bool:
     """Whether a withdrawal and a deposit look like one self-transfer: the
@@ -64,6 +73,9 @@ def is_candidate(outgoing: TransferSide, incoming: TransferSide) -> bool:
         return False
     if incoming.quantity > outgoing.quantity:
         return False
+    if same_transaction(outgoing, incoming):
+        # The hash is the proof; tolerance and window only stand in for it.
+        return True
     if outgoing.quantity - incoming.quantity > outgoing.quantity * QUANTITY_TOLERANCE:
         return False
     return abs(incoming.occurred_at - outgoing.occurred_at) <= TIME_WINDOW
@@ -125,14 +137,18 @@ class TransferLeg:
     instrument_id: int
     instrument_symbol: str
     instrument_name: str
+    # The chain transaction's hash its source stated (ADR-0032).
+    tx_hash: str | None = None
 
 
 @dataclass(frozen=True)
 class Candidate:
-    """One proposed pair, awaiting the Admin's decision."""
+    """One proposed pair, awaiting the Admin's decision. `proven` where both
+    sides name one chain transaction."""
 
     outgoing: TransferLeg
     incoming: TransferLeg
+    proven: bool = False
 
 
 @dataclass(frozen=True)
@@ -173,6 +189,7 @@ def matching_overview(engine: Engine) -> MatchingOverview:
             instrument_id=row.instrument_id,
             instrument_symbol=row.instrument_symbol,
             instrument_name=row.instrument_name,
+            tx_hash=row.tx_hash,
         )
         for row in rows.values()
     }
@@ -200,7 +217,11 @@ def matching_overview(engine: Engine) -> MatchingOverview:
             legs[row.leg_id] for row in incoming if row.leg_id not in confirmed_legs
         ],
         candidates=[
-            Candidate(outgoing=legs[out.leg_id], incoming=legs[in_.leg_id])
+            Candidate(
+                outgoing=legs[out.leg_id],
+                incoming=legs[in_.leg_id],
+                proven=same_transaction(out, in_),
+            )
             for out in outgoing
             for in_ in incoming
             if out.leg_id not in confirmed_legs

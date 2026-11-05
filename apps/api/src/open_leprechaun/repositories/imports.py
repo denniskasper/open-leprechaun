@@ -15,9 +15,11 @@ from enum import Enum
 
 from sqlalchemy import Engine, Row, text
 
+from open_leprechaun.repositories import transactions
 from open_leprechaun.repositories.transactions import (
     CapitalIncome,
     Leg,
+    NetworkFacts,
     OriginalAmount,
     insert_transaction,
 )
@@ -47,6 +49,8 @@ class WriteRow:
     # withholding (ticket 47), a trade's amount as it was priced (ticket 48).
     capital_income: CapitalIncome | None = None
     original_amount: OriginalAmount | None = None
+    # What the source states about the network a transfer moved on (ADR-0032).
+    network: NetworkFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +175,7 @@ def commit_batch(
                 legs=row.legs,
                 capital_income=row.capital_income,
                 original_amount=row.original_amount,
+                network=row.network,
             )
             claimed = connection.execute(
                 text(
@@ -199,6 +204,27 @@ def commit_batch(
             connection.execute(text("DELETE FROM import_batch WHERE id = :id"), {"id": batch_id})
             return CommitOutcome(batch_id=None, created=0, raced=raced)
         return CommitOutcome(batch_id=batch_id, created=created, raced=raced)
+
+
+def fill_network_facts(engine: Engine, source: str, facts_of: dict[str, NetworkFacts]) -> None:
+    """A re-read's network facts for records it already holds, each found by
+    its external identifier under this source: they fill what the record
+    lacks and never overwrite what it has (ADR-0032)."""
+    if not facts_of:
+        return
+    with engine.begin() as connection:
+        landed = connection.execute(
+            text(
+                "SELECT external_id, transaction_id FROM imported_row"
+                " WHERE source = :source AND external_id = ANY(:external_ids)"
+                " AND transaction_id IS NOT NULL"
+            ),
+            {"source": source, "external_ids": list(facts_of)},
+        ).all()
+        for row in landed:
+            transactions.fill_network_facts(
+                connection, row.transaction_id, facts_of[row.external_id]
+            )
 
 
 def list_batches(engine: Engine) -> list[Row]:
