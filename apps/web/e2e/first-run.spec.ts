@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // The whole path first: Postgres answers the API, the API derives each step,
-// and the browser lists them. What the development database happens to hold
+// and the browser lists them. What the end-to-end database happens to hold
 // decides which steps are done, so only what every instance shows is asserted.
 test("the checklist lists the walk from a password to a report", async ({ page }) => {
   await page.goto("/first-run");

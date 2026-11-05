@@ -62,7 +62,7 @@ leak they exist to prevent. After a fresh clone, recreate them by hand. See
 | `pnpm test`         | The API and web unit suites                                       |
 | `pnpm test:api`     | pytest against a real Postgres, created on first run              |
 | `pnpm test:web`     | Vitest                                                            |
-| `pnpm test:e2e`     | Playwright against the running application                        |
+| `pnpm test:e2e`     | Playwright against its own servers and `<db>_e2e` database        |
 | `pnpm typecheck`    | TypeScript, browser and Node configurations both                  |
 | `pnpm lint`         | ruff check and format check                                       |
 | `pnpm format`       | ruff autofix and format                                           |
@@ -150,5 +150,7 @@ Four seams, in descending order of how much lives at each — the reasoning is i
 3. **Ports against recorded fixtures.** Adapters, connectors and the indexer are tested against
    responses recorded under `apps/api/tests/fixtures/`; no test reaches a live venue or provider.
 4. **Playwright against the running application** (`pnpm test:e2e`). A few critical journeys only,
-   against the dev servers.
+   against servers and a database of their own (`<db>_e2e`, ports 8100 and 5273 unless
+   `E2E_API_PORT`, `E2E_WEB_PORT` or `E2E_DATABASE_URL` say otherwise), so a run never touches
+   the development data.
    There is deliberately no broad component-test layer.
