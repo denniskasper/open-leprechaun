@@ -5,12 +5,12 @@ served by one kind, fed through a mock transport that answers what the venue
 answers.
 
 The payloads (fixtures/bitpanda/recorded.json) are of two origins. The asset
-and currency rows are the venue's own, read from its public, unauthenticated
+and currency rows are the venue's own, read from its asset and currency
 endpoints. The operations and the portfolio are authored from the schemas of
 its published OpenAPI document, which prints no example responses and
 documents no vocabulary for an operation's type; there was no account to
 record from. The mock venue honours the documented contract: the key in the
-`x-api-key` header on the account's endpoints, and pagination by the
+`x-api-key` header on every endpoint, and pagination by the
 `next_cursor` each answer states while `has_next_page` holds.
 """
 
@@ -97,7 +97,7 @@ def venue(payloads: dict | None = None, *, refuse: dict | None = None):
         name = _ACCOUNT_PATHS.get(path) or _PUBLIC_PATHS[path]
         if name in refuse:
             return httpx.Response(refuse[name])
-        if path in _ACCOUNT_PATHS and request.headers.get("x-api-key") != KEY:
+        if request.headers.get("x-api-key") != KEY:
             return httpx.Response(401, json={"errors": [{"code": "unauthorized", "status": 401}]})
         if name == "assets":
             asked = request.url.params["id"].split(",")
@@ -149,23 +149,21 @@ def only(*operation_numbers: int, **amend) -> dict:
 # --- Authentication and scope ---
 
 
-def test_the_key_travels_in_its_header_to_the_accounts_endpoints_alone():
-    """The asset and currency lists are public; the key is never sent where
-    it is not needed, and never to another host."""
+def test_the_key_travels_in_its_header_to_every_endpoint():
+    """The asset and currency lists refuse without the key too — the venue
+    once served them unauthenticated and no longer does — and the key is
+    never sent to another host."""
     spot, securities, requests = venue()
 
     spot.pull(CREDENTIALS)
     securities.normalized_positions(CREDENTIALS)
 
     assert requests and all(
-        request.url.host == "api.public.bitpanda.com" and request.method == "GET"
+        request.url.host == "api.public.bitpanda.com"
+        and request.method == "GET"
+        and request.headers["x-api-key"] == KEY
         for request in requests
     )
-    for request in requests:
-        if request.url.path in _ACCOUNT_PATHS:
-            assert request.headers["x-api-key"] == KEY
-        else:
-            assert "x-api-key" not in request.headers
 
 
 def test_a_successful_test_says_what_it_cannot_prove():
