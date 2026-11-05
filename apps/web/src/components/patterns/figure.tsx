@@ -1,6 +1,7 @@
 import {
   formatAssetAmount,
   formatMoneyExact,
+  formatMoneyPrice,
   formatPrice,
   formatQuantity,
   formatRoundedAssetAmount,
@@ -66,7 +67,18 @@ export function Money({ value, currency }: { value: string; currency: string }) 
   );
 }
 
-/** A price as its source states it, rounded; bare, because the source names no currency. */
-export function Price({ value }: { value: string }) {
+/**
+ * A price, rounded. With `currency` it stands in that currency; without, it
+ * stays bare, as a source that names no currency states it.
+ */
+export function Price({ value, currency }: { value: string; currency?: string }) {
+  if (currency !== undefined) {
+    return (
+      <Figure
+        shown={formatMoneyPrice(value, currency)}
+        exact={formatMoneyExact(value, currency)}
+      />
+    );
+  }
   return <Figure shown={formatPrice(value)} exact={formatQuantity(value)} />;
 }

@@ -35,12 +35,13 @@ import { fetchFundRedemptionValues } from "@/api/statutory";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Price } from "@/components/patterns/figure";
 import { RemoveButtons, useRemoval } from "@/components/patterns/removal";
 import { Cell, DetailRow, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatQuantity, formatTimestamp } from "@/lib/format";
 import { AddInstrumentPanel, requestedKind } from "./add-instrument";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
@@ -1463,7 +1464,7 @@ function PriceCell({ entry }: { entry: PricedInstrument | undefined }) {
   }
   return (
     <>
-      {entry.price_eur !== null && formatMoneyExact(entry.price_eur, "EUR")}
+      {entry.price_eur !== null && <Price value={entry.price_eur} currency="EUR" />}
       {entry.status === "stale" && (
         <span className="microlabel ml-2 text-caution" title={staleExplanation(entry)}>
           stale

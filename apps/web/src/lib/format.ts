@@ -297,6 +297,15 @@ export function formatPrice(value: string, locale?: string): string {
 }
 
 /**
+ * A price in a named currency, rounded for reading as formatPrice rounds: to
+ * the currency's minor unit at one or above, four significant digits below.
+ * Padded like any currency-styled value, so a column of prices aligns.
+ */
+export function formatMoneyPrice(value: string, currency: string, locale?: string): string {
+  return formatMoneyExact(roundForReading(value, minorUnits(currency), 4), currency, locale);
+}
+
+/**
  * A fixed-point difference with its direction in the figure itself — a plus
  * for a surplus, a true minus for a shortfall, nothing on an exact zero — so
  * the sign is never left to colour alone. The digits stay verbatim, as
