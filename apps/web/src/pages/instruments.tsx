@@ -20,6 +20,7 @@ import {
   createListing,
   createSecurity,
   editSecurity,
+  removeListing,
   resolveListings,
   reviewSecurity,
   searchSecurities,
@@ -35,12 +36,13 @@ import { fetchFundRedemptionValues } from "@/api/statutory";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
+import { Price } from "@/components/patterns/figure";
 import { RemoveButtons, useRemoval } from "@/components/patterns/removal";
 import { Cell, DetailRow, Heading, Table } from "@/components/patterns/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { formatMoneyExact, formatQuantity, formatTimestamp } from "@/lib/format";
+import { formatQuantity, formatTimestamp } from "@/lib/format";
 import { AddInstrumentPanel, requestedKind } from "./add-instrument";
 
 /** The attributes identity is read from — an Instrument row and an inbox item alike. */
@@ -990,7 +992,13 @@ function ListingsSummary({
   }
   if (managing) {
     return (
-      <Button variant="ghost" size="sm" onClick={() => onManage(false)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-my-1 -ml-2 h-7 px-2"
+        aria-label={`Close the Listings of ${instrument.symbol}`}
+        onClick={() => onManage(false)}
+      >
         Close
       </Button>
     );
@@ -1000,6 +1008,7 @@ function ListingsSummary({
       <Button
         variant="outline"
         size="sm"
+        className="-my-1 h-7 px-2"
         onClick={() => onManage(true)}
         title="Without a Listing nothing can vouch for a price — the security stays unpriced, never zero."
       >
@@ -1008,7 +1017,14 @@ function ListingsSummary({
     );
   }
   return (
-    <button type="button" className="group text-left" onClick={() => onManage(true)}>
+    // A dotted underline marks the markets as the way into their editor.
+    <button
+      type="button"
+      className="text-left underline decoration-muted-foreground/40 decoration-dotted underline-offset-4 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      title="Add, remove or reprice this security's Listings"
+      aria-label={`Edit the Listings of ${instrument.symbol}`}
+      onClick={() => onManage(true)}
+    >
       {instrument.listings.map((listing, index) => (
         <span key={listing.id}>
           {index > 0 && ", "}
@@ -1024,6 +1040,59 @@ function ListingsSummary({
         </span>
       ))}
     </button>
+  );
+}
+
+/**
+ * One held market in the Listings editor: the price source marked or handed
+ * over here, and the two-step Remove. The server refuses to remove the price
+ * source while another Listing remains, and that refusal is shown in place.
+ */
+function HeldListing({
+  instrument,
+  listing,
+  moving,
+  onPrice,
+}: {
+  instrument: Instrument;
+  listing: Listing;
+  moving: boolean;
+  onPrice: () => void;
+}) {
+  const removal = useRemoval(() => removeListing(instrument.id, listing.id), ["instruments"]);
+  const name = `${listing.venue} ${listing.quote_currency}`;
+  return (
+    <li className="space-y-1">
+      <div className="flex min-h-8 items-center gap-3">
+        <span className="font-mono text-sm tabular-nums">
+          {listing.venue} · {listing.quote_currency}
+        </span>
+        {listing.price_source ? (
+          <span
+            className="microlabel text-signal"
+            title="This Listing's market prices the Instrument — quotes and daily closes come from here."
+          >
+            price source
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            onClick={onPrice}
+            disabled={moving}
+          >
+            Use for pricing
+          </Button>
+        )}
+        <RemoveButtons removal={removal} name={name} className="h-7 px-2" />
+      </div>
+      {removal.refusal && (
+        <p role="alert" className="measure-prose text-sm text-alarm">
+          {removal.refusal}
+        </p>
+      )}
+    </li>
   );
 }
 
@@ -1078,28 +1147,13 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
       {instrument.listings.length > 0 && (
         <ul className="space-y-1">
           {instrument.listings.map((listing) => (
-            <li key={listing.id} className="flex items-center gap-3">
-              <span className="font-mono text-sm tabular-nums">
-                {listing.venue} · {listing.quote_currency}
-              </span>
-              {listing.price_source ? (
-                <span
-                  className="microlabel text-signal"
-                  title="This Listing's market prices the Instrument — quotes and daily closes come from here."
-                >
-                  price source
-                </span>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => move.mutate(listing.id)}
-                  disabled={move.isPending}
-                >
-                  Use for pricing
-                </Button>
-              )}
-            </li>
+            <HeldListing
+              key={listing.id}
+              instrument={instrument}
+              listing={listing}
+              moving={move.isPending}
+              onPrice={() => move.mutate(listing.id)}
+            />
           ))}
         </ul>
       )}
@@ -1506,7 +1560,7 @@ function PriceCell({ entry }: { entry: PricedInstrument | undefined }) {
   }
   return (
     <>
-      {entry.price_eur !== null && formatMoneyExact(entry.price_eur, "EUR")}
+      {entry.price_eur !== null && <Price value={entry.price_eur} currency="EUR" />}
       {entry.status === "stale" && (
         <span className="microlabel ml-2 text-caution" title={staleExplanation(entry)}>
           stale

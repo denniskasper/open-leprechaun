@@ -20,11 +20,6 @@ jobs:
       - name: Install the Playwright browser
         run: pnpm --filter @open-leprechaun/web exec playwright install --with-deps chromium
 
-      # Migrations run as a release step in deployment, so end-to-end tests
-      # run against a migrated database — the state a deployed instance is in.
-      - name: Migrate
-        run: pnpm db:migrate
-
       - name: End-to-end tests
         run: pnpm test:e2e
 

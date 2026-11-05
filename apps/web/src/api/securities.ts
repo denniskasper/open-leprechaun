@@ -163,3 +163,12 @@ export async function choosePriceSource(instrumentId: number, listingId: number)
     throw await refusal(response, "The price source could not be moved.");
   }
 }
+
+export async function removeListing(instrumentId: number, listingId: number): Promise<void> {
+  const response = await request(`/api/securities/${instrumentId}/listings/${listingId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw await refusal(response, "The Listing could not be removed.");
+  }
+}

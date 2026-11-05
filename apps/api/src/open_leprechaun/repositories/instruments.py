@@ -547,6 +547,42 @@ def set_price_source(engine: Engine, instrument_id: int, listing_id: int) -> boo
     return True
 
 
+def remove_listing(engine: Engine, instrument_id: int, listing_id: int) -> bool | None:
+    """Drop one market an Instrument trades on.
+
+    The price source goes only as the last Listing — the security then stays
+    unpriced, never zero. While another Listing remains, the price source must
+    first move there, so the market that prices the Instrument is always the
+    Admin's choice and never an implicit hand-over. True when removed, False
+    when the Listing is missing or belongs to another Instrument, None when it
+    is the price source and others remain.
+    """
+    with engine.begin() as connection:
+        listing = connection.execute(
+            text(
+                "SELECT price_source FROM listing"
+                " WHERE id = :listing_id AND instrument_id = :instrument_id"
+            ),
+            {"listing_id": listing_id, "instrument_id": instrument_id},
+        ).one_or_none()
+        if listing is None:
+            return False
+        if listing.price_source:
+            others = connection.execute(
+                text(
+                    "SELECT count(*) FROM listing"
+                    " WHERE instrument_id = :instrument_id AND id <> :listing_id"
+                ),
+                {"listing_id": listing_id, "instrument_id": instrument_id},
+            ).scalar_one()
+            if others > 0:
+                return None
+        connection.execute(
+            text("DELETE FROM listing WHERE id = :listing_id"), {"listing_id": listing_id}
+        )
+    return True
+
+
 def _clear_price_source(connection: Connection, instrument_id: int) -> None:
     connection.execute(
         text("UPDATE listing SET price_source = false WHERE instrument_id = :instrument_id"),

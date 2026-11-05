@@ -303,6 +303,23 @@ def choose_price_source(
         raise HTTPException(status_code=404, detail="No such Listing under this Instrument.")
 
 
+@router.delete(
+    "/securities/{instrument_id}/listings/{listing_id}",
+    status_code=204,
+    summary="Remove a Listing; the price source only as the last one",
+)
+def remove_listing(instrument_id: int, listing_id: int, admin: AdminDep, engine: EngineDep) -> None:
+    removed = instruments.remove_listing(engine, instrument_id, listing_id)
+    if removed is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This Listing prices the security — move the price source to another"
+            " Listing before removing it.",
+        )
+    if not removed:
+        raise HTTPException(status_code=404, detail="No such Listing under this Instrument.")
+
+
 @router.put(
     "/securities/{instrument_id}/review",
     status_code=204,
