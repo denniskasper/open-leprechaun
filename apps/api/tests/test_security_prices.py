@@ -614,6 +614,56 @@ def test_the_price_source_cannot_move_to_another_instruments_listing(market_clie
     assert response.status_code == 404
 
 
+def test_a_listing_that_does_not_price_is_removed(market_client, priced_db):
+    instrument_id = _share(priced_db, venue="gettex", quote_currency="EUR")
+    listing_id = instruments.add_listing(
+        priced_db, instrument_id, venue="Xetra", quote_currency="EUR"
+    )
+
+    response = market_client.delete(f"/api/securities/{instrument_id}/listings/{listing_id}")
+
+    assert response.status_code == 204
+    listings = {(row.venue, row.price_source) for row in _listings(priced_db, instrument_id)}
+    assert listings == {("gettex", True)}
+
+
+def test_the_price_source_is_not_removed_while_another_listing_remains(market_client, priced_db):
+    """Which market prices the security stays the Admin's choice: the price
+    source moves first, never by an implicit hand-over."""
+    instrument_id = _share(priced_db, venue="gettex", quote_currency="EUR")
+    instruments.add_listing(priced_db, instrument_id, venue="Xetra", quote_currency="EUR")
+    (source,) = [row for row in _listings(priced_db, instrument_id) if row.price_source]
+
+    response = market_client.delete(f"/api/securities/{instrument_id}/listings/{source.id}")
+
+    assert response.status_code == 409
+    assert "move the price source" in response.json()["detail"]
+    assert len(_listings(priced_db, instrument_id)) == 2
+
+
+def test_the_last_listing_is_removed_even_as_the_price_source(market_client, priced_db):
+    instrument_id = _share(priced_db, venue="gettex", quote_currency="EUR")
+    (listing,) = _listings(priced_db, instrument_id)
+
+    response = market_client.delete(f"/api/securities/{instrument_id}/listings/{listing.id}")
+
+    assert response.status_code == 204
+    assert _listings(priced_db, instrument_id) == []
+
+
+def test_another_instruments_listing_is_not_removed(market_client, priced_db):
+    instrument_id = _share(priced_db, venue="gettex", quote_currency="EUR")
+    other_id = _share(
+        priced_db, isin="IE00B4L5Y983", symbol="EUNL", venue="Xetra", quote_currency="EUR"
+    )
+    (other_listing,) = _listings(priced_db, other_id)
+
+    response = market_client.delete(f"/api/securities/{instrument_id}/listings/{other_listing.id}")
+
+    assert response.status_code == 404
+    assert len(_listings(priced_db, other_id)) == 1
+
+
 def _listings(engine, instrument_id):
     with engine.connect() as connection:
         return connection.execute(

@@ -19,6 +19,7 @@ import {
   classifyFund,
   createListing,
   createSecurity,
+  removeListing,
   resolveListings,
   reviewSecurity,
   searchSecurities,
@@ -979,6 +980,59 @@ function ListingsSummary({
 }
 
 /**
+ * One held market in the Listings editor: the price source marked or handed
+ * over here, and the two-step Remove. The server refuses to remove the price
+ * source while another Listing remains, and that refusal is shown in place.
+ */
+function HeldListing({
+  instrument,
+  listing,
+  moving,
+  onPrice,
+}: {
+  instrument: Instrument;
+  listing: Listing;
+  moving: boolean;
+  onPrice: () => void;
+}) {
+  const removal = useRemoval(() => removeListing(instrument.id, listing.id), ["instruments"]);
+  const name = `${listing.venue} ${listing.quote_currency}`;
+  return (
+    <li className="space-y-1">
+      <div className="flex min-h-8 items-center gap-3">
+        <span className="font-mono text-sm tabular-nums">
+          {listing.venue} · {listing.quote_currency}
+        </span>
+        {listing.price_source ? (
+          <span
+            className="microlabel text-signal"
+            title="This Listing's market prices the Instrument — quotes and daily closes come from here."
+          >
+            price source
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            onClick={onPrice}
+            disabled={moving}
+          >
+            Use for pricing
+          </Button>
+        )}
+        <RemoveButtons removal={removal} name={name} className="h-7 px-2" />
+      </div>
+      {removal.refusal && (
+        <p role="alert" className="measure-prose text-sm text-alarm">
+          {removal.refusal}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/**
  * The inline Listings editor (ticket 45): the held markets with the price
  * source movable among them, the provider's resolved markets one click from
  * held, and a by-hand form for what no provider resolves.
@@ -1029,28 +1083,13 @@ function ListingsEditor({ instrument }: { instrument: Instrument }) {
       {instrument.listings.length > 0 && (
         <ul className="space-y-1">
           {instrument.listings.map((listing) => (
-            <li key={listing.id} className="flex items-center gap-3">
-              <span className="font-mono text-sm tabular-nums">
-                {listing.venue} · {listing.quote_currency}
-              </span>
-              {listing.price_source ? (
-                <span
-                  className="microlabel text-signal"
-                  title="This Listing's market prices the Instrument — quotes and daily closes come from here."
-                >
-                  price source
-                </span>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => move.mutate(listing.id)}
-                  disabled={move.isPending}
-                >
-                  Use for pricing
-                </Button>
-              )}
-            </li>
+            <HeldListing
+              key={listing.id}
+              instrument={instrument}
+              listing={listing}
+              moving={move.isPending}
+              onPrice={() => move.mutate(listing.id)}
+            />
           ))}
         </ul>
       )}

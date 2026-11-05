@@ -4,6 +4,7 @@ import {
   classifyFund,
   createListing,
   createSecurity,
+  removeListing,
   resolveListings,
   reviewSecurity,
   searchSecurities,
@@ -146,5 +147,21 @@ describe("choosePriceSource", () => {
     expect(fetch).toHaveBeenCalledWith("/api/securities/3/listings/7/price-source", {
       method: "PUT",
     });
+  });
+});
+
+describe("removeListing", () => {
+  it("deletes the listing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+
+    await expect(removeListing(3, 7)).resolves.toBeUndefined();
+
+    expect(fetch).toHaveBeenCalledWith("/api/securities/3/listings/7", { method: "DELETE" });
+  });
+
+  it("carries the server's refusal", async () => {
+    respondWith(409, { detail: "This Listing prices the security." });
+
+    await expect(removeListing(3, 7)).rejects.toThrow("This Listing prices the security.");
   });
 });
