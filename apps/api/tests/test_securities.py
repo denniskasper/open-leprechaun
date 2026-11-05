@@ -205,7 +205,7 @@ def test_resolving_a_review_chooses_a_type_and_clears_the_flag(db):
     unknown = _fund(db, type="unknown", needs_review=True)
 
     assert instruments.resolve_review(
-        db, unknown, type="etf", symbol="EUNL", name=WORLD_ETF["name"]
+        db, unknown, instruments.Settlement(type="etf", symbol="EUNL", name=WORLD_ETF["name"])
     )
 
     row = _row(db, unknown)
@@ -218,12 +218,14 @@ def test_resolving_a_review_may_classify_the_fund_in_the_same_act(db):
     assert instruments.resolve_review(
         db,
         unknown,
-        type="fund",
-        symbol="EUNL",
-        name=WORLD_ETF["name"],
-        fund_category="aktienfonds",
-        fund_category_source="admin",
-        distribution_policy="accumulating",
+        instruments.Settlement(
+            type="fund",
+            symbol="EUNL",
+            name=WORLD_ETF["name"],
+            fund_category="aktienfonds",
+            fund_category_source="admin",
+            distribution_policy="accumulating",
+        ),
     )
 
     row = _row(db, unknown)
@@ -232,7 +234,9 @@ def test_resolving_a_review_may_classify_the_fund_in_the_same_act(db):
 
 def test_resolving_a_review_refuses_to_leave_the_type_unknown(db):
     unknown = _fund(db, type="unknown", needs_review=True)
-    assert not instruments.resolve_review(db, unknown, type="unknown", symbol="EUNL", name="?")
+    assert not instruments.resolve_review(
+        db, unknown, instruments.Settlement(type="unknown", symbol="EUNL", name="?")
+    )
     assert _row(db, unknown).needs_review
 
 
@@ -240,7 +244,9 @@ def test_a_settled_security_cannot_be_edited_through_the_review_door(db):
     """The review settles a flagged arrival — it is never a general rename or
     retype for a security nobody flagged."""
     settled = _fund(db)
-    assert not instruments.resolve_review(db, settled, type="share", symbol="X", name="X")
+    assert not instruments.resolve_review(
+        db, settled, instruments.Settlement(type="share", symbol="X", name="X")
+    )
     assert _row(db, settled).type == "etf"
 
 
@@ -255,10 +261,134 @@ def test_retyping_a_reviewed_fund_to_a_share_wipes_its_classification(db):
         distribution_policy="accumulating",
     )
 
-    assert instruments.resolve_review(db, flagged, type="share", symbol="ALV", name="Allianz")
+    assert instruments.resolve_review(
+        db, flagged, instruments.Settlement(type="share", symbol="ALV", name="Allianz")
+    )
 
     row = _row(db, flagged)
     assert (row.type, row.fund_category, row.distribution_policy) == ("share", None, None)
+
+
+# --- Editing a settled security -----------------------------------------------
+
+
+def test_editing_a_settled_security_renames_and_retypes_it(db):
+    settled = _fund(db, type="share", symbol="8XPd", name="XPeng Inc.")
+
+    assert instruments.edit_security(
+        db, settled, instruments.Settlement(type="certificate", symbol="XPEV", name="XPeng")
+    )
+
+    row = _row(db, settled)
+    assert (row.type, row.symbol, row.name, row.needs_review) == (
+        "certificate",
+        "XPEV",
+        "XPeng",
+        False,
+    )
+
+
+def test_a_flagged_security_is_settled_by_its_review_not_edited(db):
+    """The edit is for what the Admin already settled — a flagged arrival
+    still awaits its review, which is the act that clears the flag."""
+    flagged = _fund(db, type="unknown", needs_review=True)
+    assert not instruments.edit_security(
+        db, flagged, instruments.Settlement(type="share", symbol="X", name="X")
+    )
+    assert _row(db, flagged).needs_review
+
+
+def test_editing_refuses_to_make_a_settled_security_unknown(db):
+    settled = _fund(db)
+    assert not instruments.edit_security(
+        db, settled, instruments.Settlement(type="unknown", symbol="EUNL", name="?")
+    )
+    assert _row(db, settled).type == "etf"
+
+
+def test_editing_refuses_an_instrument_that_is_no_security(db):
+    token = instruments.create_crypto_token(
+        db, symbol="UNI", name="Uniswap", chain="ethereum", contract_address="0xabc"
+    )
+    assert token is not None
+    assert not instruments.edit_security(
+        db, token, instruments.Settlement(type="share", symbol="X", name="X")
+    )
+
+
+def test_retyping_a_fund_to_a_share_wipes_its_classification(db):
+    fund = _fund(
+        db,
+        fund_category="aktienfonds",
+        fund_category_source="provider",
+        distribution_policy="accumulating",
+    )
+
+    assert instruments.edit_security(
+        db, fund, instruments.Settlement(type="share", symbol="ALV", name="Allianz")
+    )
+
+    row = _row(db, fund)
+    assert (row.type, row.fund_category, row.fund_category_source) == ("share", None, None)
+    assert row.distribution_policy is None
+
+
+def test_retyping_a_share_to_a_fund_leaves_it_unclassified_until_stated(db):
+    """Nothing assumes a category for a newly-recognised fund: it stays
+    unclassified, which blocks finalisation, until the Admin states one."""
+    share = _fund(db, type="share")
+
+    assert instruments.edit_security(
+        db, share, instruments.Settlement(type="etf", symbol="EUNL", name="World")
+    )
+
+    row = _row(db, share)
+    assert (row.type, row.fund_category) == ("etf", None)
+
+
+def test_retyping_a_share_to_a_fund_may_classify_it_in_the_same_act(db):
+    share = _fund(db, type="share")
+
+    assert instruments.edit_security(
+        db,
+        share,
+        instruments.Settlement(
+            type="etf",
+            symbol="EUNL",
+            name="World",
+            fund_category="mischfonds",
+            fund_category_source="admin",
+            distribution_policy="distributing",
+        ),
+    )
+
+    row = _row(db, share)
+    assert (row.fund_category, row.fund_category_source, row.distribution_policy) == (
+        "mischfonds",
+        "admin",
+        "distributing",
+    )
+
+
+def test_renaming_a_fund_keeps_its_classification(db):
+    fund = _fund(
+        db,
+        fund_category="aktienfonds",
+        fund_category_source="provider",
+        distribution_policy="accumulating",
+    )
+
+    assert instruments.edit_security(
+        db, fund, instruments.Settlement(type="etf", symbol="IWDA", name="World")
+    )
+
+    row = _row(db, fund)
+    assert (row.symbol, row.fund_category, row.fund_category_source) == (
+        "IWDA",
+        "aktienfonds",
+        "provider",
+    )
+    assert row.distribution_policy == "accumulating"
 
 
 # --- An unknown identifier arriving by import ---------------------------------
@@ -622,6 +752,44 @@ def test_reviewing_a_missing_security_is_not_found(client):
         json={"type": "share", "symbol": "X", "name": "X"},
     )
     assert response.status_code == 404
+
+
+def test_editing_a_settled_security_over_the_api(client, db):
+    share = _fund(db, type="share", symbol="8XPd")
+
+    response = client.put(
+        f"/api/securities/{share}",
+        json={
+            "type": "etf",
+            "symbol": " XPEV ",
+            "name": " XPeng ",
+            "classification": {"fund_category": "aktienfonds"},
+        },
+    )
+
+    assert response.status_code == 204
+    row = _row(db, share)
+    assert (row.type, row.symbol, row.name) == ("etf", "XPEV", "XPeng")
+    assert (row.fund_category, row.fund_category_source) == ("aktienfonds", "admin")
+
+
+def test_editing_a_flagged_or_missing_security_is_not_found(client, db):
+    flagged = _fund(db, type="unknown", needs_review=True)
+    for instrument_id in (flagged, 999999):
+        response = client.put(
+            f"/api/securities/{instrument_id}",
+            json={"type": "share", "symbol": "X", "name": "X"},
+        )
+        assert response.status_code == 404
+
+
+def test_editing_refuses_a_blank_symbol_or_name(client, db):
+    share = _fund(db, type="share")
+    response = client.put(
+        f"/api/securities/{share}",
+        json={"type": "share", "symbol": "  ", "name": "X"},
+    )
+    assert response.status_code == 422
 
 
 # --- The onvista implementation, against recorded responses -------------------

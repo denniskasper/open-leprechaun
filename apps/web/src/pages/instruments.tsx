@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Shapes } from "lucide-react";
+import { Pencil, Plus, Search, Shapes } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import {
@@ -19,6 +19,7 @@ import {
   classifyFund,
   createListing,
   createSecurity,
+  editSecurity,
   removeListing,
   resolveListings,
   reviewSecurity,
@@ -165,6 +166,42 @@ export function classificationCell(instrument: Instrument): ClassificationCell {
     category: instrument.fund_category,
     source: instrument.fund_category_source,
     policy: instrument.distribution_policy,
+  };
+}
+
+/**
+ * Whether a row offers the Edit action: a security already settled. A flagged
+ * one is settled by its review instead; a coin or currency has no type, symbol
+ * or name to correct here.
+ */
+export function editable(instrument: Instrument): boolean {
+  return instrument.family === "security" && !instrument.needs_review;
+}
+
+/**
+ * The classification an edit states: only one the Admin actually changed. The
+ * selects open on what is stored, so sending them back unchanged would restamp
+ * a provider's prefill as the Admin's own; and a category left unchosen stays
+ * unstated, so a security newly typed a fund remains unclassified.
+ */
+export function editedClassification(
+  instrument: Instrument,
+  type: string,
+  category: string,
+  policy: string,
+): AdminClassification | null {
+  if (!FUND_TYPES.includes(type) || category === "") {
+    return null;
+  }
+  const unchanged =
+    category === (instrument.fund_category ?? "") &&
+    policy === (instrument.distribution_policy ?? "");
+  if (unchanged) {
+    return null;
+  }
+  return {
+    fund_category: category as FundCategory,
+    distribution_policy: policy === "" ? null : (policy as DistributionPolicy),
   };
 }
 
@@ -706,7 +743,7 @@ function InstrumentTable({
 }) {
   const shared = sharedSymbols(instruments);
   const priceOf = new Map(prices.map((entry) => [entry.instrument_id, entry]));
-  const [editing, setEditing] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ id: number; editor: RowEditor } | null>(null);
   const [managing, setManaging] = useState<number | null>(null);
 
   return (
@@ -734,8 +771,8 @@ function InstrumentTable({
               shared={shared.has(instrument.symbol)}
               entry={priceOf.get(instrument.id)}
               index={index}
-              editing={editing === instrument.id}
-              onEdit={(open) => setEditing(open ? instrument.id : null)}
+              editing={editing?.id === instrument.id ? editing.editor : null}
+              onEdit={(editor) => setEditing(editor ? { id: instrument.id, editor } : null)}
               managing={managing === instrument.id}
               onManage={(open) => setManaging(open ? instrument.id : null)}
             />
@@ -762,8 +799,8 @@ function InstrumentRow({
   shared: boolean;
   entry: PricedInstrument | undefined;
   index: number;
-  editing: boolean;
-  onEdit: (open: boolean) => void;
+  editing: RowEditor | null;
+  onEdit: (editor: RowEditor | null) => void;
   managing: boolean;
   onManage: (open: boolean) => void;
 }) {
@@ -780,10 +817,12 @@ function InstrumentRow({
     }
     open(opened);
   };
+  const classifying = (open: boolean) => onEdit(open ? "classification" : null);
+  const correcting = (open: boolean) => onEdit(open ? "details" : null);
   const asking = {
     ...removal,
     ask: () => {
-      if (editing) onEdit(false);
+      if (editing) onEdit(null);
       if (managing) onManage(false);
       removal.ask();
     },
@@ -833,7 +872,13 @@ function InstrumentRow({
           {identityOf(instrument)}
         </Cell>
         <Cell>
-          <ClassificationSummary cell={cell} editing={editing} onEdit={opening(onEdit)} />
+          <ClassificationSummary
+            cell={cell}
+            // While the details editor is open the cell offers only to close
+            // it — opening the classification would drop what was typed.
+            editing={editing !== null}
+            onEdit={opening(classifying)}
+          />
         </Cell>
         <Cell figure>
           <PriceCell entry={entry} />
@@ -846,6 +891,19 @@ function InstrumentRow({
           />
         </Cell>
         <Cell className="text-right whitespace-nowrap">
+          {editable(instrument) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-muted-foreground"
+              aria-label={`Edit ${instrument.symbol} ${identityOf(instrument)}`}
+              aria-expanded={editing === "details"}
+              onClick={() => opening(correcting)(editing !== "details")}
+            >
+              <Pencil aria-hidden />
+              {editing === "details" ? "Cancel" : "Edit"}
+            </Button>
+          )}
           <RemoveButtons
             removal={asking}
             name={`${instrument.symbol} ${identityOf(instrument)}`}
@@ -865,13 +923,18 @@ function InstrumentRow({
           )}
         </DetailRow>
       )}
-      {editing && cell.kind !== "not_applicable" && (
+      {editing === "classification" && cell.kind !== "not_applicable" && (
         <DetailRow columns={COLUMN_COUNT}>
           <SettleForm
             instrument={instrument}
-            review={cell.kind === "review"}
-            onDone={() => onEdit(false)}
+            mode={cell.kind === "review" ? "review" : "classify"}
+            onDone={() => onEdit(null)}
           />
+        </DetailRow>
+      )}
+      {editing === "details" && (
+        <DetailRow columns={COLUMN_COUNT}>
+          <SettleForm instrument={instrument} mode="edit" onDone={() => onEdit(null)} />
         </DetailRow>
       )}
       {managing && instrument.family === "security" && (
@@ -1259,18 +1322,31 @@ function ClassificationSummary({
 }
 
 /**
- * The one inline editor: classifying a fund, or — for an import-created
- * security — settling its review by choosing what it actually is.
+ * Which inline editor a row has open: `classification` from the
+ * Teilfreistellung cell (a review, or a fund's classification), `details`
+ * from the row's Edit action.
+ */
+type RowEditor = "classification" | "details";
+
+/** What the inline editor states: a review, a classification, or a correction. */
+type SettleMode = "review" | "classify" | "edit";
+
+/**
+ * The one inline editor: classifying a fund; for an import-created security,
+ * settling its review by choosing what it actually is; or correcting a
+ * settled security's type, symbol and name.
  */
 function SettleForm({
   instrument,
-  review,
+  mode,
   onDone,
 }: {
   instrument: Instrument;
-  review: boolean;
+  mode: SettleMode;
   onDone: () => void;
 }) {
+  const review = mode === "review";
+  const identifies = mode !== "classify";
   const id = useId();
   const queryClient = useQueryClient();
   const [type, setType] = useState(review ? "share" : instrument.type);
@@ -1280,23 +1356,22 @@ function SettleForm({
   const [policy, setPolicy] = useState(instrument.distribution_policy ?? "");
   const fund = FUND_TYPES.includes(type);
 
-  // The Admin's own act carries no source — the server stamps `admin`.
+  // The Admin's own act carries no source — the server stamps `admin`. An
+  // edit states only what the Admin changed.
   const classification: AdminClassification | null =
-    fund && category !== ""
-      ? {
-          fund_category: category as FundCategory,
-          distribution_policy: policy === "" ? null : (policy as DistributionPolicy),
-        }
-      : null;
+    mode === "edit"
+      ? editedClassification(instrument, type, category, policy)
+      : fund && category !== ""
+        ? {
+            fund_category: category as FundCategory,
+            distribution_policy: policy === "" ? null : (policy as DistributionPolicy),
+          }
+        : null;
   const settle = useMutation({
     mutationFn: () => {
-      if (review) {
-        return reviewSecurity(instrument.id, {
-          type,
-          symbol: symbol.trim(),
-          name: name.trim(),
-          classification,
-        });
+      if (identifies) {
+        const settled = { type, symbol: symbol.trim(), name: name.trim(), classification };
+        return review ? reviewSecurity(instrument.id, settled) : editSecurity(instrument.id, settled);
       }
       if (classification === null) {
         // Unreachable while the button disables itself, and never a guess.
@@ -1317,7 +1392,7 @@ function SettleForm({
 
   return (
     <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
-      {review && (
+      {identifies && (
         <>
           <div className="space-y-1.5">
             <label htmlFor={`${id}-type`} className="microlabel block text-muted-foreground">
@@ -1361,26 +1436,44 @@ function SettleForm({
           </div>
         </>
       )}
-      {(fund || !review) && (
+      {(fund || !identifies) && (
         <ClassificationSelects
           id={id}
           category={category}
           policy={policy}
           onCategory={setCategory}
           onPolicy={setPolicy}
+          // An edit never unstates a category — it would save one thing
+          // while the select showed another.
+          stated={mode === "edit" && instrument.fund_category !== null}
         />
+      )}
+      {mode === "edit" && fund && category === "" && (
+        <p className="measure-prose basis-full text-sm text-caution">
+          A fund without a Teilfreistellung category blocks finalising the tax report — choose one
+          now or classify it later.
+        </p>
       )}
       {settle.error != null && (
         <p role="alert" className="text-sm text-alarm">
           {settle.error.message}
         </p>
       )}
-      <Button type="submit" disabled={settle.isPending || (!review && classification === null)}>
-        {review ? "Settle review" : "Save classification"}
+      <Button
+        type="submit"
+        disabled={settle.isPending || (mode === "classify" && classification === null)}
+      >
+        {SETTLE_LABEL[mode]}
       </Button>
     </form>
   );
 }
+
+const SETTLE_LABEL: Record<SettleMode, string> = {
+  review: "Settle review",
+  classify: "Save classification",
+  edit: "Save changes",
+};
 
 /**
  * The two selects a classification is stated with, shared by the by-hand
@@ -1394,6 +1487,7 @@ function ClassificationSelects({
   onCategory,
   onPolicy,
   className,
+  stated = false,
 }: {
   id: string;
   category: string;
@@ -1401,6 +1495,8 @@ function ClassificationSelects({
   onCategory: (category: string) => void;
   onPolicy: (policy: string) => void;
   className?: string;
+  // A category is already stored: the select offers no way back to none.
+  stated?: boolean;
 }) {
   return (
     <>
@@ -1414,7 +1510,7 @@ function ClassificationSelects({
           onChange={(event) => onCategory(event.target.value)}
           className={className}
         >
-          <option value="">Not yet classified</option>
+          {!stated && <option value="">Not yet classified</option>}
           {Object.entries(CATEGORY_LABEL).map(([value, label]) => (
             <option key={value} value={value}>
               {label}

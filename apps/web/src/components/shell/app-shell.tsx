@@ -17,8 +17,9 @@ import { NAV_SECTIONS } from "@/navigation";
  * element in tab order is a skip link straight to that region.
  *
  * Desktop has no top bar — what it held sits in the sidebar: the environment
- * badge beside the wordmark, theme and sign-out in the footer beside the
- * version. A phone keeps the bar, because there the sidebar is put away.
+ * badge and its machine on a line under the wordmark, theme and sign-out in
+ * the footer beside the version. A phone keeps the bar, because there the
+ * sidebar is put away, and sets the wordmark and badge on the same two lines.
  */
 export function AppShell() {
   useEffect(() => watchSystemTheme(), []);
@@ -36,9 +37,11 @@ export function AppShell() {
           until its cap, and only past that do its hairline edges show. */}
       <div className="relative mx-auto flex min-h-dvh w-full max-w-sheet border-border bg-background 2xl:border-x">
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border md:flex">
-          <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-6">
-            <Wordmark stacked />
-            <EnvironmentBadge />
+          {/* The badge line starts where the wordmark's text does, so the
+              clover heads both lines. */}
+          <div className="flex h-14 shrink-0 flex-col justify-center gap-1.5 px-6">
+            <Wordmark />
+            <EnvironmentBadge className="pl-6.5" />
           </div>
           <NavSections className="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-3 py-4" />
           <div className="flex shrink-0 flex-wrap items-center border-t border-border py-1.5 pr-2 pl-6 [&>[role=alert]]:order-first [&>[role=alert]]:basis-full [&>[role=alert]]:py-1.5 [&>[role=alert]]:pr-4">
@@ -51,8 +54,12 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur-sm sm:px-8 md:hidden">
             <MobileNav />
-            <Wordmark />
-            <EnvironmentBadge />
+            {/* The same two lines as the sidebar's: a phone's bar has no room
+                for the machine's name beside the wordmark. */}
+            <span className="flex min-w-0 flex-col justify-center gap-1">
+              <Wordmark />
+              <EnvironmentBadge className="pl-6.5" />
+            </span>
             <div className="flex-1" />
             <ThemeToggle />
             <SignOutButton />
@@ -74,18 +81,12 @@ export function AppShell() {
   );
 }
 
-/**
- * The wordmark. The sidebar sets it on two lines, which leaves the narrow
- * column room for the environment badge beside it.
- */
-function Wordmark({ className, stacked = false }: { className?: string; stacked?: boolean }) {
+/** The wordmark: the clover and the name on one line. */
+function Wordmark({ className }: { className?: string }) {
   return (
     <span className={cn("flex items-center gap-2.5", className)}>
-      <Clover aria-hidden className={cn("shrink-0 text-primary", stacked ? "size-5" : "size-4")} />
-      <span className="microlabel whitespace-nowrap text-foreground">
-        Open {stacked && <br />}
-        Leprechaun
-      </span>
+      <Clover aria-hidden className="size-4 shrink-0 text-primary" />
+      <span className="microlabel whitespace-nowrap text-foreground">Open Leprechaun</span>
     </span>
   );
 }

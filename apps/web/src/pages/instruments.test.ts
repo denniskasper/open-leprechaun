@@ -5,6 +5,8 @@ import type { Candidate, ResolvedListing } from "@/api/securities";
 import {
   classificationCell,
   conditionLine,
+  editable,
+  editedClassification,
   identityOf,
   securityPayload,
   sharedSymbols,
@@ -380,5 +382,62 @@ describe("whatGoesWith", () => {
     ).toBe(
       "Removing it also removes its Stance, its Listing on XETRA (EUR) and its redemption values for 2030.",
     );
+  });
+});
+
+describe("editable", () => {
+  it("offers the edit on a settled security", () => {
+    expect(editable(security({ type: "share" }))).toBe(true);
+    expect(editable(security({ type: "etf" }))).toBe(true);
+  });
+
+  it("leaves a flagged security to its review", () => {
+    expect(editable(security({ type: "unknown", needs_review: true }))).toBe(false);
+    expect(editable(security({ type: "share", needs_review: true }))).toBe(false);
+  });
+
+  it("has nothing to edit on a coin or a currency", () => {
+    expect(editable(instrument({}))).toBe(false);
+  });
+});
+
+describe("editedClassification", () => {
+  const provided = security({
+    type: "etf",
+    fund_category: "aktienfonds",
+    fund_category_source: "provider",
+    distribution_policy: "accumulating",
+  });
+
+  it("states nothing when the selects still show what is stored", () => {
+    // A rename must not restamp the provider's prefill as the Admin's.
+    expect(editedClassification(provided, "etf", "aktienfonds", "accumulating")).toBeNull();
+  });
+
+  it("states the category the Admin changed", () => {
+    expect(editedClassification(provided, "etf", "mischfonds", "accumulating")).toEqual({
+      fund_category: "mischfonds",
+      distribution_policy: "accumulating",
+    });
+  });
+
+  it("states the policy the Admin changed, with the category beside it", () => {
+    expect(editedClassification(provided, "etf", "aktienfonds", "")).toEqual({
+      fund_category: "aktienfonds",
+      distribution_policy: null,
+    });
+  });
+
+  it("states a category given to a share newly typed a fund", () => {
+    const share = security({ type: "share" });
+    expect(editedClassification(share, "fund", "", "")).toBeNull();
+    expect(editedClassification(share, "fund", "sonstige", "distributing")).toEqual({
+      fund_category: "sonstige",
+      distribution_policy: "distributing",
+    });
+  });
+
+  it("states nothing for a type that is no fund's", () => {
+    expect(editedClassification(provided, "share", "mischfonds", "")).toBeNull();
   });
 });

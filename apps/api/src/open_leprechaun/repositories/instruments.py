@@ -212,31 +212,55 @@ def classify_fund(
         return False
 
 
-def resolve_review(
-    engine: Engine,
-    instrument_id: int,
-    *,
-    type: str,
-    symbol: str,
-    name: str,
-    fund_category: str | None = None,
-    fund_category_source: str | None = None,
-    distribution_policy: str | None = None,
-) -> bool:
+@dataclass(frozen=True)
+class Settlement:
+    """What the Admin states a security is: its type, its display labels and —
+    for a fund — the classification stated alongside, with where it came from.
+    A classification left unstated keeps whatever is stored."""
+
+    type: str
+    symbol: str
+    name: str
+    fund_category: str | None = None
+    fund_category_source: str | None = None
+    distribution_policy: str | None = None
+
+
+def resolve_review(engine: Engine, instrument_id: int, settlement: Settlement) -> bool:
     """Settle an auto-created security: the Admin chooses its real type and
     display metadata — and, where the type makes it a fund, may classify it in
     the same act — and the review flag clears. Only a flagged security may be
-    settled: this is the review's own act, never a general edit. A type that
-    is not a fund's wipes any classification in the same stroke — a share
-    carries none, and keeping a stale one would misstate its taxation.
+    settled: this is the review's own act; a settled one is corrected through
+    `edit_security`. A type that is not a fund's wipes any classification in
+    the same stroke — a share carries none, and keeping a stale one would
+    misstate its taxation.
 
     False when no flagged security carries the id, or the chosen type would
     leave it unsettled — the schema refuses `unknown` without the flag.
     """
-    fund = type in FUND_TYPES
+    return _state(engine, instrument_id, settlement, flagged=True)
+
+
+def edit_security(engine: Engine, instrument_id: int, settlement: Settlement) -> bool:
+    """Correct a settled security: its type and display metadata, under the
+    same rules as the review that settled it. The symbol and name are labels —
+    the ISIN is what identifies it — so they change freely. A type that stops
+    being a fund's wipes the classification; one that becomes a fund's keeps
+    whatever is stated, so a security newly recognised as a fund stays
+    unclassified, blocking finalisation, until a category is given.
+
+    False when no settled security carries the id — a flagged one awaits its
+    review — or the type would be `unknown`.
+    """
+    return _state(engine, instrument_id, settlement, flagged=False)
+
+
+def _state(engine: Engine, instrument_id: int, settlement: Settlement, *, flagged: bool) -> bool:
+    """Write what the Admin stated onto a security whose review flag is
+    `flagged`, clearing the flag."""
     try:
         with engine.begin() as connection:
-            reviewed = connection.execute(
+            stated = connection.execute(
                 text(
                     "UPDATE instrument SET type = :type, symbol = :symbol, name = :name,"
                     " needs_review = false,"
@@ -246,20 +270,22 @@ def resolve_review(
                     "  COALESCE(:source, fund_category_source) ELSE NULL END,"
                     " distribution_policy = CASE WHEN :fund AND :category IS NOT NULL THEN"
                     "  :distribution_policy WHEN :fund THEN distribution_policy ELSE NULL END"
-                    " WHERE id = :instrument_id AND family = 'security' AND needs_review"
+                    " WHERE id = :instrument_id AND family = 'security'"
+                    " AND needs_review = :flagged"
                 ),
                 {
                     "instrument_id": instrument_id,
-                    "type": type,
-                    "symbol": symbol,
-                    "name": name,
-                    "fund": fund,
-                    "category": fund_category,
-                    "source": fund_category_source,
-                    "distribution_policy": distribution_policy,
+                    "flagged": flagged,
+                    "type": settlement.type,
+                    "symbol": settlement.symbol,
+                    "name": settlement.name,
+                    "fund": settlement.type in FUND_TYPES,
+                    "category": settlement.fund_category,
+                    "source": settlement.fund_category_source,
+                    "distribution_policy": settlement.distribution_policy,
                 },
             )
-            return reviewed.rowcount == 1
+            return stated.rowcount == 1
     except IntegrityError:
         return False
 

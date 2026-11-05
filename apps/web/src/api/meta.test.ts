@@ -24,15 +24,33 @@ describe("fetchMeta", () => {
   });
 
   it("returns the identity of a development instance", async () => {
-    respondWith(200, { environment: "development", version: "a17a9a2" });
+    respondWith(200, { environment: "development", version: "a17a9a2", host: "tp-x1-yoga" });
 
-    await expect(fetchMeta()).resolves.toEqual({ environment: "development", version: "a17a9a2" });
+    await expect(fetchMeta()).resolves.toEqual({
+      environment: "development",
+      version: "a17a9a2",
+      host: "tp-x1-yoga",
+    });
   });
 
   it("returns the identity of a production instance", async () => {
-    respondWith(200, { environment: "production", version: "2026.08.1" });
+    respondWith(200, { environment: "production", version: "2026.08.1", host: null });
 
-    await expect(fetchMeta()).resolves.toEqual({ environment: "production", version: "2026.08.1" });
+    await expect(fetchMeta()).resolves.toEqual({
+      environment: "production",
+      version: "2026.08.1",
+      host: null,
+    });
+  });
+
+  it("reads an identity that states no machine as unnamed", async () => {
+    respondWith(200, { environment: "development", version: "a17a9a2" });
+
+    await expect(fetchMeta()).resolves.toEqual({
+      environment: "development",
+      version: "a17a9a2",
+      host: null,
+    });
   });
 
   it("rejects an environment it does not know", async () => {

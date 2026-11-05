@@ -106,13 +106,18 @@ class CreatedResponse(BaseModel):
     id: int
 
 
-class ReviewRequest(BaseModel):
-    """The Admin settles an auto-created security: its real type and display
-    metadata, and — where the type makes it a fund — its classification."""
+# A label the Admin chooses: trimmed, and never blank.
+Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class SettlementRequest(BaseModel):
+    """What the Admin states a security is — settling its review, or
+    correcting it once settled: its real type and display metadata, and —
+    where the type makes it a fund — its classification."""
 
     type: SecurityType
-    symbol: str
-    name: str
+    symbol: Label
+    name: Label
     classification: AdminClassification | None = None
 
     @model_validator(mode="after")
@@ -120,6 +125,18 @@ class ReviewRequest(BaseModel):
         if self.classification is not None and self.type not in FUND_TYPES:
             raise ValueError("A Teilfreistellung classification belongs to a fund.")
         return self
+
+    def settlement(self) -> instruments.Settlement:
+        classification = self.classification
+        return instruments.Settlement(
+            type=self.type,
+            symbol=self.symbol,
+            name=self.name,
+            fund_category=classification.fund_category if classification else None,
+            # The Admin's own statement — a provider's prefill never travels here.
+            fund_category_source="admin" if classification else None,
+            distribution_policy=classification.distribution_policy if classification else None,
+        )
 
 
 @router.get(
@@ -309,20 +326,25 @@ def remove_listing(instrument_id: int, listing_id: int, admin: AdminDep, engine:
     summary="Settle an auto-created security: choose its type and metadata, clearing the flag",
 )
 def review_security(
-    instrument_id: int, request: ReviewRequest, admin: AdminDep, engine: EngineDep
+    instrument_id: int, request: SettlementRequest, admin: AdminDep, engine: EngineDep
 ) -> None:
-    classification = request.classification
-    if not instruments.resolve_review(
-        engine,
-        instrument_id,
-        type=request.type,
-        symbol=request.symbol,
-        name=request.name,
-        fund_category=classification.fund_category if classification else None,
-        fund_category_source="admin" if classification else None,
-        distribution_policy=classification.distribution_policy if classification else None,
-    ):
+    if not instruments.resolve_review(engine, instrument_id, request.settlement()):
         raise HTTPException(status_code=404, detail="No such security awaiting review.")
+
+
+@router.put(
+    "/securities/{instrument_id}",
+    status_code=204,
+    summary="Correct a settled security: its type, symbol and name",
+)
+def edit_security(
+    instrument_id: int, request: SettlementRequest, admin: AdminDep, engine: EngineDep
+) -> None:
+    if not instruments.edit_security(engine, instrument_id, request.settlement()):
+        raise HTTPException(
+            status_code=404,
+            detail="No such settled security — one awaiting review is settled by its review.",
+        )
 
 
 class ChangeIsinRequest(BaseModel):
