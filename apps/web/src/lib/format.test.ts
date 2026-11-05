@@ -10,6 +10,7 @@ import {
   formatPercent,
   formatPercentExact,
   formatPrice,
+  formatMoneyPrice,
   formatQuantity,
   formatRoundedAssetAmount,
   formatRoundedQuantity,
@@ -292,6 +293,19 @@ describe("formatMoneyRounded", () => {
     expect(formatMoneyRounded("-125.485", "USD", "en-US")).toBe("-$125.49");
     expect(formatMoneyRounded("0.004", "USD", "en-US")).toBe("$0.004");
     expect(formatMoneyRounded("0.0096", "USD", "en-US")).toBe("$0.01");
+  });
+});
+
+describe("formatMoneyPrice", () => {
+  it("reads a price of one or above to the cent, padded", () => {
+    expect(formatMoneyPrice("123.456789012345678", "USD", "en-US")).toBe("$123.46");
+    expect(formatMoneyPrice("2.345", "USD", "en-US")).toBe("$2.35");
+    expect(formatMoneyPrice("63", "USD", "en-US")).toBe("$63.00");
+  });
+
+  it("reads four significant digits below one", () => {
+    expect(formatMoneyPrice("0.501304", "USD", "en-US")).toBe("$0.5013");
+    expect(formatMoneyPrice("0.000012345678", "USD", "en-US")).toBe("$0.00001235");
   });
 });
 

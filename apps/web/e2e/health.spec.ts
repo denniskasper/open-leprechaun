@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 // The whole path, asserted end to end: Postgres answers the API, the API
 // states what it knows about itself, and the browser puts it on screen. What
-// the development database happens to hold decides the verdict, so only what
+// the end-to-end database happens to hold decides the verdict, so only what
 // every instance shows is asserted here.
 test("the health panel states providers, Connections, tasks and storage", async ({ page }) => {
   await page.goto("/");
