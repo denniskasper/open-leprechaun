@@ -4,6 +4,7 @@ import {
   classifyFund,
   createListing,
   createSecurity,
+  editSecurity,
   resolveListings,
   reviewSecurity,
   searchSecurities,
@@ -94,6 +95,27 @@ describe("classifyFund and reviewSecurity", () => {
     await expect(
       classifyFund(7, { fund_category: "aktienfonds", distribution_policy: null }),
     ).rejects.toThrow("belongs to a fund");
+  });
+});
+
+describe("editSecurity", () => {
+  it("puts the correction to the security itself", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+
+    await expect(
+      editSecurity(7, { type: "share", symbol: "XPEV", name: "XPeng" }),
+    ).resolves.toBeUndefined();
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe("/api/securities/7");
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toMatchObject({ method: "PUT" });
+  });
+
+  it("surfaces the API's refusal words", async () => {
+    respondWith(404, { detail: "No such settled security." });
+
+    await expect(editSecurity(7, { type: "share", symbol: "XPEV", name: "XPeng" })).rejects.toThrow(
+      "No such settled security.",
+    );
   });
 });
 

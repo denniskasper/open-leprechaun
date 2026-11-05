@@ -67,7 +67,8 @@ export interface NewSecurity {
   classification?: Classification | null;
 }
 
-export interface Review {
+/** What the Admin states a security is — in its review, or correcting it. */
+export interface Settlement {
   type: string;
   symbol: string;
   name: string;
@@ -100,10 +101,19 @@ export async function classifyFund(
   }
 }
 
-export async function reviewSecurity(instrumentId: number, review: Review): Promise<void> {
+export async function reviewSecurity(instrumentId: number, review: Settlement): Promise<void> {
   const response = await putJson(`/api/securities/${instrumentId}/review`, review);
   if (!response.ok) {
     throw await refusal(response, "The security review could not be stored.");
+  }
+}
+
+/** Correct a settled security's type, symbol and name — the review's door is
+ * for a flagged one. */
+export async function editSecurity(instrumentId: number, edit: Settlement): Promise<void> {
+  const response = await putJson(`/api/securities/${instrumentId}`, edit);
+  if (!response.ok) {
+    throw await refusal(response, "The security could not be changed.");
   }
 }
 
