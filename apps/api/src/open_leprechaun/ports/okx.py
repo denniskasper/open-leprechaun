@@ -28,6 +28,7 @@ from typing import Literal
 
 import httpx
 
+from open_leprechaun.ports.chains import chain_named
 from open_leprechaun.ports.exchange import (
     AdapterError,
     Credentials,
@@ -388,6 +389,7 @@ class OkxSpotAdapter(_OkxAdapter):
             direction="in",
             symbol=str(raw["ccy"]),
             quantity=Decimal(str(raw["amt"])),
+            **_network_facts(raw, counterparty="from"),
         )
 
     def _withdrawal(self, raw: dict) -> NormalizedTransfer:
@@ -406,6 +408,7 @@ class OkxSpotAdapter(_OkxAdapter):
             symbol=str(raw["ccy"]),
             quantity=Decimal(str(raw["amt"])),
             fee_quantity=fee or None,
+            **_network_facts(raw, counterparty="to"),
         )
 
     def _cash_movement(
@@ -617,3 +620,18 @@ class OkxFuturesAdapter(_OkxAdapter):
             amount=Decimal(str(raw["pnl"])),
             settlement_symbol=str(raw["ccy"]),
         )
+
+
+def _network_facts(raw: dict, *, counterparty: str) -> dict[str, str | None]:
+    """What a deposit or withdrawal says about its network. OKX labels the
+    chain as `<currency>-<network>` — `USDC-Solana`, `USDT-TRC20` — so the
+    network is what follows the first dash. An internal transfer names an
+    OKX account, not an address, on the other side: that is no address."""
+    label = str(raw.get("chain") or "")
+    network = label.split("-", 1)[1] if "-" in label else label
+    other = str(raw.get(counterparty) or "") or None
+    return {
+        "chain": chain_named(network),
+        "tx_hash": str(raw.get("txId") or "") or None,
+        "counterparty_address": other if other and not other.isdigit() else None,
+    }

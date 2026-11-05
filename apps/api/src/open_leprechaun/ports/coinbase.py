@@ -3,19 +3,23 @@ into the port's normalized records — spot trades from the brokerage API's
 fills, crypto transfers and fiat cash movements from the account API's
 per-account transactions.
 
-Auth, as the venue documents it: a JWT per request, signed ES256 with the
-key's own EC private key — the key name as `kid` and `sub`, issuer "cdp", two
-minutes of life, a random `nonce`, and a `uri` claim of
+Auth, as the venue documents it: a JWT per request, signed with the key's
+own private key — ES256 for an ECDSA key, EdDSA for an Ed25519 one, the key
+type the venue now issues by default — the key name as `kid` and `sub`,
+issuer "cdp", two minutes of life, a random `nonce`, and a `uri` claim of
 "METHOD host/path" (the query string left out) binding the token to the one
 request it opens. Sent as `Authorization: Bearer`. The credential's key is
-the key name ("organizations/…/apiKeys/…") and its secret the PEM private
-key; the venue's Ed25519 keys are not accepted by these APIs.
+the key name ("organizations/…/apiKeys/…") and its secret the private key:
+an ECDSA key as PEM, an Ed25519 key as the venue shows it — one base64
+string of the seed followed by the public key — or as PEM.
 
 Quirks absorbed here: two error dialects (the brokerage API answers
 {"error", "message"} or a bare 401, the account API {"errors": [...]});
 two pagination dialects (an opaque `cursor`, and a `next_uri` to follow);
 transactions listed per wallet rather than for the venue account as a whole; a send's
-`amount` stated gross of its network fee; and a history with no lookback cap.
+`amount` stated gross of its network fee; a simple buy or sell stated once
+per wallet it touched, its card-paid or externally paid-out side touching
+none; and a history with no lookback cap.
 """
 
 from __future__ import annotations
@@ -29,15 +33,16 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, cast
 
 import httpx
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.serialization import load_der_private_key
 
+from open_leprechaun.ports.chains import chain_named
 from open_leprechaun.ports.exchange import (
     AdapterError,
     Credentials,
@@ -71,6 +76,9 @@ _COMPLETED = "completed"
 # the one Account they all land in; a request moved no funds.
 _NOTHING_TO_LAND = frozenset({"advanced_trade_fill", "transfer", "request"})
 _TRANSFER_TYPES = frozenset({"send", "receive"})
+# A simple buy or sell: an order the app placed, named under the row's own
+# type — `buy` or `sell` — by every wallet row it touched.
+_ORDER_TYPES = frozenset({"buy", "sell"})
 _CASH_DIRECTIONS: dict[str, Literal["in", "out"]] = {
     "fiat_deposit": "in",
     "fiat_withdrawal": "out",
@@ -78,16 +86,19 @@ _CASH_DIRECTIONS: dict[str, Literal["in", "out"]] = {
 
 _PEM = re.compile(r"-----BEGIN ([A-Z ]*PRIVATE KEY)-----(.+?)-----END \1-----", re.DOTALL)
 
+SigningKey = ec.EllipticCurvePrivateKey | ed25519.Ed25519PrivateKey
 
-def _signing_key(secret: str) -> ec.EllipticCurvePrivateKey:
-    """The credential's private key, read however its PEM was pasted — with
+
+def _signing_key(secret: str) -> SigningKey:
+    """The credential's private key, read however it was pasted. A PEM with
     real line breaks, with the key file's escaped ones, or with none at all
-    after a single-line input swallowed them. No sentence raised here ever
-    carries a byte of the secret."""
+    after a single-line input swallowed them; or an Ed25519 key as the venue
+    shows it, base64 of the seed followed by its public key. No sentence
+    raised here ever carries a byte of the secret."""
     armoured = _PEM.search(secret.replace("\\n", "\n"))
+    if armoured is None:
+        return _raw_ed25519(secret)
     try:
-        if armoured is None:
-            raise ValueError("no PEM armour")
         der = base64.b64decode("".join(armoured.group(2).split()), validate=True)
         key = load_der_private_key(der, password=None)
     except ValueError, TypeError, binascii.Error, UnsupportedAlgorithm:
@@ -96,10 +107,34 @@ def _signing_key(secret: str) -> ec.EllipticCurvePrivateKey:
             "The secret is not a private key in PEM form — paste the whole"
             " privateKey value from the key file Coinbase issued."
         ) from None
+    if isinstance(key, ed25519.Ed25519PrivateKey):
+        return key
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise AdapterError(
-            "Coinbase accepts ECDSA keys only on these APIs — create the key"
-            " with the ECDSA signature algorithm, and store that instead."
+            "Coinbase signs with ECDSA (P-256) or Ed25519 keys only — create the key"
+            " with one of those signature algorithms, and store that instead."
+        )
+    return key
+
+
+def _raw_ed25519(secret: str) -> ed25519.Ed25519PrivateKey:
+    """An Ed25519 key as the venue's key page shows it: 64 bytes in base64,
+    the 32-byte seed and then the public key it derives — a mismatch is a
+    secret damaged in copying, refused here rather than by a bare 401."""
+    try:
+        raw = base64.b64decode("".join(secret.split()), validate=True)
+    except ValueError, binascii.Error:
+        raw = b""
+    if len(raw) != 64:
+        raise AdapterError(
+            "The secret is neither a private key in PEM form nor an Ed25519 key —"
+            " paste the whole private key Coinbase showed when it created the key."
+        )
+    key = ed25519.Ed25519PrivateKey.from_private_bytes(raw[:32])
+    if key.public_key().public_bytes_raw() != raw[32:]:
+        raise AdapterError(
+            "The Ed25519 secret's two halves do not belong together — it was likely"
+            " damaged in copying; paste it again exactly as Coinbase showed it."
         )
     return key
 
@@ -108,11 +143,13 @@ def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def _token(key_name: str, key: ec.EllipticCurvePrivateKey, method: str, path: str) -> str:
-    """The venue's documented JWT for one request: ES256 over
-    header.payload, the signature as the raw r‖s pair JWS prescribes."""
+def _token(key_name: str, key: SigningKey, method: str, path: str) -> str:
+    """The venue's documented JWT for one request, signed over
+    header.payload: ES256 as the raw r‖s pair JWS prescribes, or EdDSA as the
+    key's own 64-byte signature."""
     now = int(time.time())
-    header = {"alg": "ES256", "kid": key_name, "nonce": secrets.token_hex(), "typ": "JWT"}
+    alg = "EdDSA" if isinstance(key, ed25519.Ed25519PrivateKey) else "ES256"
+    header = {"alg": alg, "kid": key_name, "nonce": secrets.token_hex(), "typ": "JWT"}
     claims = {
         "sub": key_name,
         "iss": "cdp",
@@ -123,6 +160,8 @@ def _token(key_name: str, key: ec.EllipticCurvePrivateKey, method: str, path: st
     signing_input = ".".join(
         _b64url(json.dumps(part, separators=(",", ":")).encode()) for part in (header, claims)
     )
+    if isinstance(key, ed25519.Ed25519PrivateKey):
+        return f"{signing_input}.{_b64url(key.sign(signing_input.encode()))}"
     r, s = decode_dss_signature(key.sign(signing_input.encode(), ec.ECDSA(hashes.SHA256())))
     return f"{signing_input}.{_b64url(r.to_bytes(32) + s.to_bytes(32))}"
 
@@ -159,9 +198,9 @@ def _error_message(response: httpx.Response) -> str:
 class CoinbaseSpotAdapter:
     """The spot kind of a Coinbase Connection: spot trades, crypto transfers
     and fiat cash movements out — everything ledger-bound the venue account
-    shows in a documented shape. What the venue states without one (a simple
-    buy or sell, a conversion, a reward) refuses the pull by name rather than
-    land a history with holes in it."""
+    shows in a shape the adapter can prove. What the venue states without one
+    (a conversion, a reward) refuses the pull by name rather than land a
+    history with holes in it."""
 
     kind = "spot"
     lookback_days = LOOKBACK_DAYS
@@ -208,6 +247,7 @@ class CoinbaseSpotAdapter:
         transfers: list[NormalizedTransfer] = []
         cash_movements: list[NormalizedCashMovement] = []
         unshaped: set[str] = set()
+        orders: dict[str, list[dict]] = {}
         for wallet in tuple(self._paged_by_uri(credentials, _ACCOUNTS_PATH)):
             for raw in self._paged_by_uri(
                 credentials, f"{_ACCOUNTS_PATH}/{wallet['id']}/transactions"
@@ -220,6 +260,8 @@ class CoinbaseSpotAdapter:
                 stated_type = str(raw.get("type"))
                 if stated_type in _TRANSFER_TYPES:
                     transfers.append(self._transfer(raw))
+                elif stated_type in _ORDER_TYPES:
+                    orders.setdefault(str(raw[stated_type]["id"]), []).append(raw)
                 elif stated_type in _CASH_DIRECTIONS:
                     cash_movements.append(self._cash_movement(raw, _CASH_DIRECTIONS[stated_type]))
                 elif stated_type not in _NOTHING_TO_LAND:
@@ -232,8 +274,77 @@ class CoinbaseSpotAdapter:
                 " a history with those movements missing. Import them from the"
                 " venue's own export instead."
             )
+        for order_id, rows in orders.items():
+            trade, paid = self._order(order_id, rows)
+            trades += (trade,)
+            if paid is not None:
+                cash_movements.append(paid)
         return Harvest(
             trades=trades, transfers=tuple(transfers), cash_movements=tuple(cash_movements)
+        )
+
+    @staticmethod
+    def _order(
+        order_id: str, rows: list[dict]
+    ) -> tuple[NormalizedTrade, NormalizedCashMovement | None]:
+        """One simple buy or sell from the rows naming it: the coin's own row
+        says what was bought or sold; the order says for how much — its
+        subtotal exchanged, its fee charged beside, its total what the
+        payment side moved. A quote-currency row means the euros moved
+        through the venue's own fiat wallet; without one they came from
+        outside (a card) or went outside (a payout), and a cash movement of
+        the total says so, so the account's balance stays the venue's."""
+        side = cast(Literal["buy", "sell"], str(rows[0]["type"]))
+        order = rows[0][side]
+        currencies = {order[part]["currency"] for part in ("total", "subtotal", "fee")}
+        if len(currencies) != 1:
+            raise AdapterError(
+                f"Order {order_id} states its amounts in more than one currency —"
+                " refused rather than booked as a trade it does not prove."
+            )
+        (quote,) = currencies
+        total, subtotal, fee = (
+            Decimal(str(order[part]["amount"])) for part in ("total", "subtotal", "fee")
+        )
+        if total != (subtotal + fee if side == "buy" else subtotal - fee):
+            raise AdapterError(
+                f"Order {order_id}'s total, subtotal and fee do not add up —"
+                " refused rather than booked as a trade it does not prove."
+            )
+        coin_rows = [row for row in rows if row["amount"]["currency"] != quote]
+        if len(coin_rows) != 1:
+            raise AdapterError(
+                f"Order {order_id} is not stated by exactly one coin wallet —"
+                " refused rather than guess what it bought or sold."
+            )
+        (coin,) = coin_rows
+        moved = Decimal(str(coin["amount"]["amount"]))
+        if (moved > 0) != (side == "buy"):
+            raise AdapterError(
+                f"Order {order_id} is a {side} whose coin wallet was"
+                f" {'credited' if moved > 0 else 'debited'} —"
+                " refused rather than booked the wrong way round."
+            )
+        occurred_at = _at(str(coin["created_at"]))
+        trade = NormalizedTrade(
+            external_id=f"{side}-{order_id}",
+            occurred_at=occurred_at,
+            base_symbol=str(coin["amount"]["currency"]),
+            quote_symbol=quote,
+            side=side,
+            base_quantity=abs(moved),
+            quote_quantity=subtotal,
+            fee_symbol=quote if fee else None,
+            fee_quantity=fee or None,
+        )
+        if len(coin_rows) < len(rows):
+            return trade, None
+        return trade, NormalizedCashMovement(
+            external_id=f"{side}-{order_id}-paid",
+            occurred_at=occurred_at,
+            direction="in" if side == "buy" else "out",
+            currency=quote,
+            amount=total,
         )
 
     def _signed_get(
@@ -354,6 +465,7 @@ class CoinbaseSpotAdapter:
                 direction="in",
                 symbol=symbol,
                 quantity=amount,
+                **_network_facts(raw, counterparty="from"),
             )
         fee = self._network_fee(raw, symbol)
         # A send is debited gross: what reached the recipient plus what the
@@ -372,6 +484,7 @@ class CoinbaseSpotAdapter:
             symbol=symbol,
             quantity=quantity,
             fee_quantity=fee or None,
+            **_network_facts(raw, counterparty="to"),
         )
 
     @staticmethod
@@ -408,3 +521,18 @@ class CoinbaseSpotAdapter:
             # actually moved by, a withdrawal's sign dropped for the port.
             amount=abs(amount),
         )
+
+
+def _network_facts(raw: dict, *, counterparty: str) -> dict[str, str | None]:
+    """What a send or receive says about its network. A transfer between
+    Coinbase users never touched a chain — `off_blockchain` — and states
+    nothing; the other side counts only where it is an address."""
+    network = raw.get("network") or {}
+    if network.get("status") == "off_blockchain":
+        return {"chain": None, "tx_hash": None, "counterparty_address": None}
+    other = raw.get(counterparty) or {}
+    return {
+        "chain": chain_named(network.get("network_name") or network.get("name")),
+        "tx_hash": network.get("hash") or None,
+        "counterparty_address": other.get("address") or None,
+    }

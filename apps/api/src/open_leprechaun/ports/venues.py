@@ -90,8 +90,10 @@ VENUES: dict[str, Venue] = {
             name="Coinbase",
             required_scope=(
                 "Create the API key with the View (read-only) permission only — no Trade,"
-                " no Transfer — and the ECDSA signature algorithm. The API key is the key's"
-                " name (organizations/…/apiKeys/…); the secret is its private key."
+                " no Transfer, no Receive. Either signature algorithm works, Ed25519 or ECDSA."
+                " The API key is the key's name (organizations/…/apiKeys/…); the secret is"
+                " its private key, pasted whole. An IP allowlist must name every address"
+                " this instance reaches Coinbase from, IPv6 included."
             ),
             requires_secret=True,
             requires_passphrase=False,

@@ -13,6 +13,7 @@ const outgoing = {
   instrument_id: 7,
   instrument_symbol: "BTC",
   instrument_name: "Bitcoin",
+  tx_hash: "0xabc",
 };
 
 const incoming = {
@@ -29,7 +30,7 @@ const incoming = {
 const overview = {
   unmatched_outgoing: [outgoing],
   unmatched_incoming: [incoming],
-  candidates: [{ outgoing, incoming }],
+  candidates: [{ outgoing, incoming, proven: true }],
   decisions: [],
 };
 

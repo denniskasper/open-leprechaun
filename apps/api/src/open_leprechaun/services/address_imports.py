@@ -29,6 +29,7 @@ from open_leprechaun.ports.address_indexer import (
     NormalizedAddressTransfer,
     NormalizedNetworkFee,
 )
+from open_leprechaun.repositories.transactions import NetworkFacts
 from open_leprechaun.services import imports
 from open_leprechaun.services.import_prices import PriceSources
 from open_leprechaun.services.imports import (
@@ -159,6 +160,11 @@ def _transfer_row(indexer: AddressIndexer, transfer: NormalizedAddressTransfer) 
         type=f"transfer_{transfer.direction}",
         occurred_at=transfer.occurred_at,
         legs=legs,
+        network=NetworkFacts(
+            chain=indexer.chain,
+            tx_hash=transfer.tx_hash,
+            counterparty_address=transfer.counterparty_address,
+        ),
     )
 
 

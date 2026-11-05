@@ -37,6 +37,7 @@ from open_leprechaun.ports.exchange import AdapterError, Credentials, ExchangeAd
 from open_leprechaun.repositories import connections as repository
 from open_leprechaun.repositories import instruments as instruments_repository
 from open_leprechaun.repositories import pending_orders as pending_orders_repository
+from open_leprechaun.repositories.transactions import NetworkFacts
 from open_leprechaun.services import broker_sync, connections, futures, imports
 from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.imports import CommitRefused, ImportLeg, ImportRow
@@ -269,7 +270,9 @@ def _sync_kind(
         # A broker names every Instrument by identity, so nothing of its
         # harvest waits on a symbol being resolved.
         resolved, resolved_cash = (
-            ({}, {}) if isinstance(harvest, BrokerHarvest) else _resolve_symbols(engine, harvest)
+            (_Resolved(), {})
+            if isinstance(harvest, BrokerHarvest)
+            else _resolve_symbols(engine, harvest)
         )
     except _UnresolvableError as unresolved:
         return KindSync(
@@ -402,7 +405,22 @@ def _commit(
     )
 
 
-def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], dict[str, int]]:
+class _Resolved(dict[str, int]):
+    """Each symbol's one Instrument — and, apart, each symbol a transfer
+    named beside the chain it moved on, where the chain chose between
+    several Instruments wearing it (ADR-0032)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.on_chain: dict[tuple[str, str], int] = {}
+
+    def of_transfer(self, symbol: str, chain: str | None) -> int:
+        if chain is not None and (symbol, chain) in self.on_chain:
+            return self.on_chain[(symbol, chain)]
+        return self[symbol]
+
+
+def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[_Resolved, dict[str, int]]:
     """Every symbol the harvest names, resolved to the one Instrument wearing
     it — crypto or cash for trades, transfers and settlements, the cash
     family alone for a cash movement's currency. A symbol nothing or several
@@ -413,7 +431,12 @@ def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], 
         anywhere.update((trade.base_symbol, trade.quote_symbol))
         if trade.fee_symbol is not None:
             anywhere.add(trade.fee_symbol)
-    anywhere.update(transfer.symbol for transfer in harvest.transfers)
+    # A transfer that states its chain resolves by symbol and chain together:
+    # the chain breaks a tie between tokens wearing the symbol, never more.
+    chained = {
+        (transfer.symbol, transfer.chain) for transfer in harvest.transfers if transfer.chain
+    }
+    anywhere.update(transfer.symbol for transfer in harvest.transfers if not transfer.chain)
     anywhere.update(fill.settlement_symbol for fill in harvest.fills)
     anywhere.update(payment.settlement_symbol for payment in harvest.funding)
     cash = {movement.currency for movement in harvest.cash_movements}
@@ -422,7 +445,7 @@ def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], 
     # movement names it — that settles a trade naming it too — else any kind.
     missing: dict[str, Literal["cash"] | None] = {}
     several: list[str] = []
-    resolved: dict[str, int] = {}
+    resolved = _Resolved()
     resolved_cash: dict[str, int] = {}
     for symbol, families, into, kind in [
         *((symbol, ("crypto", "cash"), resolved, None) for symbol in sorted(anywhere)),
@@ -433,6 +456,16 @@ def _resolve_symbols(engine: Engine, harvest: Harvest) -> tuple[dict[str, int], 
             into[symbol] = ids[0]
         elif not ids:
             missing[symbol] = kind
+        else:
+            several.append(symbol)
+    for symbol, chain in sorted(chained):
+        ids = instruments_repository.wearing_symbol(engine, symbol, families=("crypto", "cash"))
+        if len(ids) > 1:
+            ids = instruments_repository.deployed_on(engine, ids, chain)
+        if len(ids) == 1:
+            resolved.on_chain[(symbol, chain)] = ids[0]
+        elif not ids:
+            missing.setdefault(symbol, None)
         else:
             several.append(symbol)
     if missing or several:
@@ -460,7 +493,7 @@ def _listed(symbols: list[str]) -> str:
 
 
 def _import_rows(
-    harvest: Harvest, resolved: dict[str, int], resolved_cash: dict[str, int]
+    harvest: Harvest, resolved: _Resolved, resolved_cash: dict[str, int]
 ) -> list[ImportRow]:
     """The ledger-bound records as the import framework's own rows — trades
     with both sides present, each transfer side its own event where it
@@ -497,18 +530,11 @@ def _import_rows(
         )
     for transfer in harvest.transfers:
         role = "in" if transfer.direction == "in" else "out"
-        legs = [
-            ImportLeg(
-                role=role, quantity=transfer.quantity, instrument_id=resolved[transfer.symbol]
-            )
-        ]
+        instrument_id = resolved.of_transfer(transfer.symbol, transfer.chain)
+        legs = [ImportLeg(role=role, quantity=transfer.quantity, instrument_id=instrument_id)]
         if transfer.fee_quantity:
             legs.append(
-                ImportLeg(
-                    role="fee",
-                    quantity=transfer.fee_quantity,
-                    instrument_id=resolved[transfer.symbol],
-                )
+                ImportLeg(role="fee", quantity=transfer.fee_quantity, instrument_id=instrument_id)
             )
         rows.append(
             ImportRow(
@@ -516,6 +542,11 @@ def _import_rows(
                 type=f"transfer_{role}",
                 occurred_at=transfer.occurred_at,
                 legs=tuple(legs),
+                network=NetworkFacts(
+                    chain=transfer.chain,
+                    tx_hash=transfer.tx_hash,
+                    counterparty_address=transfer.counterparty_address,
+                ),
             )
         )
     for movement in harvest.cash_movements:

@@ -16,6 +16,16 @@ const arrival = {
   unclassified_inflow_count: 1,
   unclassified_quantity: "1999.75",
   last_inflow_at: "2026-03-01T09:00:00Z",
+  inflows: [
+    {
+      transaction_id: 12,
+      occurred_at: "2026-03-01T09:00:00Z",
+      quantity: "1999.75",
+      chain: "solana",
+      tx_hash: "5rTxHash",
+      counterparty_address: null,
+    },
+  ],
 };
 
 function respondWith(status: number, body: unknown): void {
