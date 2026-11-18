@@ -20,13 +20,18 @@ from decimal import Decimal
 import httpx
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 from open_leprechaun.adapters import get_venue_adapters
 from open_leprechaun.ports import coinbase
 from open_leprechaun.ports.coinbase import CoinbaseSpotAdapter
-from open_leprechaun.ports.exchange import AdapterError, Harvest
+from open_leprechaun.ports.exchange import (
+    AdapterError,
+    Harvest,
+    NormalizedCashMovement,
+    NormalizedTrade,
+)
 from open_leprechaun.services.connections import Credentials
 
 KEY_NAME = "organizations/the-org/apiKeys/the-key-id"
@@ -200,6 +205,96 @@ A_FIAT_WITHDRAWAL = {
 }
 
 
+# The docs print no simple buy or sell — authored from rows the live API
+# answers, every amount and id invented. An order states itself once per
+# wallet it touched, each row naming the order under `buy` or `sell`: the
+# coin's credit or debit, and — when the euros moved through the EUR wallet —
+# that wallet's debit or credit of the order's total. A buy's total is its
+# subtotal plus the fee, a sell's its subtotal less the fee.
+_ORDER_PATH = "/v2/accounts/{}/transactions/{}"
+
+
+def order_row(kind, order, *, row_id, account, amount, currency, total, subtotal, fee, paid_by):
+    return {
+        "id": row_id,
+        "type": kind,
+        "status": "completed",
+        "amount": {"amount": amount, "currency": currency},
+        "native_amount": {
+            "amount": total if not amount.startswith("-") else f"-{total}",
+            "currency": "EUR",
+        },
+        "created_at": "2024-03-04T09:30:00Z",
+        "resource": "transaction",
+        "resource_path": _ORDER_PATH.format(account["id"], row_id),
+        kind: {
+            "id": order,
+            "fee": {"amount": fee, "currency": "EUR"},
+            "subtotal": {"amount": subtotal, "currency": "EUR"},
+            "total": {"amount": total, "currency": "EUR"},
+            "payment_method_name": paid_by,
+        },
+    }
+
+
+_WALLET_BUY = dict(total="250.00", subtotal="246.27", fee="3.73", paid_by="EUR Wallet")
+A_WALLET_BUY = [
+    order_row(
+        "buy",
+        "order-wallet-buy",
+        row_id="row-wb-btc",
+        account=BTC_ACCOUNT,
+        amount="0.00500000",
+        currency="BTC",
+        **_WALLET_BUY,
+    ),
+    order_row(
+        "buy",
+        "order-wallet-buy",
+        row_id="row-wb-eur",
+        account=EUR_ACCOUNT,
+        amount="-250.00",
+        currency="EUR",
+        **_WALLET_BUY,
+    ),
+]
+# Paid by card: the euros never touch the venue account, so only the coin's
+# wallet states the order.
+A_CARD_BUY = order_row(
+    "buy",
+    "order-card-buy",
+    row_id="row-cb-btc",
+    account=BTC_ACCOUNT,
+    amount="0.00200000",
+    currency="BTC",
+    total="120.00",
+    subtotal="118.21",
+    fee="1.79",
+    paid_by="4111********1111",
+)
+_WALLET_SELL = dict(total="389.51", subtotal="395.42", fee="5.91", paid_by="EUR Wallet")
+A_WALLET_SELL = [
+    order_row(
+        "sell",
+        "order-wallet-sell",
+        row_id="row-ws-btc",
+        account=BTC_ACCOUNT,
+        amount="-0.00800000",
+        currency="BTC",
+        **_WALLET_SELL,
+    ),
+    order_row(
+        "sell",
+        "order-wallet-sell",
+        row_id="row-ws-eur",
+        account=EUR_ACCOUNT,
+        amount="389.51",
+        currency="EUR",
+        **_WALLET_SELL,
+    ),
+]
+
+
 def _b64url_decode(part):
     return base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))
 
@@ -352,11 +447,72 @@ def test_a_secret_that_is_no_private_key_is_refused_before_any_request():
     assert requests == []
 
 
-def test_a_key_of_another_algorithm_is_refused_with_the_one_to_choose():
-    """The venue issues Ed25519 keys too, and these APIs do not accept them —
-    said at the test, with the algorithm to pick instead."""
-    ed25519_pem = (
-        ed25519.Ed25519PrivateKey.generate()
+# The shape the venue's key page issues an Ed25519 key in: one base64 string
+# of the 32-byte seed followed by the 32-byte public key.
+ED25519_KEY = ed25519.Ed25519PrivateKey.generate()
+ED25519_SECRET = base64.b64encode(
+    ED25519_KEY.private_bytes_raw() + ED25519_KEY.public_key().public_bytes_raw()
+).decode()
+
+
+def test_an_ed25519_key_signs_its_token_eddsa():
+    """The venue's default key type: the same token, `alg` EdDSA, the
+    signature the key's own 64 bytes."""
+    adapter, requests = venue(fills=[A_FILL])
+
+    adapter.pull(Credentials(key=KEY_NAME, secret=ED25519_SECRET, passphrase=None))
+
+    fills_request = next(r for r in requests if r.url.path.endswith("/fills"))
+    header, payload, signature = fills_request.headers["Authorization"].split(" ")[1].split(".")
+    stated_header = json.loads(_b64url_decode(header))
+    claims = json.loads(_b64url_decode(payload))
+    assert stated_header["alg"] == "EdDSA"
+    assert stated_header["kid"] == claims["sub"] == KEY_NAME
+    assert claims["uri"] == "GET api.coinbase.com/api/v3/brokerage/orders/historical/fills"
+    ED25519_KEY.public_key().verify(_b64url_decode(signature), f"{header}.{payload}".encode())
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    [
+        ED25519_SECRET,
+        f"  {ED25519_SECRET}\n",
+        # A PKCS#8 export of the same key.
+        ED25519_KEY.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode(),
+    ],
+    ids=["as-shown", "padded", "pkcs8-pem"],
+)
+def test_an_ed25519_secret_is_read_however_it_was_pasted(pasted):
+    adapter, _ = venue()
+
+    detail = adapter.test(Credentials(key=KEY_NAME, secret=pasted, passphrase=None))
+
+    assert detail == "Authenticated — the key is view-only."
+
+
+def test_an_ed25519_secret_whose_halves_disagree_is_refused_before_any_request():
+    """The second half is the first half's public key; a mismatch is a
+    secret damaged in copying, caught before the venue answers a bare 401."""
+    other = ed25519.Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+    damaged = base64.b64encode(ED25519_KEY.private_bytes_raw() + other).decode()
+    adapter, requests = venue()
+
+    with pytest.raises(AdapterError, match="Ed25519") as failed:
+        adapter.test(Credentials(key=KEY_NAME, secret=damaged, passphrase=None))
+
+    assert damaged not in str(failed.value)
+    assert requests == []
+
+
+def test_a_key_of_another_algorithm_is_refused_with_the_ones_to_choose():
+    """Only ECDSA P-256 and Ed25519 sign these APIs' tokens — any other key
+    is refused at the test, naming both."""
+    rsa_pem = (
+        rsa.generate_private_key(public_exponent=65537, key_size=2048)
         .private_bytes(
             serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8,
@@ -366,8 +522,8 @@ def test_a_key_of_another_algorithm_is_refused_with_the_one_to_choose():
     )
     adapter, requests = venue()
 
-    with pytest.raises(AdapterError, match="ECDSA"):
-        adapter.test(Credentials(key=KEY_NAME, secret=ed25519_pem, passphrase=None))
+    with pytest.raises(AdapterError, match=r"ECDSA.*Ed25519"):
+        adapter.test(Credentials(key=KEY_NAME, secret=rsa_pem, passphrase=None))
     assert requests == []
 
 
@@ -651,18 +807,154 @@ def test_fills_and_own_account_transfers_are_not_stated_twice():
 
 
 def test_movements_the_venue_documents_no_shape_for_refuse_the_pull_by_name():
-    """A simple buy, a conversion, a reward: the documentation states neither
-    their counter-amount nor their fee, and skipping them would land a
-    history with holes — so the pull refuses, naming every such type once."""
-    a_buy = {**A_RECEIVE, "id": "a-buy", "type": "buy"}
-    another_buy = {**A_RECEIVE, "id": "another-buy", "type": "buy"}
+    """A conversion, a reward: the documentation states neither their
+    counter-amount nor their fee, and skipping them would land a history with
+    holes — so the pull refuses, naming every such type once."""
+    a_conversion = {**A_RECEIVE, "id": "a-conversion", "type": "trade"}
+    another_conversion = {**A_RECEIVE, "id": "another-conversion", "type": "trade"}
     a_reward = {**A_RECEIVE, "id": "a-reward", "type": "earn_payout"}
     adapter, _ = venue(
         accounts=[BTC_ACCOUNT],
-        transactions={BTC_ACCOUNT["id"]: [a_buy, another_buy, a_reward, A_RECEIVE]},
+        transactions={BTC_ACCOUNT["id"]: [a_conversion, another_conversion, a_reward, A_RECEIVE]},
     )
 
-    with pytest.raises(AdapterError, match=r"'buy', 'earn_payout' transactions"):
+    with pytest.raises(AdapterError, match=r"'earn_payout', 'trade' transactions"):
+        adapter.pull(CREDENTIALS)
+
+
+# --- Simple buys and sells: one order, stated once per wallet it touched ---
+
+
+def test_a_buy_paid_from_the_eur_wallet_is_one_trade():
+    """Both rows name one order: the coin credited, the EUR wallet debited
+    the total — the subtotal exchanged and the fee charged beside it."""
+    adapter, _ = venue(
+        accounts=[BTC_ACCOUNT, EUR_ACCOUNT],
+        transactions={BTC_ACCOUNT["id"]: A_WALLET_BUY[:1], EUR_ACCOUNT["id"]: A_WALLET_BUY[1:]},
+    )
+
+    harvest = adapter.pull(CREDENTIALS)
+
+    assert harvest.trades == (
+        NormalizedTrade(
+            external_id="buy-order-wallet-buy",
+            occurred_at=datetime(2024, 3, 4, 9, 30, tzinfo=UTC),
+            base_symbol="BTC",
+            quote_symbol="EUR",
+            side="buy",
+            base_quantity=Decimal("0.00500000"),
+            quote_quantity=Decimal("246.27"),
+            fee_symbol="EUR",
+            fee_quantity=Decimal("3.73"),
+        ),
+    )
+    assert harvest.cash_movements == ()
+    assert harvest.transfers == ()
+
+
+def test_a_buy_paid_by_card_brings_its_euros_in_first():
+    """The euros came from outside the venue account and were spent at once:
+    a deposit of the total beside the trade, so the account's EUR balance
+    stays what the venue states and the payment counts as money put in."""
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [A_CARD_BUY]})
+
+    harvest = adapter.pull(CREDENTIALS)
+
+    (trade,) = harvest.trades
+    assert (trade.external_id, trade.side, trade.base_quantity, trade.quote_quantity) == (
+        "buy-order-card-buy",
+        "buy",
+        Decimal("0.00200000"),
+        Decimal("118.21"),
+    )
+    assert (trade.fee_symbol, trade.fee_quantity) == ("EUR", Decimal("1.79"))
+    assert harvest.cash_movements == (
+        NormalizedCashMovement(
+            external_id="buy-order-card-buy-paid",
+            occurred_at=datetime(2024, 3, 4, 9, 30, tzinfo=UTC),
+            direction="in",
+            currency="EUR",
+            amount=Decimal("120.00"),
+        ),
+    )
+
+
+def test_a_sell_into_the_eur_wallet_is_one_trade():
+    adapter, _ = venue(
+        accounts=[BTC_ACCOUNT, EUR_ACCOUNT],
+        transactions={
+            BTC_ACCOUNT["id"]: A_WALLET_SELL[:1],
+            EUR_ACCOUNT["id"]: A_WALLET_SELL[1:],
+        },
+    )
+
+    harvest = adapter.pull(CREDENTIALS)
+
+    (trade,) = harvest.trades
+    assert (trade.external_id, trade.side, trade.base_symbol, trade.quote_symbol) == (
+        "sell-order-wallet-sell",
+        "sell",
+        "BTC",
+        "EUR",
+    )
+    assert (trade.base_quantity, trade.quote_quantity) == (
+        Decimal("0.00800000"),
+        Decimal("395.42"),
+    )
+    assert (trade.fee_symbol, trade.fee_quantity) == ("EUR", Decimal("5.91"))
+    assert harvest.cash_movements == ()
+
+
+def test_a_sell_paid_out_elsewhere_takes_its_euros_out_after():
+    """The mirror of a card buy: the coin's wallet alone states the order, so
+    its proceeds left the venue account — a withdrawal of the total."""
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: A_WALLET_SELL[:1]})
+
+    harvest = adapter.pull(CREDENTIALS)
+
+    assert [trade.external_id for trade in harvest.trades] == ["sell-order-wallet-sell"]
+    assert harvest.cash_movements == (
+        NormalizedCashMovement(
+            external_id="sell-order-wallet-sell-paid",
+            occurred_at=datetime(2024, 3, 4, 9, 30, tzinfo=UTC),
+            direction="out",
+            currency="EUR",
+            amount=Decimal("389.51"),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("amend", "named"),
+    [
+        ({"total": {"amount": "260.00", "currency": "EUR"}}, "do not add up"),
+        ({"fee": {"amount": "3.73", "currency": "USD"}}, "more than one currency"),
+    ],
+    ids=["arithmetic", "currencies"],
+)
+def test_an_order_whose_amounts_cannot_be_read_as_one_trade_is_refused(amend, named):
+    """Rather than book a trade the order does not prove: its total must be
+    its subtotal and fee, all in the one currency it was paid in."""
+    coin_row = {**A_CARD_BUY, "buy": {**A_CARD_BUY["buy"], **amend}}
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [coin_row]})
+
+    with pytest.raises(AdapterError, match=named):
+        adapter.pull(CREDENTIALS)
+
+
+def test_an_order_whose_coin_moved_against_its_side_is_refused():
+    backwards = {**A_CARD_BUY, "amount": {"amount": "-0.00200000", "currency": "BTC"}}
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [backwards]})
+
+    with pytest.raises(AdapterError, match="wrong way round"):
+        adapter.pull(CREDENTIALS)
+
+
+def test_an_order_stated_by_its_euro_row_alone_is_refused():
+    """Which coin was bought is stated only by the coin's own row."""
+    adapter, _ = venue(accounts=[EUR_ACCOUNT], transactions={EUR_ACCOUNT["id"]: A_WALLET_BUY[1:]})
+
+    with pytest.raises(AdapterError, match="order-wallet-buy"):
         adapter.pull(CREDENTIALS)
 
 
