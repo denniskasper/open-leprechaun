@@ -20,7 +20,12 @@ from sqlalchemy import Engine
 
 from open_leprechaun.repositories import imports, instruments
 from open_leprechaun.repositories.imports import Refusal, WriteRow
-from open_leprechaun.repositories.transactions import CapitalIncome, Leg, OriginalAmount
+from open_leprechaun.repositories.transactions import (
+    CapitalIncome,
+    Leg,
+    NetworkFacts,
+    OriginalAmount,
+)
 from open_leprechaun.services import import_prices
 from open_leprechaun.services.import_prices import PriceSources, UnpricedRow
 from open_leprechaun.services.price_reports import ProviderCondition
@@ -109,6 +114,10 @@ class ImportRow:
     # A trade's amount as it was priced, where it settled in another
     # currency (ADR-0025).
     original_amount: OriginalAmount | None = None
+    # What the source states about the network a transfer moved on
+    # (ADR-0032): recorded on a new record, and filling what an already
+    # registered one lacks.
+    network: NetworkFacts | None = None
 
     def instrument_specs(self) -> tuple[InstrumentSpec, ...]:
         """Every Instrument this row names by identity — its legs' and its
@@ -269,6 +278,16 @@ def commit(
     preview = evaluate(engine, source=source, account_id=account_id, rows=rows, alongside=alongside)
     if preview.refusal is not None:
         return preview.refusal
+    duplicates = set(preview.duplicate_external_ids)
+    imports.fill_network_facts(
+        engine,
+        source,
+        {
+            row.external_id: row.network
+            for row in rows
+            if row.external_id in duplicates and row.network is not None and row.network.stated()
+        },
+    )
     if not preview.creatable:
         return Committed(
             batch_id=None,
@@ -499,4 +518,5 @@ def _write_row(
         legs=legs,
         capital_income=capital_income,
         original_amount=row.original_amount,
+        network=row.network,
     )

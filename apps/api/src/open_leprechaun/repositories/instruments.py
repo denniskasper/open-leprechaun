@@ -140,6 +140,21 @@ def holding_deployment(engine: Engine, *, chain: str, contract_address: str) -> 
         ).one_or_none()
 
 
+def deployed_on(engine: Engine, instrument_ids: list[int], chain: str) -> list[int]:
+    """Those of the Instruments with a Deployment on the chain — how a stated
+    chain narrows a symbol several tokens wear (ADR-0032)."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT DISTINCT instrument_id FROM deployment"
+                    " WHERE chain = :chain AND instrument_id = ANY(:ids) ORDER BY instrument_id"
+                ),
+                {"chain": chain, "ids": instrument_ids},
+            ).scalars()
+        )
+
+
 def list_deployments(engine: Engine) -> list[Row]:
     """Every Deployment, each Instrument's in the order they were attached —
     the home one first."""

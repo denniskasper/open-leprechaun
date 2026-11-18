@@ -182,6 +182,28 @@ def list_inbox(engine: Engine) -> list[Row]:
         )
 
 
+def list_waiting_inflows(engine: Engine) -> list[Row]:
+    """Every unclassified inflow — a transfer_in's in-leg no confirmed
+    self-transfer has claimed — with the network facts its source stated,
+    newest first. The inbox shows those of the pairs still waiting."""
+    with engine.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT l.instrument_id, l.account_id, t.id AS transaction_id,"
+                    " t.occurred_at, l.quantity, n.chain, n.tx_hash, n.counterparty_address"
+                    " FROM transaction_leg l"
+                    " JOIN transaction t ON t.id = l.transaction_id"
+                    " LEFT JOIN network_fact n ON n.transaction_id = t.id"
+                    " WHERE l.role = 'in' AND t.type = 'transfer_in'"
+                    " AND NOT EXISTS (SELECT 1 FROM transfer_match m"
+                    "  WHERE m.in_leg_id = l.id AND m.verdict = 'confirmed')"
+                    " ORDER BY t.occurred_at DESC, t.id DESC"
+                )
+            ).all()
+        )
+
+
 def _which_foundation_was_missing(refused: IntegrityError) -> Refusal:
     constraint = getattr(getattr(refused.orig, "diag", None), "constraint_name", None)
     if constraint == "instrument_stance_instrument_fk":

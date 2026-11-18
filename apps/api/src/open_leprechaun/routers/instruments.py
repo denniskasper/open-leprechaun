@@ -1,4 +1,5 @@
 import re
+from dataclasses import asdict
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -116,6 +117,15 @@ class InstrumentResponse(BaseModel):
         )
 
 
+class WaitingInflowResponse(BaseModel):
+    transaction_id: int
+    occurred_at: AwareDatetime
+    quantity: Quantity
+    chain: str | None
+    tx_hash: str | None
+    counterparty_address: str | None
+
+
 class InboxItemResponse(BaseModel):
     instrument_id: int
     family: str
@@ -131,6 +141,9 @@ class InboxItemResponse(BaseModel):
     unclassified_inflow_count: int
     unclassified_quantity: Quantity
     last_inflow_at: AwareDatetime
+    # Each unclassified inflow with the network facts its source stated
+    # (ADR-0032), newest first.
+    inflows: list[WaitingInflowResponse]
 
     @classmethod
     def of(cls, item: InboxItem) -> InboxItemResponse:
@@ -149,6 +162,7 @@ class InboxItemResponse(BaseModel):
             unclassified_inflow_count=item.unclassified_inflow_count,
             unclassified_quantity=item.unclassified_quantity,
             last_inflow_at=item.last_inflow_at,
+            inflows=[WaitingInflowResponse(**asdict(inflow)) for inflow in item.inflows],
         )
 
 

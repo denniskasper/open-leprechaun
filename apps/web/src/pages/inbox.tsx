@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, EyeOff, Inbox, Link2, ShieldAlert } from "lucide-react";
+import { Check, ExternalLink, EyeOff, Inbox, Link2, ShieldAlert } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
-import { classifyInstrument, fetchInbox, type Classification, type InboxItem } from "@/api/inbox";
-import { fetchInstruments, settleAsDeploymentOf } from "@/api/instruments";
+import {
+  classifyInstrument,
+  fetchInbox,
+  type Classification,
+  type InboxItem,
+  type WaitingInflow,
+} from "@/api/inbox";
+import { fetchInstruments, settleAsDeploymentOf, type Deployment } from "@/api/instruments";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { ErrorState } from "@/components/patterns/error-state";
@@ -25,6 +31,46 @@ export function describeArrivals(item: InboxItem, locale?: string): string {
     `${formatNumber(item.unclassified_inflow_count, locale)} unclassified ${inflows} · ` +
     formatRoundedAssetAmount(item.unclassified_quantity, item.symbol, locale)
   );
+}
+
+/** Where each chain the ledger names shows one of its transactions. */
+const EXPLORERS: Record<string, string> = {
+  ethereum: "https://etherscan.io/tx/",
+  solana: "https://solscan.io/tx/",
+  base: "https://basescan.org/tx/",
+  bitcoin: "https://mempool.space/tx/",
+  bsc: "https://bscscan.com/tx/",
+  polygon: "https://polygonscan.com/tx/",
+  arbitrum: "https://arbiscan.io/tx/",
+  optimism: "https://optimistic.etherscan.io/tx/",
+  avalanche: "https://snowtrace.io/tx/",
+  tron: "https://tronscan.org/#/transaction/",
+};
+
+/** The public page of a chain transaction, or null where the chain or hash is not known. */
+export function explorerUrl(
+  chain: string | null,
+  txHash: string | null,
+): string | null {
+  if (chain === null || txHash === null) return null;
+  const base = EXPLORERS[chain];
+  return base ? `${base}${encodeURIComponent(txHash)}` : null;
+}
+
+/**
+ * The chain an inflow came on where the token has no Deployment there — worth
+ * a look: either the issuer mints it there too and the Deployment is missing,
+ * or what arrived is a different token wearing the symbol (ADR-0032).
+ */
+export function undeployedChain(
+  chain: string | null,
+  type: string,
+  deployments: Deployment[],
+): string | null {
+  if (chain === null || type !== "token") return null;
+  return deployments.some((deployment) => deployment.chain === chain)
+    ? null
+    : chain;
 }
 
 export function InboxPage() {
@@ -63,6 +109,7 @@ export function InboxPage() {
 
 function ArrivalCard({ item, index }: { item: InboxItem; index: number }) {
   const [settling, setSettling] = useState<"keep" | "deployment" | null>(null);
+  const [showingInflows, setShowingInflows] = useState(false);
 
   return (
     <li
@@ -95,9 +142,23 @@ function ArrivalCard({ item, index }: { item: InboxItem; index: number }) {
         </div>
       </div>
 
-      <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground">
-        {describeArrivals(item)}
-      </p>
+      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 border-t border-border pt-3">
+        <p className="text-sm text-muted-foreground">
+          {describeArrivals(item)}
+        </p>
+        {item.inflows.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-my-1 h-7 px-2 text-muted-foreground"
+            aria-expanded={showingInflows}
+            onClick={() => setShowingInflows(!showingInflows)}
+          >
+            {showingInflows ? "Hide inflows" : "Show inflows"}
+          </Button>
+        )}
+      </div>
+      {showingInflows && <InflowList item={item} />}
 
       {settling === "keep" ? (
         <KeepForm item={item} onDone={() => setSettling(null)} />
@@ -377,4 +438,108 @@ function DeploymentOfForm({
       </div>
     </form>
   );
+}
+
+/**
+ * Each inflow a keep would settle, with what its source said about where it
+ * came from: when, how much, the chain, the sender, and the transaction on
+ * the chain's own explorer. A chain the token has no Deployment on is
+ * flagged, never refused.
+ */
+function InflowList({ item }: { item: InboxItem }) {
+  const instruments = useQuery({
+    queryKey: ["instruments"],
+    queryFn: fetchInstruments,
+  });
+  const deployments =
+    instruments.data?.find((instrument) => instrument.id === item.instrument_id)
+      ?.deployments ?? null;
+
+  return (
+    <ul
+      className="mt-3 divide-y divide-border border-y border-border"
+      aria-label={`Inflows of ${item.symbol} at ${item.account_name}`}
+    >
+      {item.inflows.map((inflow) => (
+        <InflowRow
+          key={inflow.transaction_id}
+          inflow={inflow}
+          symbol={item.symbol}
+          undeployed={
+            deployments === null
+              ? null
+              : undeployedChain(inflow.chain, item.type, deployments)
+          }
+        />
+      ))}
+    </ul>
+  );
+}
+
+function InflowRow({
+  inflow,
+  symbol,
+  undeployed,
+}: {
+  inflow: WaitingInflow;
+  symbol: string;
+  undeployed: string | null;
+}) {
+  const link = explorerUrl(inflow.chain, inflow.tx_hash);
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
+      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+        {formatTimestamp(Date.parse(inflow.occurred_at))}
+      </span>
+      <span
+        className="font-mono tabular-nums"
+        title={`${inflow.quantity} ${symbol}`}
+      >
+        {formatRoundedAssetAmount(inflow.quantity, symbol)}
+      </span>
+      <span className="text-muted-foreground">
+        {inflow.chain ? `on ${inflow.chain}` : "chain not stated"}
+      </span>
+      {undeployed && (
+        <span
+          className="microlabel text-caution"
+          title={`This token has no ${undeployed} Deployment. If its issuer mints it there, add the Deployment on Instruments; if not, what arrived is a different token.`}
+        >
+          no {undeployed} deployment
+        </span>
+      )}
+      {inflow.counterparty_address && (
+        <span
+          className="font-mono text-xs text-muted-foreground tabular-nums"
+          title={inflow.counterparty_address}
+        >
+          from {abbreviated(inflow.counterparty_address)}
+        </span>
+      )}
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto inline-flex items-center gap-1 underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground"
+        >
+          View transaction
+          <ExternalLink aria-hidden className="size-3.5" />
+        </a>
+      ) : (
+        inflow.tx_hash && (
+          <span
+            className="ml-auto font-mono text-xs text-muted-foreground tabular-nums"
+            title={inflow.tx_hash}
+          >
+            tx {abbreviated(inflow.tx_hash)}
+          </span>
+        )
+      )}
+    </li>
+  );
+}
+
+function abbreviated(value: string): string {
+  return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }

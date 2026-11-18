@@ -130,6 +130,15 @@ def test_a_plain_sol_inflow_arrives_in_whole_units_at_its_utc_instant():
     assert history.warnings == ()
 
 
+def test_every_transfer_states_the_signature_it_moved_in():
+    """The signature is the transaction's hash on Solana — kept as recorded
+    fact, so the inbox can link to it and a self-transfer can be proven by
+    it (ADR-0032)."""
+    history = indexer(Endpoint({PAYER: [TRANSFER]})).history(PAYER)
+
+    assert {transfer.tx_hash for transfer in history.transfers} == {TRANSFER}
+
+
 def test_the_payers_fee_is_taken_out_of_what_it_sent_and_stated_once():
     """The payer's own account fell by 21,171,708 lamports, of which 18,334
     were the network fee: what it sent is the rest, the fee its own figure,

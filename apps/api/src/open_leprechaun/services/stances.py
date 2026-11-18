@@ -138,6 +138,19 @@ def may_acquire_price_source(engine: Engine, instrument_id: int) -> bool:
 
 
 @dataclass(frozen=True)
+class WaitingInflow:
+    """One inflow a keep decision would settle, with what its source stated
+    about the network it came on (ADR-0032) — how the Admin judges it."""
+
+    transaction_id: int
+    occurred_at: datetime
+    quantity: Decimal
+    chain: str | None
+    tx_hash: str | None
+    counterparty_address: str | None
+
+
+@dataclass(frozen=True)
 class InboxItem:
     """One unacknowledged arrival: an Instrument at an Account, with the
     unsolicited inflows a keep decision would settle."""
@@ -156,10 +169,24 @@ class InboxItem:
     unclassified_inflow_count: int
     unclassified_quantity: Decimal
     last_inflow_at: datetime
+    # Each of the unclassified inflows, newest first.
+    inflows: tuple[WaitingInflow, ...] = ()
 
 
 def inbox(engine: Engine) -> list[InboxItem]:
     """What waits on the Admin, newest arrival first."""
+    inflows_of: dict[tuple[int, int], list[WaitingInflow]] = {}
+    for row in stances.list_waiting_inflows(engine):
+        inflows_of.setdefault((row.instrument_id, row.account_id), []).append(
+            WaitingInflow(
+                transaction_id=row.transaction_id,
+                occurred_at=row.occurred_at,
+                quantity=row.quantity,
+                chain=row.chain,
+                tx_hash=row.tx_hash,
+                counterparty_address=row.counterparty_address,
+            )
+        )
     return [
         InboxItem(
             instrument_id=row.instrument_id,
@@ -176,6 +203,7 @@ def inbox(engine: Engine) -> list[InboxItem]:
             unclassified_inflow_count=row.unclassified_inflow_count,
             unclassified_quantity=row.unclassified_quantity,
             last_inflow_at=row.last_inflow_at,
+            inflows=tuple(inflows_of.get((row.instrument_id, row.account_id), ())),
         )
         for row in stances.list_inbox(engine)
     ]

@@ -10,7 +10,7 @@ a chain is a registry entry and nothing else.
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -301,6 +301,70 @@ def test_a_token_resolves_by_any_of_its_deployments(client, indexers, db):
     assert committed.json()["instruments_created"] == 0
     (recorded,) = client.get("/api/transactions").json()
     assert [leg["instrument_id"] for leg in recorded["legs"]] == [known]
+
+
+def test_a_transfer_lands_with_its_chain_and_the_hash_the_indexer_stated(client, indexers):
+    indexers["fakechain"] = FakeIndexer(
+        answers=AddressHistory(
+            transfers=(transfer(tx_hash="sig-1", counterparty_address="Fr0mAddr3ss"),)
+        )
+    )
+
+    client.post("/api/address-imports", json=request(wallet_account(client)))
+
+    (recorded,) = client.get("/api/transactions").json()
+    assert recorded["network"] == {
+        "chain": "fakechain",
+        "tx_hash": "sig-1",
+        "counterparty_address": "Fr0mAddr3ss",
+    }
+
+
+def test_the_inbox_lists_each_waiting_inflow_with_its_network_facts(client, indexers):
+    """How to judge an inflow before deciding on it: each one, newest first,
+    with the chain it came on, its hash and its sender where stated."""
+    indexers["fakechain"] = FakeIndexer(
+        answers=AddressHistory(
+            transfers=(
+                transfer(
+                    external_id="sig-1:dust",
+                    asset=UNKNOWN_TOKEN,
+                    quantity=Decimal("5"),
+                    tx_hash="sig-1",
+                    counterparty_address="Fr0mAddr3ss",
+                ),
+                transfer(
+                    external_id="sig-2:dust",
+                    asset=UNKNOWN_TOKEN,
+                    occurred_at=NOON + timedelta(hours=1),
+                    quantity=Decimal("7.25"),
+                    tx_hash="sig-2",
+                ),
+            )
+        )
+    )
+    client.post("/api/address-imports", json=request(wallet_account(client)))
+
+    (item,) = client.get("/api/inbox").json()
+
+    assert [
+        {key: inflow[key] for key in ("quantity", "chain", "tx_hash", "counterparty_address")}
+        for inflow in item["inflows"]
+    ] == [
+        {
+            "quantity": "7.25",
+            "chain": "fakechain",
+            "tx_hash": "sig-2",
+            "counterparty_address": None,
+        },
+        {
+            "quantity": "5",
+            "chain": "fakechain",
+            "tx_hash": "sig-1",
+            "counterparty_address": "Fr0mAddr3ss",
+        },
+    ]
+    assert item["inflows"][0]["occurred_at"] == "2026-03-14T13:00:00Z"
 
 
 def test_a_second_address_may_not_write_into_the_same_account(client, indexers):

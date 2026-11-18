@@ -9,7 +9,8 @@ asset it names, never from anything about the account.
 
 Auth, as the venue documents it: the API key alone, in the `x-api-key` header.
 A key carries scopes chosen when it is generated and lives a year at most.
-The asset and currency lists are public, so the key is never sent to them.
+The asset and currency lists once answered without it and no longer do, so
+the key travels to every endpoint.
 
 Quirks absorbed here: every asset and currency named by a UUID, resolved
 against the venue's own lists — a share may wear the very symbol of a coin; a
@@ -196,7 +197,7 @@ class _Timeline:
 
     def read(self, credentials: Credentials) -> _Reading:
         operations = list(self._operations(credentials))
-        things = self._things(operations)
+        things = self._things(operations, credentials)
         reading = _Reading()
         for operation in operations:
             self._read_operation(operation, things, reading)
@@ -205,7 +206,7 @@ class _Timeline:
     def positions(self, credentials: Credentials) -> tuple[NormalizedPosition, ...]:
         as_of = self.now()
         held = self._get(_PORTFOLIO_PATH, {}, credentials)["data"]
-        things = self._things(held)
+        things = self._things(held, credentials)
         positions = []
         for row in held:
             balance = row["balance"]
@@ -537,7 +538,7 @@ class _Timeline:
 
     # --- Resolving the venue's UUIDs ---
 
-    def _things(self, rows: Iterable[dict]) -> dict[str, _Thing]:
+    def _things(self, rows: Iterable[dict], credentials: Credentials) -> dict[str, _Thing]:
         """Every asset and currency these rows name, by its UUID. An asset
         the venue's own list no longer states is something neither port can
         express, named by the only thing known of it."""
@@ -558,12 +559,14 @@ class _Timeline:
 
         things = {
             str(currency["id"]): _Thing("cash", str(currency["symbol"]), str(currency["name"]))
-            for currency in self._get(_CURRENCIES_PATH, {})["data"]
+            for currency in self._get(_CURRENCIES_PATH, {}, credentials)["data"]
         }
         wanted = sorted(asset_ids)
         for start in range(0, len(wanted), _PAGE_SIZE):
             batch = wanted[start : start + _PAGE_SIZE]
-            listed = self._get(_ASSETS_PATH, {"id": ",".join(batch), "page_size": _PAGE_SIZE})
+            listed = self._get(
+                _ASSETS_PATH, {"id": ",".join(batch), "page_size": _PAGE_SIZE}, credentials
+            )
             for asset in listed["data"]:
                 isin = str(asset["isin"]) if asset.get("isin") else None
                 if asset.get("type") == _CRYPTO_TYPE:
@@ -611,8 +614,8 @@ class _Timeline:
     def _get(
         self, path: str, params: dict[str, str | int], credentials: Credentials | None = None
     ) -> dict:
-        """One request. The key travels to the account's endpoints alone —
-        the asset and currency lists are public and are asked without it."""
+        """One request, the key in its header where one is handed in — every
+        endpoint the adapters read refuses without it."""
         response = self._send(path, params, credentials)
         if response.status_code == 429:
             self._sleep(_RATE_LIMIT_WAIT_SECONDS)
