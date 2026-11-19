@@ -3,6 +3,7 @@ import { Pencil, Plus, Search, Shapes } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import {
+  addDeployment,
   fetchInstruments,
   removeInstrument,
   type Instrument,
@@ -67,6 +68,36 @@ export function identityOf(instrument: InstrumentIdentity): string {
     return `${instrument.chain} · native`;
   }
   return instrument.isin ?? instrument.symbol;
+}
+
+/** The chains a token is deployed on beyond the home one it is shown under (ADR-0032). */
+export function otherChains(
+  instrument: Pick<Instrument, "deployments">,
+): string[] {
+  return instrument.deployments.slice(1).map((deployment) => deployment.chain);
+}
+
+/**
+ * The tokens an unfamiliar one may be settled as a Deployment of: every other
+ * token, those wearing its symbol first — the likeliest answer — then by
+ * symbol. Never a coin, security or currency: only a token has Deployments.
+ */
+export function deploymentCandidates(
+  self: { id: number; symbol: string },
+  instruments: Instrument[],
+): Instrument[] {
+  const tokens = instruments.filter(
+    (instrument) =>
+      instrument.id !== self.id &&
+      instrument.family === "crypto" &&
+      instrument.type === "token",
+  );
+  const rank = (instrument: Instrument) =>
+    instrument.symbol === self.symbol ? 0 : 1;
+  return tokens.sort(
+    (a, b) =>
+      rank(a) - rank(b) || a.symbol.localeCompare(b.symbol) || a.id - b.id,
+  );
 }
 
 /** Symbols displayed by more than one Instrument — legitimate, and worth a flag. */
@@ -869,7 +900,11 @@ function InstrumentRow({
           {FAMILY_LABEL[instrument.family]} · {instrument.type}
         </Cell>
         <Cell data title={instrument.contract_address ?? undefined}>
-          {identityOf(instrument)}
+          <IdentitySummary
+            instrument={instrument}
+            managing={managing}
+            onManage={opening(onManage)}
+          />
         </Cell>
         <Cell>
           <ClassificationSummary
@@ -942,6 +977,11 @@ function InstrumentRow({
           <ListingsEditor instrument={instrument} />
         </DetailRow>
       )}
+      {managing && instrument.type === "token" && (
+        <DetailRow columns={COLUMN_COUNT}>
+          <DeploymentsEditor instrument={instrument} />
+        </DetailRow>
+      )}
     </>
   );
 }
@@ -971,6 +1011,150 @@ function useWhatGoesWith(instrument: Instrument, confirming: boolean): string | 
     .filter((value) => value.instrument_id === instrument.id)
     .map((value) => value.year);
   return whatGoesWith(instrument, years);
+}
+
+/**
+ * The Identity cell. A token's opens its Deployments (ADR-0032) — the chains
+ * beyond the home one named after it — the way a security's Listings cell
+ * opens its markets; anything else is its identity, read only.
+ */
+function IdentitySummary({
+  instrument,
+  managing,
+  onManage,
+}: {
+  instrument: Instrument;
+  managing: boolean;
+  onManage: (open: boolean) => void;
+}) {
+  if (instrument.type !== "token") {
+    return <>{identityOf(instrument)}</>;
+  }
+  const others = otherChains(instrument);
+  return (
+    // A dotted underline marks the identity as the way into its Deployments.
+    <button
+      type="button"
+      className="text-left underline decoration-muted-foreground/40 decoration-dotted underline-offset-4 hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      aria-expanded={managing}
+      aria-label={`${managing ? "Close" : "Edit"} the Deployments of ${instrument.symbol} ${identityOf(instrument)}`}
+      onClick={() => onManage(!managing)}
+    >
+      {identityOf(instrument)}
+      {others.length > 0 && (
+        <span className="text-muted-foreground"> + {others.join(", ")}</span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * The inline Deployments editor: every chain's contract the token is, the
+ * home one marked, and a by-hand form for another. The rule is said before
+ * the control that acts on it — the ledger cannot tell a native contract from
+ * a bridged one, so the Admin's word is the whole check.
+ */
+function DeploymentsEditor({ instrument }: { instrument: Instrument }) {
+  const id = useId();
+  const queryClient = useQueryClient();
+  const [chain, setChain] = useState("");
+  const [contract, setContract] = useState("");
+  const add = useMutation({
+    mutationFn: () =>
+      addDeployment(instrument.id, {
+        chain: chain.trim().toLowerCase(),
+        contract_address: contract.trim(),
+      }),
+    onSuccess: () => {
+      setChain("");
+      setContract("");
+      return queryClient.invalidateQueries({ queryKey: ["instruments"] });
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    add.mutate();
+  };
+
+  return (
+    <div
+      className="space-y-4"
+      aria-label={`Deployments of ${instrument.symbol}`}
+    >
+      <ul className="space-y-1">
+        {instrument.deployments.map((deployment, index) => (
+          <li
+            key={`${deployment.chain} ${deployment.contract_address}`}
+            className="flex min-h-8 flex-wrap items-center gap-x-3"
+          >
+            <span className="w-24 text-sm">{deployment.chain}</span>
+            <span className="font-mono text-sm break-all tabular-nums">
+              {deployment.contract_address}
+            </span>
+            {index === 0 && (
+              <span
+                className="microlabel text-muted-foreground"
+                title="The contract this token was added with — the one it is shown under and priced by."
+              >
+                home
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="measure-prose text-sm text-muted-foreground">
+        Add a chain only where the issuer itself mints this token. A bridged or
+        wrapped version is a claim on someone else and stays an Instrument of
+        its own; swapping into it is a disposal.
+      </p>
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1.5">
+          <label
+            htmlFor={`${id}-chain`}
+            className="microlabel block text-muted-foreground"
+          >
+            Chain
+          </label>
+          <Input
+            id={`${id}-chain`}
+            value={chain}
+            onChange={(event) => setChain(event.target.value)}
+            className="w-32"
+          />
+        </div>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <label
+            htmlFor={`${id}-contract`}
+            className="microlabel block text-muted-foreground"
+          >
+            Contract address
+          </label>
+          <Input
+            id={`${id}-contract`}
+            value={contract}
+            onChange={(event) => setContract(event.target.value)}
+            className="font-mono"
+          />
+        </div>
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={
+            add.isPending || chain.trim() === "" || contract.trim() === ""
+          }
+        >
+          <Plus aria-hidden />
+          {add.isPending ? "Adding…" : "Add deployment"}
+        </Button>
+      </form>
+      {add.error != null && (
+        <p role="alert" className="measure-prose text-sm text-alarm">
+          {add.error.message}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**

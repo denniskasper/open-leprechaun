@@ -6,6 +6,21 @@ import { DECIMAL_PATTERN } from "@/api/transactions";
 export const INBOX_URL = "/api/inbox";
 
 /**
+ * One inflow a keep would settle, with what its source stated about the
+ * network it came on (ADR-0032) — null where the source said nothing.
+ */
+export const waitingInflowSchema = z.object({
+  transaction_id: z.number(),
+  occurred_at: z.iso.datetime({ offset: true }),
+  quantity: z.string().regex(DECIMAL_PATTERN),
+  chain: z.string().nullable(),
+  tx_hash: z.string().nullable(),
+  counterparty_address: z.string().nullable(),
+});
+
+export type WaitingInflow = z.infer<typeof waitingInflowSchema>;
+
+/**
  * One unacknowledged arrival: an Instrument at an Account that the Admin has
  * never classified, with the unsolicited inflows a keep decision would settle.
  */
@@ -24,6 +39,8 @@ export const inboxItemSchema = z.object({
   unclassified_inflow_count: z.number(),
   unclassified_quantity: z.string().regex(DECIMAL_PATTERN),
   last_inflow_at: z.iso.datetime({ offset: true }),
+  // Each unclassified inflow, newest first.
+  inflows: z.array(waitingInflowSchema),
 });
 
 export type InboxItem = z.infer<typeof inboxItemSchema>;

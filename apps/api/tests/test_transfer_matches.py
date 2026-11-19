@@ -157,7 +157,7 @@ def test_decisions_follow_their_legs_by_cascade(db):
 # --- The candidate rule -----------------------------------------------------
 
 
-def _side(instrument_id=1, account_id=1, quantity="1", occurred_at=NOON):
+def _side(instrument_id=1, account_id=1, quantity="1", occurred_at=NOON, tx_hash=None):
     return service.TransferLeg(
         leg_id=0,
         transaction_id=0,
@@ -170,7 +170,49 @@ def _side(instrument_id=1, account_id=1, quantity="1", occurred_at=NOON):
         instrument_id=instrument_id,
         instrument_symbol="",
         instrument_name="",
+        tx_hash=tx_hash,
     )
+
+
+def test_one_transaction_hash_on_both_sides_proposes_the_pair_whatever_the_gap():
+    """Both sides naming the same chain transaction is proof, not a guess
+    (ADR-0032): the pair is proposed even where a fee or a slow venue put it
+    outside the tolerance or the window — but never the wrong way round."""
+    outgoing = _side(quantity="1", tx_hash="0xabc")
+    late = NOON + service.TIME_WINDOW + timedelta(days=3)
+
+    assert service.is_candidate(
+        outgoing, _side(account_id=2, quantity="0.9", occurred_at=late, tx_hash="0xabc")
+    )
+    assert not service.is_candidate(
+        outgoing, _side(account_id=2, quantity="0.9", occurred_at=late, tx_hash="0xdef")
+    )
+    assert not service.is_candidate(
+        outgoing, _side(account_id=2, quantity="1.1", occurred_at=SOON, tx_hash="0xabc")
+    )
+    assert not service.is_candidate(
+        outgoing, _side(instrument_id=2, account_id=2, occurred_at=SOON, tx_hash="0xabc")
+    )
+
+
+def test_the_overview_says_which_proposals_one_hash_proves(db):
+    account, cold, btc = _account(db), _cold_account(db), _btc(db)
+    legs = [
+        _transfer_out(db, account, btc, quantity="0.004"),
+        _transfer_in(db, cold, btc, quantity="0.004"),
+    ]
+    with db.begin() as connection:
+        for leg_id in legs:
+            transaction_id = connection.execute(
+                text("SELECT transaction_id FROM transaction_leg WHERE id = :id"), {"id": leg_id}
+            ).scalar_one()
+            transactions.fill_network_facts(
+                connection, transaction_id, transactions.NetworkFacts(tx_hash="0xabc")
+            )
+
+    (candidate,) = service.matching_overview(db).candidates
+
+    assert candidate.proven is True
 
 
 def test_a_candidate_is_the_same_instrument_between_two_accounts():

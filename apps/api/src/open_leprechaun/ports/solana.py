@@ -356,6 +356,7 @@ def _what_moved(
             asset=asset,
             quantity=abs(quantity),
             fee_quantity=fee_quantity if key == fee_bearer else None,
+            tx_hash=signature,
         )
         for key, asset, quantity in moves
     )

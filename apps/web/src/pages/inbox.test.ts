@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InboxItem } from "@/api/inbox";
-import { describeArrivals } from "./inbox";
+import { describeArrivals, explorerUrl, undeployedChain } from "./inbox";
 
 function item(overrides: Partial<InboxItem>): InboxItem {
   return {
@@ -18,6 +18,7 @@ function item(overrides: Partial<InboxItem>): InboxItem {
     unclassified_inflow_count: 1,
     unclassified_quantity: "1999.75",
     last_inflow_at: "2026-03-01T09:00:00Z",
+    inflows: [],
     ...overrides,
   };
 }
@@ -40,5 +41,36 @@ describe("describeArrivals", () => {
     expect(
       describeArrivals(item({ unclassified_inflow_count: 0, unclassified_quantity: "0" })),
     ).toBe("No unclassified inflows — recorded by hand, awaiting only the stance.");
+  });
+});
+
+describe("explorerUrl", () => {
+  it("links a transaction on a chain it knows to that chain's explorer", () => {
+    expect(explorerUrl("solana", "5rTxHash")).toBe(
+      "https://solscan.io/tx/5rTxHash",
+    );
+    expect(explorerUrl("ethereum", "0xabc")).toBe(
+      "https://etherscan.io/tx/0xabc",
+    );
+  });
+
+  it("links nothing it cannot place", () => {
+    expect(explorerUrl("somewhere", "0xabc")).toBeNull();
+    expect(explorerUrl(null, "0xabc")).toBeNull();
+    expect(explorerUrl("solana", null)).toBeNull();
+  });
+});
+
+describe("undeployedChain", () => {
+  const deployments = [{ chain: "ethereum", contract_address: "0xa0b8" }];
+
+  it("names a stated chain the token has no Deployment on", () => {
+    expect(undeployedChain("solana", "token", deployments)).toBe("solana");
+  });
+
+  it("names nothing for a deployed chain, an unstated one, or anything but a token", () => {
+    expect(undeployedChain("ethereum", "token", deployments)).toBeNull();
+    expect(undeployedChain(null, "token", deployments)).toBeNull();
+    expect(undeployedChain("bitcoin", "native", [])).toBeNull();
   });
 });

@@ -169,6 +169,12 @@ class OriginalAmountResponse(BaseModel):
     rate_date: date
 
 
+class NetworkFactsResponse(BaseModel):
+    chain: str | None
+    tx_hash: str | None
+    counterparty_address: str | None
+
+
 class TransactionResponse(BaseModel):
     id: int
     type: TransactionType
@@ -180,6 +186,9 @@ class TransactionResponse(BaseModel):
     # A trade settled in another currency than it was priced in (ticket 48):
     # the amount as priced, the broker's rate and its date.
     original_amount: OriginalAmountResponse | None
+    # What the source stated about the network a transfer moved on
+    # (ADR-0032): its chain, transaction hash and the other side's address.
+    network: NetworkFactsResponse | None
     # The dust-sweep aggregate this event belongs to (ticket 30) — the
     # marker the summary presentation collapses on.
     aggregate_id: int | None
@@ -205,6 +214,9 @@ class TransactionResponse(BaseModel):
             else None,
             original_amount=OriginalAmountResponse(**asdict(transaction.original_amount))
             if transaction.original_amount is not None
+            else None,
+            network=NetworkFactsResponse(**asdict(transaction.network))
+            if transaction.network is not None
             else None,
             aggregate_id=transaction.aggregate_id,
             import_batch_id=transaction.import_batch_id,

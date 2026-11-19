@@ -42,6 +42,14 @@ class Listing:
 
 
 @dataclass(frozen=True)
+class Deployment:
+    """One chain's contract a token is (ADR-0032)."""
+
+    chain: str
+    contract_address: str
+
+
+@dataclass(frozen=True)
 class AccountStance:
     """One per-Account decision — `kept` or `ignored` (ADR-0012)."""
 
@@ -70,6 +78,9 @@ class InstrumentOverview:
     # flagged until the Admin settles what it is.
     needs_review: bool
     listings: tuple[Listing, ...]
+    # A token's identities, one per chain, the home one first (ADR-0032);
+    # empty for anything that is not a token.
+    deployments: tuple[Deployment, ...]
     # An ignored or dangerous position stays visible with a clear warning
     # rather than being hidden, so the stance travels with the overview.
     dangerous: bool
@@ -86,6 +97,11 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
                 quote_currency=row.quote_currency,
                 price_source=row.price_source,
             )
+        )
+    deployments_of: dict[int, list[Deployment]] = {}
+    for row in instruments.list_deployments(engine):
+        deployments_of.setdefault(row.instrument_id, []).append(
+            Deployment(chain=row.chain, contract_address=row.contract_address)
         )
     dangerous: set[int] = set()
     stances_of: dict[int, list[AccountStance]] = {}
@@ -112,6 +128,7 @@ def overview(engine: Engine) -> list[InstrumentOverview]:
             distribution_policy=row.distribution_policy,
             needs_review=row.needs_review,
             listings=tuple(listings_of.get(row.id, [])),
+            deployments=tuple(deployments_of.get(row.id, [])),
             dangerous=row.id in dangerous,
             stances=tuple(stances_of.get(row.id, [])),
         )
@@ -205,3 +222,53 @@ def remove_instrument(engine: Engine, instrument_id: int) -> Refused | Refusal |
     named = [_KIND_OF_RECORD[use] for use in held.uses]
     listed = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
     return Refused(f"This Instrument stays for good: it is recorded in {listed}.")
+
+
+def attach_deployment(
+    engine: Engine, instrument_id: int, *, chain: str, contract_address: str
+) -> Refused | None:
+    """Another chain's contract of the same token, attached by the Admin
+    (ADR-0032) — only one its issuer mints itself, which the ledger cannot
+    tell from the contract and so never decides. A contract that already
+    names another Instrument is refused with that Instrument named: two
+    Instruments become one only by settling the newer as a Deployment of the
+    older. None means attached; a missing Instrument raises LookupError."""
+    refused = instruments.add_deployment(
+        engine, instrument_id, chain=chain, contract_address=contract_address
+    )
+    if refused is instruments.DeploymentRefusal.no_such_instrument:
+        raise LookupError(instrument_id)
+    if refused is instruments.DeploymentRefusal.not_a_token:
+        return Refused(
+            "Only a token has Deployments — a coin's symbol already names it on every chain,"
+            " and a security or currency is on none."
+        )
+    if refused is instruments.DeploymentRefusal.already_held:
+        holder = instruments.holding_deployment(
+            engine, chain=chain, contract_address=contract_address
+        )
+        if holder is None or holder.id == instrument_id:
+            return Refused("This Instrument already has that Deployment.")
+        return Refused(
+            f"{holder.name} ({holder.symbol}) already holds this contract. Settle it as a"
+            " Deployment of this Instrument instead."
+        )
+    return None
+
+
+def settle_as_deployment_of(engine: Engine, newer: int, older: int) -> Refused | None:
+    """The Admin's answer that a token the ledger met by an unfamiliar
+    contract is another token it already holds, on another chain
+    (ADR-0032). Its inflows then wait under that token, and are settled
+    there. None means settled; a missing Instrument raises LookupError."""
+    refused = instruments.fold_into(engine, newer, older)
+    if refused is instruments.FoldRefusal.no_such_instrument:
+        raise LookupError(newer)
+    if refused is instruments.FoldRefusal.not_two_tokens:
+        return Refused("Only a token settles as a Deployment, and only of another token.")
+    if refused is instruments.FoldRefusal.decided:
+        return Refused(
+            "A token settles as a Deployment of another only while nothing about it has been"
+            " decided — no Stance, and nothing recorded but inflows still waiting."
+        )
+    return None

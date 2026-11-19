@@ -707,6 +707,43 @@ def test_an_onchain_send_is_a_transfer_out_with_its_network_fee_apart():
     assert transfer.occurred_at == datetime(2015, 3, 11, 20, 13, 35, tzinfo=UTC)
 
 
+def test_a_send_states_its_network_hash_and_recipient():
+    """The network Coinbase sent on, the hash and the recipient's address
+    are kept as recorded fact (ADR-0032)."""
+    send = {
+        **AN_ONCHAIN_SEND,
+        "network": {
+            **AN_ONCHAIN_SEND["network"],
+            "network_name": "solana",
+            "hash": "5rTxHashOnSolana",
+        },
+    }
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [send]})
+
+    (transfer,) = adapter.pull(CREDENTIALS).transfers
+
+    assert transfer.chain == "solana"
+    assert transfer.tx_hash == "5rTxHashOnSolana"
+    assert transfer.counterparty_address == "1AUJ8z5RuHRTqD1eikyfUUetzGmdWLGkpT"
+
+
+def test_a_send_that_touched_no_chain_states_no_network_facts():
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [AN_OFFCHAIN_SEND]})
+
+    (transfer,) = adapter.pull(CREDENTIALS).transfers
+
+    assert (transfer.chain, transfer.tx_hash, transfer.counterparty_address) == (None, None, None)
+
+
+def test_a_receive_states_the_network_it_arrived_on():
+    adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [A_RECEIVE]})
+
+    (transfer,) = adapter.pull(CREDENTIALS).transfers
+
+    assert transfer.chain == "bitcoin"
+    assert transfer.counterparty_address is None
+
+
 def test_an_offchain_send_carries_no_fee():
     adapter, _ = venue(accounts=[BTC_ACCOUNT], transactions={BTC_ACCOUNT["id"]: [AN_OFFCHAIN_SEND]})
 
